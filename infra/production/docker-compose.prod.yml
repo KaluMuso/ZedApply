@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  # ── Nginx reverse proxy + SSL termination ──
+  nginx:
+    image: nginx:alpine
+    container_name: zedcv-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - certbot_certs:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+    depends_on: [backend, waha]
+    networks: [zedcv]
+
+  # ── Certbot for auto-renewing Let's Encrypt SSL ──
+  certbot:
+    image: certbot/certbot
+    container_name: zedcv-certbot
+    volumes:
+      - certbot_certs:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done'"
+
+  # ── FastAPI backend ──
+  backend:
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+    container_name: zedcv-backend
+    restart: unless-stopped
+    env_file: ../../apps/backend/.env
+    environment:
+      WAHA_API_URL: http://waha:3000
+      DEBUG: "false"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks: [zedcv]
+
+  # ── WAHA (WhatsApp HTTP API) ──
+  waha:
+    image: devlikeapro/waha:latest
+    container_name: zedcv-waha
+    restart: unless-stopped
+    environment:
+      WHATSAPP_API_KEY: ${WAHA_API_KEY}
+      WHATSAPP_HOOK_URL: http://backend:8000/api/v1/webhooks/whatsapp
+      WHATSAPP_HOOK_EVENTS: "message,message.ack,session.status"
+      WHATSAPP_DEFAULT_ENGINE: WEBJS
+      WHATSAPP_RESTART_ALL_SESSIONS: "true"
+    volumes:
+      - waha_data:/app/.waha
+    networks: [zedcv]
+
+  # ── n8n (job scraping workflows) ──
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: zedcv-n8n
+    restart: unless-stopped
+    ports: ["5678:5678"]   # Keep accessible for workflow editing; firewall restrict to your IP
+    environment:
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: ${N8N_USER}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_PASSWORD}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_KEY: ${SUPABASE_KEY}
+      FASTAPI_URL: http://backend:8000
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks: [zedcv]
+
+volumes:
+  waha_data:
+  n8n_data:
+  certbot_certs:
+  certbot_www:
+
+networks:
+  zedcv:
+    driver: bridge

@@ -1,303 +1,216 @@
-import { z } from "zod";
+/**
+ * API client for Zed CV backend.
+ * All requests go through this client for consistent auth + error handling.
+ */
 
-const ACCESS_TOKEN_KEY = "zedcv_access_token";
-const REFRESH_TOKEN_KEY = "zedcv_refresh_token";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
-let refreshInFlight: Promise<boolean> | null = null;
-
-const UserProfileSchema = z.object({
-  id: z.string().uuid(),
-  phone: z.string(),
-  full_name: z.string().nullable().optional(),
-  email: z.string().email().nullable().optional(),
-  location: z.string().nullable().optional(),
-  years_experience: z.number().int().nonnegative(),
-  skills: z.array(z.string()),
-  subscription_tier: z.enum(["mwana", "mwezi", "bwino"]),
-  created_at: z.string(),
-});
-
-const UserProfileUpdateSchema = z.object({
-  full_name: z.string().optional(),
-  email: z.string().email().optional(),
-  location: z.string().optional(),
-  years_experience: z.number().int().nonnegative().optional(),
-});
-
-const CVUploadResponseSchema = z.object({
-  cv_id: z.string().uuid(),
-  parsed_skills: z.array(z.string()),
-  experience_summary: z.string(),
-  parsing_confidence: z.number(),
-});
-
-const SubscriptionSchema = z.object({
-  id: z.string().uuid(),
-  tier: z.enum(["mwana", "mwezi", "bwino"]),
-  status: z.enum(["active", "expired", "cancelled", "past_due"]),
-  current_period_start: z.string(),
-  current_period_end: z.string().nullable().optional(),
-  matches_used: z.number().int().nonnegative(),
-  matches_limit: z.number().int().nonnegative(),
-});
-
-const JobSchema = z.object({
-  id: z.string().uuid(),
-  title: z.string(),
-  company: z.string().nullable().optional(),
-  location: z.string().nullable().optional(),
-  description: z.string(),
-  requirements: z.array(z.string()),
-  skills_required: z.array(z.string()),
-  salary_min: z.number().nullable().optional(),
-  salary_max: z.number().nullable().optional(),
-  apply_url: z.string().nullable().optional(),
-  apply_email: z.string().nullable().optional(),
-  source: z.string(),
-  quality_score: z.number().int(),
-  closing_date: z.string().nullable().optional(),
-  posted_at: z.string(),
-  is_active: z.boolean(),
-});
-
-const JobListSchema = z.object({
-  jobs: z.array(JobSchema),
-  total: z.number().int().nonnegative(),
-  page: z.number().int().positive(),
-  per_page: z.number().int().positive(),
-});
-
-const OTPRequestResponseSchema = z.object({
-  message: z.string(),
-});
-
-const AuthTokensSchema = z.object({
-  access_token: z.string(),
-  refresh_token: z.string(),
-  user_id: z.string().uuid(),
-});
-
-export type UserProfile = z.infer<typeof UserProfileSchema>;
-export type UserProfileUpdate = z.infer<typeof UserProfileUpdateSchema>;
-export type CVUploadResponse = z.infer<typeof CVUploadResponseSchema>;
-export type Subscription = z.infer<typeof SubscriptionSchema>;
-export type Job = z.infer<typeof JobSchema>;
-export type JobList = z.infer<typeof JobListSchema>;
-export type AuthTokens = z.infer<typeof AuthTokensSchema>;
-
-function getApiBaseUrl(): string {
-  const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
-  return base.replace(/\/$/, "");
+interface FetchOptions extends RequestInit {
+  token?: string;
 }
 
-function getAccessToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(ACCESS_TOKEN_KEY);
-}
-
-function getRefreshToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(REFRESH_TOKEN_KEY);
-}
-
-/** Returns the JWT stored for API calls, or null if missing. */
-export function getStoredAccessToken(): string | null {
-  return getAccessToken();
-}
-
-/** Manual access-token only (e.g. pasted dev token). Clears refresh so stale refresh is not used. */
-export function setAccessToken(token: string) {
-  window.localStorage.setItem(ACCESS_TOKEN_KEY, token);
-  window.localStorage.removeItem(REFRESH_TOKEN_KEY);
-}
-
-export function setAuthTokens(accessToken: string, refreshToken: string) {
-  window.localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-  window.localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
-}
-
-export function clearAccessToken() {
-  window.localStorage.removeItem(ACCESS_TOKEN_KEY);
-  window.localStorage.removeItem(REFRESH_TOKEN_KEY);
-}
-
-async function tryRefreshTokens(): Promise<boolean> {
-  if (refreshInFlight) {
-    return refreshInFlight;
+export class ApiError extends Error {
+  status: number;
+  detail: string;
+  constructor(status: number, detail: string) {
+    super(detail);
+    this.name = "ApiError";
+    this.status = status;
+    this.detail = detail;
   }
-  refreshInFlight = (async () => {
-    const refreshToken = getRefreshToken();
-    if (!refreshToken) {
-      return false;
-    }
-    try {
-      const response = await fetch(`${getApiBaseUrl()}/auth/refresh`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh_token: refreshToken }),
-      });
-      const contentType = response.headers.get("content-type") ?? "";
-      const rawBody = contentType.includes("application/json")
-        ? await response.json()
-        : await response.text();
-      if (!response.ok) {
-        return false;
-      }
-      const tokens = AuthTokensSchema.parse(rawBody);
-      setAuthTokens(tokens.access_token, tokens.refresh_token);
-      return true;
-    } catch {
-      return false;
-    } finally {
-      refreshInFlight = null;
-    }
-  })();
-  return refreshInFlight;
 }
 
-async function apiFetch(
-  path: string,
-  init: RequestInit,
-  options: { auth?: boolean; skipRefresh?: boolean } = {},
-): Promise<unknown> {
-  const useAuth = options.auth !== false;
-  const skipRefresh = options.skipRefresh === true;
-  const token = useAuth ? getAccessToken() : null;
-  const headers = new Headers(init.headers);
-  if (!headers.has("Content-Type") && !(init.body instanceof FormData)) {
-    headers.set("Content-Type", "application/json");
-  }
-  if (token && useAuth) {
-    headers.set("Authorization", `Bearer ${token}`);
+async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T> {
+  const { token, ...fetchOptions } = options;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string>),
+  };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${getApiBaseUrl()}${path}`, {
-    ...init,
-    headers,
-  });
+  const res = await fetch(`${API_BASE}${path}`, { ...fetchOptions, headers });
 
-  const contentType = response.headers.get("content-type") ?? "";
-  const rawBody = contentType.includes("application/json")
-    ? await response.json()
-    : await response.text();
-
-  if (!response.ok) {
-    if (
-      response.status === 401 &&
-      useAuth &&
-      !skipRefresh &&
-      getRefreshToken() &&
-      path !== "/auth/refresh"
-    ) {
-      const refreshed = await tryRefreshTokens();
-      if (refreshed) {
-        return apiFetch(path, init, { ...options, skipRefresh: true });
-      }
-      clearAccessToken();
-    }
-    const message =
-      typeof rawBody === "object" && rawBody !== null && "detail" in rawBody
-        ? String((rawBody as { detail?: unknown }).detail)
-        : typeof rawBody === "string"
-          ? rawBody
-          : `Request failed (${response.status})`;
-    throw new Error(message);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new ApiError(res.status, body.detail || body.title || "Unknown error");
   }
 
-  return rawBody;
+  return res.json() as Promise<T>;
+}
+
+/** Helper to get stored auth token */
+function getToken(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem("zed_cv_token") || "";
+}
+
+// ── Auth ──
+export interface OTPResponse {
+  message: string;
+}
+
+export interface AuthTokens {
+  access_token: string;
+  refresh_token: string;
+  user_id: string;
 }
 
 export const auth = {
-  async requestOtp(phone: string): Promise<{ message: string }> {
-    const data = await apiFetch(
-      "/auth/otp/request",
-      { method: "POST", body: JSON.stringify({ phone }) },
-      { auth: false },
-    );
-    return OTPRequestResponseSchema.parse(data);
-  },
-
-  async verifyOtp(phone: string, code: string): Promise<AuthTokens> {
-    const data = await apiFetch(
-      "/auth/otp/verify",
-      { method: "POST", body: JSON.stringify({ phone, code }) },
-      { auth: false },
-    );
-    return AuthTokensSchema.parse(data);
-  },
-
-  async refreshWithStoredToken(): Promise<AuthTokens> {
-    const refreshToken = getRefreshToken();
-    if (!refreshToken) {
-      throw new Error("No refresh token");
-    }
-    const data = await apiFetch(
-      "/auth/refresh",
-      { method: "POST", body: JSON.stringify({ refresh_token: refreshToken }) },
-      { auth: false, skipRefresh: true },
-    );
-    const tokens = AuthTokensSchema.parse(data);
-    setAuthTokens(tokens.access_token, tokens.refresh_token);
-    return tokens;
-  },
+  requestOTP: (phone: string) =>
+    apiFetch<OTPResponse>("/auth/otp/request", {
+      method: "POST",
+      body: JSON.stringify({ phone }),
+    }),
+  verifyOTP: (phone: string, code: string) =>
+    apiFetch<AuthTokens>("/auth/otp/verify", {
+      method: "POST",
+      body: JSON.stringify({ phone, code }),
+    }),
 };
+
+// ── Profile ──
+export interface UserProfile {
+  id: string;
+  phone: string;
+  full_name: string | null;
+  email: string | null;
+  skills: string[];
+  cv_uploaded: boolean;
+  subscription_tier: string;
+}
 
 export const profile = {
-  async get(): Promise<UserProfile> {
-    const data = await apiFetch("/profile", { method: "GET" });
-    return UserProfileSchema.parse(data);
-  },
-
-  async update(body: UserProfileUpdate): Promise<UserProfile> {
-    const data = await apiFetch("/profile", {
+  get: (token: string) => apiFetch<UserProfile>("/profile", { token }),
+  update: (token: string, data: Partial<UserProfile>) =>
+    apiFetch<UserProfile>("/profile", {
       method: "PATCH",
-      body: JSON.stringify(UserProfileUpdateSchema.parse(body)),
-    });
-    return UserProfileSchema.parse(data);
-  },
+      token,
+      body: JSON.stringify(data),
+    }),
 };
+
+// ── CV ──
+export interface CVUploadResult {
+  id: string;
+  skills_extracted: string[];
+  message: string;
+}
 
 export const cv = {
-  async upload(file: File): Promise<CVUploadResponse> {
-    const form = new FormData();
-    form.append("file", file);
-
-    const data = await apiFetch("/cv/upload", {
+  upload: async (token: string, file: File): Promise<CVUploadResult> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`${API_BASE}/cv/upload`, {
       method: "POST",
-      body: form,
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
     });
-    return CVUploadResponseSchema.parse(data);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new ApiError(
+        res.status,
+        (body as { detail?: string }).detail || "Upload failed"
+      );
+    }
+    return res.json() as Promise<CVUploadResult>;
   },
 };
 
-export const subscription = {
-  async get(): Promise<Subscription> {
-    const data = await apiFetch("/subscription", { method: "GET" });
-    return SubscriptionSchema.parse(data);
-  },
-};
+// ── Jobs ──
+export interface Job {
+  id: string;
+  title: string;
+  company: string | null;
+  location: string | null;
+  closing_date: string | null;
+  quality_score: number;
+  skills: string[];
+  description: string | null;
+}
+
+export interface JobListResponse {
+  jobs: Job[];
+  total: number;
+  page: number;
+  pages: number;
+}
 
 export const jobs = {
-  async list(params: {
-    page?: number;
-    per_page?: number;
-    location?: string;
-    search?: string;
-  }): Promise<JobList> {
-    const searchParams = new URLSearchParams();
-    if (params.page) searchParams.set("page", String(params.page));
-    if (params.per_page) searchParams.set("per_page", String(params.per_page));
-    if (params.location) searchParams.set("location", params.location);
-    if (params.search) searchParams.set("search", params.search);
-
-    const qs = searchParams.toString();
-    const path = qs ? `/jobs?${qs}` : "/jobs";
-    const data = await apiFetch(path, { method: "GET" });
-    return JobListSchema.parse(data);
+  list: (params?: { page?: number; search?: string; location?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.search) query.set("search", params.search);
+    if (params?.location) query.set("location", params.location);
+    const token = getToken();
+    return apiFetch<JobListResponse>(`/jobs?${query}`, { token });
   },
-
-  async get(jobId: string): Promise<Job> {
-    const data = await apiFetch(`/jobs/${jobId}`, { method: "GET" });
-    return JobSchema.parse(data);
+  get: (jobId: string) => {
+    const token = getToken();
+    return apiFetch<Job>(`/jobs/${jobId}`, { token });
   },
+};
+
+// ── Matches ──
+export interface MatchData {
+  id: string;
+  score: number;
+  vector_score: number;
+  skill_score: number;
+  bonus_score: number;
+  matched_skills: string[];
+  missing_skills: string[];
+  explanation: string | null;
+  job: {
+    id: string;
+    title: string;
+    company: string | null;
+    location: string | null;
+    closing_date: string | null;
+  };
+}
+
+export interface MatchListResponse {
+  matches: MatchData[];
+  remaining_quota: number;
+}
+
+export const matches = {
+  get: (token: string, minScore?: number) =>
+    apiFetch<MatchListResponse>(
+      `/matches${minScore ? `?min_score=${minScore}` : ""}`,
+      { token }
+    ),
+  trigger: (token: string) =>
+    apiFetch<{ message: string }>("/matches/trigger", {
+      method: "POST",
+      token,
+    }),
+};
+
+// ── Subscription ──
+export interface Subscription {
+  tier: string;
+  matches_used: number;
+  matches_limit: number;
+  active: boolean;
+  expires_at: string | null;
+}
+
+export const subscription = {
+  get: (token: string) => apiFetch<Subscription>("/subscription", { token }),
+  pay: (
+    token: string,
+    data: { tier: string; payment_method: string; phone: string }
+  ) =>
+    apiFetch<{ message: string; transaction_id: string }>(
+      "/subscription/pay",
+      { method: "POST", token, body: JSON.stringify(data) }
+    ),
+};
+
+// ── Health ──
+export const health = {
+  check: () => apiFetch<{ status: string }>("/health"),
 };

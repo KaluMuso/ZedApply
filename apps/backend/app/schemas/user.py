@@ -1,9 +1,5 @@
-"""User profile schemas."""
-
 from pydantic import BaseModel, Field, EmailStr
-from datetime import datetime
 from typing import Optional
-
 
 class UserProfile(BaseModel):
     id: str
@@ -13,9 +9,8 @@ class UserProfile(BaseModel):
     location: Optional[str] = None
     years_experience: int = 0
     skills: list[str] = []
+    cv_uploaded: bool = False
     subscription_tier: str = "mwana"
-    created_at: datetime
-
 
 class UserProfileUpdate(BaseModel):
     full_name: Optional[str] = Field(None, max_length=255)

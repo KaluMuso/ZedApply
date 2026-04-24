@@ -1,108 +1,107 @@
-"""Cover letter generation route."""
-
-from fastapi import APIRouter, Depends, HTTPException, status
-
-from app.core.deps import get_current_user_id, get_supabase
-from app.schemas.cover_letter import CoverLetterRequest, CoverLetterResponse
+"""Cover letter generation routes — Bwino tier or superadmin."""
+from typing import Literal, Optional
+from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Request
+from app.core.deps import get_supabase, get_current_user, is_superadmin
+from app.core.rate_limit import limiter
 from app.services.cover_letter import generate_cover_letter
 
 router = APIRouter(prefix="/cover-letter", tags=["Cover Letter"])
 
 
+class CoverLetterRequest(BaseModel):
+    job_id: str
+    tone: Optional[Literal["formal", "friendly", "confident"]] = "formal"
+
+
+class CoverLetterResponse(BaseModel):
+    letter: str
+    word_count: int
+    tone: str
+    document_id: str
+
+
 @router.post("/generate", response_model=CoverLetterResponse)
-async def generate_cover_letter_endpoint(
+@limiter.limit("5/minute")
+async def generate(
+    request: Request,
     body: CoverLetterRequest,
-    user_id: str = Depends(get_current_user_id),
+    current_user: dict = Depends(get_current_user),
     supabase=Depends(get_supabase),
 ):
-    """Generate a cover letter for a job; requires Bwino tier."""
-    subscription = (
-        supabase.table("subscriptions")
-        .select("tier,status")
-        .eq("user_id", user_id)
-        .order("created_at", desc=True)
-        .limit(1)
-        .execute()
-    )
+    user_id = current_user["id"]
 
-    if not subscription.data:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Active subscription required",
+    # Superadmin bypasses tier check
+    if not is_superadmin(current_user):
+        sub = (
+            supabase.table("subscriptions")
+            .select("tier, status")
+            .eq("user_id", user_id)
+            .eq("status", "active")
+            .single()
+            .execute()
         )
+        if not sub.data or sub.data["tier"] != "bwino":
+            raise HTTPException(
+                status_code=403,
+                detail="Cover letter generation requires the Bwino plan (K199/mo). "
+                       "Upgrade at zedcv.com/pricing",
+            )
 
-    sub = subscription.data[0]
-    if sub.get("status") != "active" or sub.get("tier") != "bwino":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Bwino tier required for cover letter generation",
-        )
-
+    # Get user's primary CV text
     cv_result = (
         supabase.table("cvs")
-        .select("id,raw_text")
+        .select("raw_text")
         .eq("user_id", user_id)
         .eq("is_primary", True)
-        .order("created_at", desc=True)
         .limit(1)
         .execute()
     )
-    if not cv_result.data:
+    if not cv_result.data or not cv_result.data[0].get("raw_text"):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Upload a CV first before generating a cover letter",
+            status_code=422,
+            detail="Upload a CV first. We need your CV text to generate a cover letter.",
         )
+    cv_text = cv_result.data[0]["raw_text"]
 
-    user_cv = cv_result.data[0]
-    cv_text = user_cv.get("raw_text", "")
-    if not cv_text.strip():
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Primary CV has no extracted text",
-        )
-
+    # Get job details
     job_result = (
         supabase.table("jobs")
-        .select("id,description,title,company")
+        .select("title, company, description")
         .eq("id", body.job_id)
-        .eq("is_active", True)
-        .limit(1)
+        .single()
         .execute()
     )
     if not job_result.data:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+        raise HTTPException(status_code=404, detail="Job not found")
+    job = job_result.data
 
-    job = job_result.data[0]
-    job_description = job.get("description", "")
-    if not job_description.strip():
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Selected job has no description",
+    # Generate the cover letter
+    try:
+        result = await generate_cover_letter(
+            user_cv_text=cv_text,
+            job_title=job["title"],
+            job_description=job["description"],
+            company=job.get("company"),
+            tone=body.tone or "formal",
         )
+    except ValueError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
-    generated = await generate_cover_letter(
-        user_cv_text=cv_text,
-        job_description=job_description,
-        tone=body.tone.value,
-    )
+    # Store in generated_documents
+    doc_result = supabase.table("generated_documents").insert({
+        "user_id": user_id,
+        "job_id": body.job_id,
+        "doc_type": "cover_letter",
+        "content": result["letter"],
+        "metadata": {"tone": result["tone"], "word_count": result["word_count"]},
+    }).execute()
 
-    supabase.table("generated_documents").insert(
-        {
-            "user_id": user_id,
-            "job_id": body.job_id,
-            "doc_type": "cover_letter",
-            "content": generated["content"],
-            "metadata": {
-                "tone": body.tone.value,
-                "word_count": generated["word_count"],
-                "cv_id": user_cv["id"],
-                "job_title": job.get("title"),
-                "company": job.get("company"),
-            },
-        }
-    ).execute()
+    doc_id = doc_result.data[0]["id"] if doc_result.data else "unknown"
 
     return CoverLetterResponse(
-        content=str(generated["content"]),
-        word_count=int(generated["word_count"]),
+        letter=result["letter"],
+        word_count=result["word_count"],
+        tone=result["tone"],
+        document_id=doc_id,
     )

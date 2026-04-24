@@ -1,57 +1,103 @@
-"""Cover letter generation service using Claude Haiku with prompt caching."""
+"""Cover letter generation via OpenRouter (google/gemini-flash-2.0).
 
-import anthropic
+Uses the OpenAI-compatible SDK pointed at OpenRouter.
+"""
+import asyncio
+import logging
+from typing import Literal
+from functools import lru_cache
+
+from openai import OpenAI, AuthenticationError, RateLimitError, APIError
 
 from app.core.config import get_settings
 
+logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = (
-    "You are a professional career assistant for Zambian job seekers. "
-    "Write concise, specific cover letters based on the provided CV context and "
-    "job description. Avoid fabricating experience. Use plain, polished English "
-    "and tailor the letter to the role requirements."
-)
+ToneType = Literal["formal", "friendly", "confident"]
+
+COVER_LETTER_SYSTEM_PROMPT = """You are an expert cover letter writer for the Zambian job market.
+
+Write a professional, compelling cover letter that:
+1. Opens with a strong hook connecting the candidate's experience to the role
+2. Highlights 2-3 most relevant skills/experiences from their CV that match the job
+3. Shows knowledge of the company (if company name provided)
+4. Closes with a clear call to action
+5. Keeps it to 3-4 paragraphs (250-350 words)
+
+Zambia-specific guidance:
+- Use professional but warm language appropriate for Zambian business culture
+- Reference local qualifications naturally (UNZA, CBU, ZCAS, etc.)
+- If location matches, mention willingness/proximity
+- Use "Dear Hiring Manager" if no contact name available
+- Sign off with "Yours faithfully" for formal, "Kind regards" for friendly
+
+Tone options:
+- formal: Conservative, traditional business language. Suitable for banking, government, NGO roles.
+- friendly: Warm and personable while professional. Good for startups, tech, hospitality.
+- confident: Bold, achievement-focused, assertive. Best for sales, leadership, competitive roles.
+
+Return ONLY the cover letter text. No JSON, no markdown, no explanation."""
+
+
+@lru_cache(maxsize=1)
+def _get_openrouter_client() -> OpenAI:
+    settings = get_settings()
+    return OpenAI(
+        api_key=settings.openrouter_api_key,
+        base_url="https://openrouter.ai/api/v1",
+    )
 
 
 async def generate_cover_letter(
     user_cv_text: str,
+    job_title: str,
     job_description: str,
-    tone: str = "formal",
-) -> dict[str, int | str]:
-    """Generate a tailored cover letter and return content plus word count."""
-    settings = get_settings()
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    company: str | None = None,
+    tone: ToneType = "formal",
+) -> dict:
+    """Generate a tailored cover letter using Gemini Flash via OpenRouter.
 
-    response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=1200,
-        system=[
-            {
-                "type": "text",
-                "text": SYSTEM_PROMPT,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        messages=[
-            {
-                "role": "user",
-                "content": (
-                    "Write a cover letter with the requested tone.\n\n"
-                    f"Tone: {tone}\n\n"
-                    "Candidate CV Context:\n"
-                    f"{user_cv_text[:8000]}\n\n"
-                    "Job Description:\n"
-                    f"{job_description[:8000]}\n\n"
-                    "Output requirements:\n"
-                    "- 250 to 400 words\n"
-                    "- Include a greeting, body, and sign-off\n"
-                    "- Use only details supported by the CV context\n"
-                    "- Return only the letter text"
-                ),
-            }
-        ],
+    Returns: {"letter": str, "word_count": int, "tone": str}
+    """
+    settings = get_settings()
+    client = _get_openrouter_client()
+
+    company_line = f" at {company}" if company else ""
+    user_prompt = (
+        f"Write a {tone} cover letter for this candidate applying to "
+        f"'{job_title}'{company_line}.\n\n"
+        f"--- CANDIDATE CV ---\n{user_cv_text[:4000]}\n\n"
+        f"--- JOB DESCRIPTION ---\n{job_description[:3000]}"
     )
 
-    content = response.content[0].text.strip()
-    word_count = len([word for word in content.split() if word])
-    return {"content": content, "word_count": word_count}
+    def _call():
+        try:
+            response = client.chat.completions.create(
+                model=settings.llm_model,
+                max_tokens=1024,
+                messages=[
+                    {"role": "system", "content": COVER_LETTER_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+
+            letter_text = response.choices[0].message.content.strip()
+            word_count = len(letter_text.split())
+
+            return {
+                "letter": letter_text,
+                "word_count": word_count,
+                "tone": tone,
+            }
+
+        except AuthenticationError:
+            logger.error("OpenRouter API key invalid for cover letter generation")
+            raise ValueError("Cover letter service is not configured. Please contact support.")
+        except RateLimitError:
+            logger.warning("OpenRouter rate limit hit during cover letter generation")
+            raise ValueError("Cover letter service is temporarily busy. Please try again in a minute.")
+        except APIError as e:
+            logger.error(f"OpenRouter API error during cover letter generation: {e}")
+            raise ValueError("Cover letter service is temporarily unavailable. Please try again later.")
+
+    return await asyncio.to_thread(_call)

@@ -1,17 +1,13 @@
-"""Job-related Pydantic schemas."""
-
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field
 from datetime import date, datetime
 from typing import Optional
 from enum import Enum
-
 
 class JobSource(str, Enum):
     manual = "manual"
     scraper = "scraper"
     ocr = "ocr"
     partner = "partner"
-
 
 class JobCreate(BaseModel):
     title: str = Field(..., min_length=5)
@@ -27,7 +23,6 @@ class JobCreate(BaseModel):
     source: JobSource
     closing_date: Optional[date] = None
 
-
 class Job(BaseModel):
     id: str
     title: str
@@ -36,6 +31,7 @@ class Job(BaseModel):
     description: str
     requirements: list[str] = []
     skills_required: list[str] = []
+    skills: list[str] = []  # Alias for frontend compatibility
     salary_min: Optional[int] = None
     salary_max: Optional[int] = None
     apply_url: Optional[str] = None
@@ -46,9 +42,9 @@ class Job(BaseModel):
     posted_at: datetime
     is_active: bool = True
 
-
 class JobList(BaseModel):
     jobs: list[Job]
     total: int
     page: int
     per_page: int
+    pages: int = 0

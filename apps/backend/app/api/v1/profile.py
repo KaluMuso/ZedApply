@@ -1,8 +1,6 @@
 """User profile routes."""
-
-from fastapi import APIRouter, Depends, HTTPException, status
-
-from app.core.deps import get_current_user_id, get_supabase
+from fastapi import APIRouter, Depends, HTTPException
+from app.core.deps import get_supabase, get_current_user_id
 from app.schemas.user import UserProfile, UserProfileUpdate
 
 router = APIRouter(prefix="/profile", tags=["Profile"])
@@ -13,41 +11,42 @@ async def get_profile(
     user_id: str = Depends(get_current_user_id),
     supabase=Depends(get_supabase),
 ):
-    user_result = (
-        supabase.table("users")
-        .select("id,phone,full_name,email,location,years_experience,subscription_tier,created_at")
-        .eq("id", user_id)
-        .single()
-        .execute()
-    )
-    if not user_result.data:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    result = supabase.table("users").select("*").eq("id", user_id).single().execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="User not found")
 
+    user = result.data
+
+    # Get user skills
     skills_result = (
         supabase.table("user_skills")
         .select("skills(name)")
         .eq("user_id", user_id)
         .execute()
     )
+    skills = [s["skills"]["name"] for s in (skills_result.data or []) if s.get("skills")]
 
-    skills: list[str] = []
-    for row in skills_result.data or []:
-        skill = row.get("skills") or {}
-        name = skill.get("name")
-        if isinstance(name, str) and name:
-            skills.append(name)
+    # Check if user has a primary CV
+    cv_result = (
+        supabase.table("cvs")
+        .select("id")
+        .eq("user_id", user_id)
+        .eq("is_primary", True)
+        .limit(1)
+        .execute()
+    )
+    cv_uploaded = bool(cv_result.data)
 
-    user = user_result.data
     return UserProfile(
         id=user["id"],
         phone=user["phone"],
         full_name=user.get("full_name"),
         email=user.get("email"),
         location=user.get("location"),
-        years_experience=int(user.get("years_experience") or 0),
-        skills=sorted(set(skills)),
-        subscription_tier=str(user.get("subscription_tier") or "mwana"),
-        created_at=user["created_at"],
+        years_experience=user.get("years_experience", 0),
+        skills=skills,
+        cv_uploaded=cv_uploaded,
+        subscription_tier=user.get("subscription_tier", "mwana"),
     )
 
 
@@ -57,10 +56,11 @@ async def update_profile(
     user_id: str = Depends(get_current_user_id),
     supabase=Depends(get_supabase),
 ):
-    update_payload = {k: v for k, v in body.model_dump(exclude_none=True).items()}
-    if not update_payload:
-        return await get_profile(user_id=user_id, supabase=supabase)
+    update_data = body.model_dump(exclude_none=True)
+    if not update_data:
+        raise HTTPException(status_code=422, detail="No fields to update")
 
-    supabase.table("users").update(update_payload).eq("id", user_id).execute()
+    supabase.table("users").update(update_data).eq("id", user_id).execute()
 
+    # Return the updated profile by reusing get_profile logic
     return await get_profile(user_id=user_id, supabase=supabase)

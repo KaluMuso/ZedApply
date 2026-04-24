@@ -2,16 +2,7 @@
   "name": "Zed CV - Supabase Heartbeat",
   "nodes": [
     {
-      "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "field": "hours",
-              "hoursInterval": 6
-            }
-          ]
-        }
-      },
+      "parameters": { "rule": { "interval": [{ "field": "hours", "hoursInterval": 6 }] } },
       "name": "Every 6 Hours",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
@@ -21,17 +12,7 @@
       "parameters": {
         "method": "POST",
         "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/heartbeat",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "options": {},
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $env.SUPABASE_ANON_KEY }}"
-            }
-          ]
-        }
+        "headerParameters": { "parameters": [{ "name": "apikey", "value": "={{ $env.SUPABASE_ANON_KEY }}" }] }
       },
       "name": "Supabase Heartbeat",
       "type": "n8n-nodes-base.httpRequest",
@@ -39,11 +20,7 @@
       "position": [480, 300]
     },
     {
-      "parameters": {
-        "method": "GET",
-        "url": "={{ $env.FASTAPI_URL }}/api/v1/health",
-        "options": {}
-      },
+      "parameters": { "method": "GET", "url": "={{ $env.FASTAPI_URL }}/api/v1/health" },
       "name": "API Health Check",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -51,24 +28,6 @@
     }
   ],
   "connections": {
-    "Every 6 Hours": {
-      "main": [
-        [
-          {
-            "node": "Supabase Heartbeat",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "API Health Check",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
-  },
-  "settings": {
-    "executionOrder": "v1"
+    "Every 6 Hours": { "main": [[{ "node": "Supabase Heartbeat", "type": "main", "index": 0 }, { "node": "API Health Check", "type": "main", "index": 0 }]] }
   }
 }

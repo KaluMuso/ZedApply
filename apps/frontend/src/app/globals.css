@@ -3,31 +3,40 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
+  --foreground: #171717;
+  --background: #fafafa;
+  --zambian-green: #198754;
+  --zambian-copper: #b8602a;
+  --zambian-orange: #f97316;
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  color: var(--foreground);
+  background: var(--background);
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
+/* Score circle animation */
+@keyframes score-fill {
+  from {
+    stroke-dashoffset: 283;
+  }
+}
+
+.score-circle {
+  animation: score-fill 1s ease-out forwards;
+}
+
+/* Dropzone hover */
+.dropzone-active {
+  @apply border-brand-500 bg-brand-50;
+}
+
+/* Mobile touch targets */
 @layer utilities {
-  .text-balance {
-    text-wrap: balance;
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px];
   }
 }

@@ -1,11 +1,7 @@
-"""Matching-related Pydantic schemas."""
-
 from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional
-
 from app.schemas.jobs import Job
-
 
 class MatchResult(BaseModel):
     id: str
@@ -18,7 +14,6 @@ class MatchResult(BaseModel):
     missing_skills: list[str] = []
     explanation: Optional[str] = None
     created_at: datetime
-
 
 class MatchList(BaseModel):
     matches: list[MatchResult]

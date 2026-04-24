@@ -1,429 +1,192 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
-
-import {
-  clearAccessToken,
-  getStoredAccessToken,
-  profile as profileApi,
-  setAccessToken,
-  subscription as subscriptionApi,
-  cv as cvApi,
-  type UserProfile,
-  type UserProfileUpdate,
-  type Subscription,
-  type CVUploadResponse,
-} from "@/lib/api";
-
-type LoadState =
-  | { status: "idle" }
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | { status: "ready"; profile: UserProfile; subscription: Subscription };
-
-function looksLikeAuthFailure(message: string) {
-  const m = message.toLowerCase();
-  return (
-    m.includes("not authenticated") ||
-    m.includes("credentials") ||
-    m.includes("could not validate") ||
-    m.includes("invalid token")
-  );
-}
-
-function tierLabel(tier: UserProfile["subscription_tier"]) {
-  switch (tier) {
-    case "mwana":
-      return "Mwana (Free)";
-    case "mwezi":
-      return "Mwezi";
-    case "bwino":
-      return "Bwino";
-    default:
-      return tier;
-  }
-}
-
-function SkillTag({ skill }: { skill: string }) {
-  return (
-    <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-800 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-200 dark:ring-emerald-500/20">
-      {skill}
-    </span>
-  );
-}
+import { useEffect, useState, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { profile as profileApi, cv as cvApi, type UserProfile } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { SkillBadge } from "@/components/SkillBadge";
 
 export default function ProfilePage() {
-  const [state, setState] = useState<LoadState>({ status: "idle" });
-  const [tokenInput, setTokenInput] = useState("");
-  const [parsedSkills, setParsedSkills] = useState<string[]>([]);
-  const [uploadState, setUploadState] = useState<
-    | { status: "idle" }
-    | { status: "uploading" }
-    | { status: "error"; message: string }
-    | { status: "success"; data: CVUploadResponse }
-  >({ status: "idle" });
-
-  const [edit, setEdit] = useState<UserProfileUpdate>({});
-
-  const isReady = state.status === "ready";
-
-  const [isDragging, setIsDragging] = useState(false);
+  const router = useRouter();
+  const { token, isAuthenticated, isLoading: authLoading } = useAuth();
+  const [profileData, setProfileData] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState("");
+  const [dragActive, setDragActive] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    let cancelled = false;
+    if (authLoading) return;
+    if (!isAuthenticated || !token) {
+      router.push("/auth");
+      return;
+    }
+    profileApi
+      .get(token)
+      .then(setProfileData)
+      .catch(() => setProfileData(null))
+      .finally(() => setLoading(false));
+  }, [token, isAuthenticated, authLoading, router]);
 
-    async function load() {
-      if (!getStoredAccessToken()) {
-        setState({
-          status: "error",
-          message: "You are not signed in. Use WhatsApp OTP sign-in first.",
-        });
+  const handleUpload = useCallback(
+    async (file: File) => {
+      if (!token) return;
+      const validTypes = [
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "image/jpeg",
+        "image/png",
+      ];
+      if (!validTypes.includes(file.type)) {
+        setUploadMsg("Please upload a PDF, Word document, or image.");
         return;
       }
-      setState({ status: "loading" });
+      if (file.size > 5 * 1024 * 1024) {
+        setUploadMsg("File must be under 5MB.");
+        return;
+      }
+      setUploading(true);
+      setUploadMsg("");
       try {
-        const [p, s] = await Promise.all([
-          profileApi.get(),
-          subscriptionApi.get(),
-        ]);
-        if (cancelled) return;
-        setEdit({
-          full_name: p.full_name ?? undefined,
-          email: p.email ?? undefined,
-          location: p.location ?? undefined,
-          years_experience: p.years_experience,
-        });
-        setParsedSkills(p.skills ?? []);
-        setState({ status: "ready", profile: p, subscription: s });
-      } catch (e) {
-        const message = e instanceof Error ? e.message : "Failed to load profile";
-        if (cancelled) return;
-        setState({ status: "error", message });
+        const result = await cvApi.upload(token, file);
+        setUploadMsg(`CV uploaded! ${result.skills_extracted.length} skills extracted.`);
+        // Refresh profile
+        const updated = await profileApi.get(token);
+        setProfileData(updated);
+      } catch (err) {
+        setUploadMsg(err instanceof Error ? err.message : "Upload failed");
+      } finally {
+        setUploading(false);
       }
-    }
+    },
+    [token]
+  );
 
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragActive(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleUpload(file);
+  };
 
-  async function onSaveProfile() {
-    if (state.status !== "ready") return;
-    setState({ status: "loading" });
-    try {
-      const updated = await profileApi.update(edit);
-      const s = await subscriptionApi.get();
-      setState({ status: "ready", profile: updated, subscription: s });
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "Failed to update profile";
-      setState({ status: "error", message });
-    }
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleUpload(file);
+  };
+
+  if (loading || authLoading) {
+    return <p className="text-center py-20 text-gray-500">Loading profile...</p>;
+  }
+  if (!profileData) {
+    return <p className="text-center py-20 text-gray-500">Could not load profile.</p>;
   }
 
-  async function onPickFile(file: File | null) {
-    if (!file) return;
-    setUploadState({ status: "uploading" });
-    try {
-      const data = await cvApi.upload(file);
-      setUploadState({ status: "success", data });
-      setParsedSkills(data.parsed_skills);
-
-      if (state.status === "ready") {
-        const p = await profileApi.get();
-        const s = await subscriptionApi.get();
-        setState({ status: "ready", profile: p, subscription: s });
-      }
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "Upload failed";
-      setUploadState({ status: "error", message });
-    }
-  }
+  const tierLabels: Record<string, string> = {
+    mwana: "Mwana (Free)",
+    mwezi: "Mwezi (K79/mo)",
+    bwino: "Bwino (K199/mo)",
+  };
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 p-6">
-      <header className="flex items-start justify-between gap-4">
+    <div className="max-w-2xl mx-auto space-y-6">
+      <h1 className="text-xl sm:text-2xl font-bold">Your Profile</h1>
+
+      {/* User info */}
+      <div className="bg-white rounded-xl border p-4 sm:p-6 space-y-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-            Manage your CV, skills, and subscription details.
+          <p className="text-sm text-gray-500">Name</p>
+          <p className="font-medium">{profileData.full_name || "Not set"}</p>
+        </div>
+        <div>
+          <p className="text-sm text-gray-500">Phone</p>
+          <p className="font-medium">{profileData.phone}</p>
+        </div>
+        <div>
+          <p className="text-sm text-gray-500">Subscription</p>
+          <p className="font-medium">
+            {tierLabels[profileData.subscription_tier] || profileData.subscription_tier}
           </p>
         </div>
-        <div className="flex gap-2">
-          <Link
-            href="/pricing"
-            className="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
-          >
-            View pricing
-          </Link>
-          <Link href="/" className="rounded-md px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-900">
-            Home
-          </Link>
-        </div>
-      </header>
+      </div>
 
-      <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Authentication</h2>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          Paste a JWT access token from OTP verification. It is stored in <code className="font-mono">localStorage</code>.
-        </p>
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+      {/* CV Upload */}
+      <div className="bg-white rounded-xl border p-4 sm:p-6">
+        <h2 className="font-semibold text-lg mb-4">
+          {profileData.cv_uploaded ? "Update Your CV" : "Upload Your CV"}
+        </h2>
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragActive(true);
+          }}
+          onDragLeave={() => setDragActive(false)}
+          onDrop={onDrop}
+          onClick={() => fileRef.current?.click()}
+          className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition ${
+            dragActive
+              ? "border-brand-500 bg-brand-50"
+              : "border-gray-300 hover:border-brand-400"
+          }`}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") fileRef.current?.click();
+          }}
+        >
           <input
-            value={tokenInput}
-            onChange={(e) => setTokenInput(e.target.value)}
-            placeholder="eyJhbGciOi..."
-            className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none ring-zinc-400 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-950"
+            ref={fileRef}
+            type="file"
+            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+            onChange={onFileChange}
+            className="hidden"
           />
-          <button
-            type="button"
-            onClick={() => {
-              setAccessToken(tokenInput.trim());
-              window.location.reload();
-            }}
-            className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+          {uploading ? (
+            <p className="text-brand-600 font-medium">Uploading...</p>
+          ) : (
+            <>
+              <svg className="w-10 h-10 mx-auto text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+              </svg>
+              <p className="text-gray-600 text-sm">
+                Drag and drop your CV here, or{" "}
+                <span className="text-brand-600 font-medium">browse</span>
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                PDF, Word, or image (max 5MB)
+              </p>
+            </>
+          )}
+        </div>
+        {uploadMsg && (
+          <p
+            className={`mt-3 text-sm ${
+              uploadMsg.includes("failed") || uploadMsg.includes("Please")
+                ? "text-red-600"
+                : "text-green-600"
+            }`}
           >
-            Save token
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              clearAccessToken();
-              window.location.reload();
-            }}
-            className="rounded-md border border-zinc-300 px-3 py-2 text-sm hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
-          >
-            Clear
-          </button>
-        </div>
-      </section>
+            {uploadMsg}
+          </p>
+        )}
+      </div>
 
-      {state.status === "error" ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900 dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-100">
-          <p>{state.message}</p>
-          {!getStoredAccessToken() || looksLikeAuthFailure(state.message) ? (
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Link
-                href="/login"
-                className="inline-flex rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500"
-              >
-                Sign in
-              </Link>
-              <button
-                type="button"
-                onClick={() => {
-                  clearAccessToken();
-                  window.location.reload();
-                }}
-                className="inline-flex rounded-md border border-red-300 bg-white px-3 py-2 text-sm text-red-900 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/30 dark:text-red-50 dark:hover:bg-red-950/50"
-              >
-                Clear saved token
-              </button>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {state.status === "loading" ? (
-        <div className="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300">
-          Loading profile…
-        </div>
-      ) : null}
-
-      {isReady ? (
-        <>
-          <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-            <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Account</h2>
-            <dl className="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-              <div>
-                <dt className="text-zinc-500 dark:text-zinc-400">Name</dt>
-                <dd className="font-medium">{state.profile.full_name ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-zinc-500 dark:text-zinc-400">Phone</dt>
-                <dd className="font-medium">{state.profile.phone}</dd>
-              </div>
-              <div>
-                <dt className="text-zinc-500 dark:text-zinc-400">Location</dt>
-                <dd className="font-medium">{state.profile.location ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-zinc-500 dark:text-zinc-400">Experience</dt>
-                <dd className="font-medium">{state.profile.years_experience} years</dd>
-              </div>
-              <div className="sm:col-span-2">
-                <dt className="text-zinc-500 dark:text-zinc-400">Subscription tier</dt>
-                <dd className="font-medium">{tierLabel(state.profile.subscription_tier)}</dd>
-              </div>
-            </dl>
-          </section>
-
-          <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Subscription</h2>
-                <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-                  Status from <code className="font-mono">/subscription</code>.
-                </p>
-              </div>
-              <Link href="/pricing" className="text-sm font-medium text-emerald-700 hover:underline dark:text-emerald-300">
-                Upgrade
-              </Link>
-            </div>
-            <dl className="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-              <div>
-                <dt className="text-zinc-500 dark:text-zinc-400">Plan</dt>
-                <dd className="font-medium">{tierLabel(state.subscription.tier)}</dd>
-              </div>
-              <div>
-                <dt className="text-zinc-500 dark:text-zinc-400">Status</dt>
-                <dd className="font-medium">{state.subscription.status}</dd>
-              </div>
-              <div>
-                <dt className="text-zinc-500 dark:text-zinc-400">Matches used</dt>
-                <dd className="font-medium">
-                  {state.subscription.matches_used} / {state.subscription.matches_limit}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-zinc-500 dark:text-zinc-400">Current period</dt>
-                <dd className="font-medium text-xs sm:text-sm">
-                  {state.subscription.current_period_start}
-                  {state.subscription.current_period_end
-                    ? ` → ${state.subscription.current_period_end}`
-                    : ""}
-                </dd>
-              </div>
-            </dl>
-          </section>
-
-          <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-            <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">CV upload</h2>
-            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-              Drag and drop a PDF/DOCX/image, or click to choose a file. Calls <code className="font-mono">POST /cv/upload</code>.
-            </p>
-
-            <label
-              className={[
-                "mt-4 flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center text-sm transition-colors",
-                isDragging
-                  ? "border-emerald-400 bg-emerald-50 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-100"
-                  : "border-zinc-300 bg-zinc-50 text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900/40 dark:text-zinc-200 dark:hover:bg-zinc-900",
-              ].join(" ")}
-              onDragEnter={() => setIsDragging(true)}
-              onDragLeave={() => setIsDragging(false)}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setIsDragging(true);
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                setIsDragging(false);
-                const file = e.dataTransfer.files?.[0] ?? null;
-                void onPickFile(file);
-              }}
-            >
-              <input
-                type="file"
-                className="hidden"
-                accept=".pdf,.docx,.png,.jpg,.jpeg,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/png,image/jpeg"
-                onChange={(e) => void onPickFile(e.target.files?.[0] ?? null)}
-              />
-              <div className="font-medium">Drop your CV here</div>
-              <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Max 5MB (enforced by API)</div>
-            </label>
-
-            {uploadState.status === "uploading" ? (
-              <p className="mt-3 text-sm text-zinc-700 dark:text-zinc-300">Uploading…</p>
-            ) : null}
-            {uploadState.status === "error" ? (
-              <p className="mt-3 text-sm text-red-700 dark:text-red-300">{uploadState.message}</p>
-            ) : null}
-            {uploadState.status === "success" ? (
-              <div className="mt-3 text-sm text-zinc-700 dark:text-zinc-300">
-                <div className="font-medium text-zinc-900 dark:text-zinc-100">Upload complete</div>
-                <div className="mt-1 text-xs">
-                  Parsing confidence: {(uploadState.data.parsing_confidence * 100).toFixed(0)}%
-                </div>
-                {uploadState.data.experience_summary ? (
-                  <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">{uploadState.data.experience_summary}</p>
-                ) : null}
-              </div>
-            ) : null}
-          </section>
-
-          <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-            <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Parsed skills</h2>
-            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-              Skills come from your latest CV parse and your saved profile skills.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {parsedSkills.length ? (
-                parsedSkills.map((s) => <SkillTag key={s} skill={s} />)
-              ) : (
-                <p className="text-sm text-zinc-600 dark:text-zinc-400">No skills yet. Upload a CV to populate tags.</p>
-              )}
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-            <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Edit profile</h2>
-            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-              Updates via <code className="font-mono">PATCH /profile</code>.
-            </p>
-
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label className="text-sm">
-                <div className="mb-1 text-zinc-600 dark:text-zinc-400">Full name</div>
-                <input
-                  value={edit.full_name ?? ""}
-                  onChange={(e) => setEdit((p) => ({ ...p, full_name: e.target.value }))}
-                  className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none ring-zinc-400 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-950"
-                />
-              </label>
-              <label className="text-sm">
-                <div className="mb-1 text-zinc-600 dark:text-zinc-400">Email</div>
-                <input
-                  value={edit.email ?? ""}
-                  onChange={(e) => setEdit((p) => ({ ...p, email: e.target.value }))}
-                  className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none ring-zinc-400 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-950"
-                />
-              </label>
-              <label className="text-sm sm:col-span-2">
-                <div className="mb-1 text-zinc-600 dark:text-zinc-400">Location</div>
-                <input
-                  value={edit.location ?? ""}
-                  onChange={(e) => setEdit((p) => ({ ...p, location: e.target.value }))}
-                  className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none ring-zinc-400 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-950"
-                />
-              </label>
-              <label className="text-sm sm:col-span-2">
-                <div className="mb-1 text-zinc-600 dark:text-zinc-400">Years of experience</div>
-                <input
-                  type="number"
-                  min={0}
-                  value={edit.years_experience ?? 0}
-                  onChange={(e) =>
-                    setEdit((p) => ({ ...p, years_experience: Number.parseInt(e.target.value || "0", 10) }))
-                  }
-                  className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none ring-zinc-400 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-950"
-                />
-              </label>
-            </div>
-
-            <div className="mt-4 flex justify-end">
-              <button
-                type="button"
-                onClick={() => void onSaveProfile()}
-                className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
-              >
-                Save changes
-              </button>
-            </div>
-          </section>
-        </>
-      ) : null}
-
-    </main>
+      {/* Skills */}
+      <div className="bg-white rounded-xl border p-4 sm:p-6">
+        <h2 className="font-semibold text-lg mb-3">Your Skills</h2>
+        {profileData.skills.length === 0 ? (
+          <p className="text-gray-500 text-sm">
+            Upload your CV to automatically extract skills.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {profileData.skills.map((skill) => (
+              <SkillBadge key={skill} skill={skill} matched />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

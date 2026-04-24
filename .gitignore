@@ -6,6 +6,7 @@ venv/
 .env
 .env.local
 .env.production
+.env.*.local
 .next/
 dist/
 build/
@@ -18,3 +19,6 @@ Thumbs.db
 *.log
 npm-debug.log*
 supabase/.temp/
+.pytest_cache/
+*.pem
+*.key

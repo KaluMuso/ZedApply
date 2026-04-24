@@ -1,0 +1,289 @@
+# Zed CV — Deployment Runbook
+
+Complete step-by-step guide to deploy Zed CV from scratch. Budget: ~$30/month.
+
+---
+
+## Architecture Overview
+
+```
+Users ──→ zedcv.com (Vercel, free) ──→ api.zedcv.com (Oracle Cloud, free)
+                                            ├── FastAPI backend (Docker)
+                                            ├── WAHA WhatsApp API (Docker)
+                                            └── n8n job scraper (Docker)
+                                        ↕
+                                   Supabase (free tier)
+                                   + pgvector 768-dim embeddings
+```
+
+**AI Stack:** Gemini text-embedding-004 (free) + Gemini Flash 2.0 via OpenRouter (~$0.10/M tokens)
+**Payments:** DPO Pay (mobile money) + Lenco (ready when configured)
+
+---
+
+## Phase 1: Gather Credentials
+
+You need 5 sets of credentials before deploying. Collect them all first.
+
+### 1.1 Supabase Keys
+
+Your project already exists at `chnesgmcuxyhwhzomdov.supabase.co`.
+
+1. Go to [Supabase Dashboard](https://supabase.com/dashboard)
+2. Select your project → **Settings** → **API**
+3. Copy:
+   - **URL** (already set: `https://chnesgmcuxyhwhzomdov.supabase.co`)
+   - **service_role key** → `SUPABASE_KEY` (keep this secret!)
+
+### 1.2 Gemini API Key (Embeddings — FREE)
+
+Used for generating CV/job embeddings via text-embedding-004. Free tier: 1,500 requests/min.
+
+1. Go to [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
+2. Create a new key → `GEMINI_API_KEY`
+
+### 1.3 OpenRouter API Key (LLM)
+
+Used for CV parsing and cover letter generation via Gemini Flash 2.0.
+
+1. Go to [openrouter.ai/keys](https://openrouter.ai/keys)
+2. Create a new key → `OPENROUTER_API_KEY`
+3. Add $5-10 credits (Gemini Flash is ~$0.10/M tokens — very cheap)
+
+### 1.4 DPO Pay Merchant Account
+
+Used for MTN/Airtel mobile money payments in ZMW.
+
+1. Go to [directpay.com](https://www.directpay.com/) → Apply for Merchant Account
+2. Select **Zambia** as your country
+3. After approval, from your merchant dashboard:
+   - **Company Token** → `DPO_PAY_COMPANY_TOKEN`
+   - **Service Type** → `DPO_PAY_SERVICE_TYPE`
+4. Set your webhook URL to: `https://api.zedcv.com/api/v1/webhooks/dpo`
+
+> **Note:** DPO Pay approval takes 2-5 business days. The app works without it — payments just won't process until configured.
+
+### 1.5 Generate JWT Secret + WAHA Key (Windows)
+
+Open **PowerShell** on your Windows machine and run:
+
+```powershell
+# JWT Secret (64 hex chars)
+python -c "import secrets; print('JWT_SECRET=' + secrets.token_hex(32))"
+
+# WAHA API Key (32 hex chars)
+python -c "import secrets; print('WAHA_API_KEY=' + secrets.token_hex(16))"
+```
+
+If Python isn't installed, use this alternative:
+
+```powershell
+# PowerShell-native method
+$jwt = -join ((1..64) | ForEach-Object { '{0:x}' -f (Get-Random -Maximum 16) })
+$waha = -join ((1..32) | ForEach-Object { '{0:x}' -f (Get-Random -Maximum 16) })
+Write-Host "JWT_SECRET=$jwt"
+Write-Host "WAHA_API_KEY=$waha"
+```
+
+---
+
+## Phase 2: Push to GitHub
+
+### 2.1 Create the Repository
+
+1. Go to [github.com/new](https://github.com/new)
+2. Name: `zed-cv`, Private, no README (we have one)
+3. From your Windows machine (in the project folder):
+
+```powershell
+cd "Zed CV\zed-cv"
+git init
+git add -A
+git commit -m "Initial commit: Zed CV platform"
+git branch -M main
+git remote add origin https://github.com/YOUR_USERNAME/zed-cv.git
+git push -u origin main
+```
+
+---
+
+## Phase 3: Deploy Backend (Oracle Cloud Free Tier)
+
+### 3.1 Create Oracle Cloud Instance
+
+1. Sign up at [cloud.oracle.com](https://cloud.oracle.com/) (Always Free tier)
+2. Create a **Compute Instance**:
+   - Shape: **VM.Standard.A1.Flex** (ARM) — 4 OCPU, 24 GB RAM (free!)
+   - Image: **Ubuntu 22.04**
+   - Add your SSH key
+3. Note the **Public IP address**
+
+### 3.2 Configure Security Lists
+
+In Oracle Cloud Console → Networking → Virtual Cloud Networks → Your VCN → Security Lists:
+
+Add **Ingress Rules**:
+
+| Port | Protocol | Source    | Purpose       |
+|------|----------|-----------|---------------|
+| 80   | TCP      | 0.0.0.0/0 | HTTP (redirect) |
+| 443  | TCP      | 0.0.0.0/0 | HTTPS (API)   |
+| 5678 | TCP      | Your IP   | n8n admin     |
+
+### 3.3 Set Up the Server
+
+```bash
+ssh ubuntu@YOUR_SERVER_IP
+
+git clone https://github.com/YOUR_USERNAME/zed-cv.git ~/zedcv
+cd ~/zedcv
+chmod +x infra/production/oracle-cloud-setup.sh
+./infra/production/oracle-cloud-setup.sh
+
+# Log out and back in (for Docker group)
+exit
+ssh ubuntu@YOUR_SERVER_IP
+```
+
+### 3.4 Configure Environment
+
+```bash
+cd ~/zedcv
+cp apps/backend/.env.production.example apps/backend/.env
+nano apps/backend/.env
+```
+
+Fill in ALL credentials from Phase 1. **Important:** set `SUPERADMIN_PHONE` to your +260 number for unrestricted access.
+
+### 3.5 Point Your Domain
+
+Create DNS A records:
+- `api.zedcv.com` → `YOUR_SERVER_IP`
+
+Wait 5-10 minutes, then verify: `dig api.zedcv.com`
+
+### 3.6 Set Up SSL
+
+```bash
+cd ~/zedcv/infra/production
+chmod +x setup-ssl.sh
+./setup-ssl.sh api.zedcv.com your@email.com
+```
+
+### 3.7 Launch Everything
+
+```bash
+cd ~/zedcv/infra/production
+
+# Create a .env for docker-compose variables
+cat > .env << EOF
+WAHA_API_KEY=your-waha-key-from-phase-1
+N8N_USER=admin
+N8N_PASSWORD=pick-a-strong-password
+SUPABASE_URL=https://chnesgmcuxyhwhzomdov.supabase.co
+SUPABASE_KEY=your-service-role-key
+EOF
+
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+### 3.8 Verify
+
+```bash
+curl https://api.zedcv.com/api/v1/health
+```
+
+Expected: `{"status": "healthy", "version": "0.1.0", "supabase": true, "waha": true}`
+
+### 3.9 Connect WhatsApp
+
+1. Open WAHA admin: `http://YOUR_SERVER_IP:3001`
+2. Start a new session → Scan the QR code with your WhatsApp Business number
+3. Test: Send "hi" to your WhatsApp number → should get the welcome message
+
+---
+
+## Phase 4: Deploy Frontend (Vercel)
+
+### 4.1 Import Project
+
+1. Go to [vercel.com/new](https://vercel.com/new)
+2. Import your `zed-cv` GitHub repo
+3. Configure:
+   - **Framework Preset**: Next.js
+   - **Root Directory**: `apps/frontend`
+
+### 4.2 Set Environment Variables
+
+In Vercel Dashboard → Your Project → **Settings** → **Environment Variables**:
+
+| Variable                        | Value                                               |
+|---------------------------------|-----------------------------------------------------|
+| `NEXT_PUBLIC_API_URL`           | `https://api.zedcv.com/api/v1`                     |
+| `NEXT_PUBLIC_SUPABASE_URL`      | `https://chnesgmcuxyhwhzomdov.supabase.co`         |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anon key                              |
+
+### 4.3 Deploy
+
+Click **Deploy**. Your site will be live at `https://zedcv.vercel.app`.
+
+---
+
+## Phase 5: Post-Deploy Checklist
+
+- [ ] `https://api.zedcv.com/api/v1/health` returns healthy
+- [ ] `https://zedcv.vercel.app` loads the homepage
+- [ ] Register via WhatsApp OTP (your superadmin phone)
+- [ ] Confirm you got superadmin role (unlimited matches, cover letters)
+- [ ] Upload a test CV (PDF, under 5MB)
+- [ ] View job listings
+- [ ] Trigger matching (should bypass quota for you)
+- [ ] Generate a cover letter (should bypass Bwino tier check for you)
+- [ ] (After DPO Pay approval) Test payment flow
+
+---
+
+## Superadmin Access
+
+Your phone number (set via `SUPERADMIN_PHONE` env var) gets:
+- **Unlimited matches** — no monthly quota
+- **All features unlocked** — cover letters, etc. regardless of tier
+- **Bwino tier auto-assigned** on first registration
+
+To add more admins later, update the `role` column in the `users` table:
+```sql
+UPDATE users SET role = 'superadmin' WHERE phone = '+260XXXXXXXXX';
+```
+
+---
+
+## Maintenance
+
+### Updating the App
+
+```bash
+ssh ubuntu@YOUR_SERVER_IP
+cd ~/zedcv && git pull origin main
+cd infra/production && docker compose -f docker-compose.prod.yml up -d --build
+```
+
+### Viewing Logs
+
+```bash
+docker compose -f docker-compose.prod.yml logs backend --tail 100 -f
+```
+
+---
+
+## Cost Breakdown
+
+| Service         | Monthly Cost | Notes                           |
+|-----------------|-------------:|----------------------------------|
+| Oracle Cloud    |          $0  | Always Free ARM instance         |
+| Vercel          |          $0  | Free tier (100GB bandwidth)      |
+| Supabase        |          $0  | Free tier (500MB DB, 1GB storage)|
+| Gemini Embed    |          $0  | Free tier (1,500 req/min)        |
+| OpenRouter      |        ~$2   | Gemini Flash 2.0 for LLM        |
+| Domain          |       ~$12/yr| .com domain                      |
+| DPO Pay         |    per-txn   | ~2.5% per payment                |
+| **Total**       |    **~$3/mo**| Well under $30 budget            |
