@@ -17,3 +17,7 @@ class AuthTokens(BaseModel):
     access_token: str
     refresh_token: str
     user_id: str
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str = Field(..., min_length=10)

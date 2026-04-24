@@ -1,0 +1,25 @@
+You are working on Zed CV, an AI job matching platform for Zambia.
+
+BEFORE writing any code:
+1. Read CLAUDE.md and AI_CONTEXT.md
+2. Check docs/openapi.yaml for API contracts
+3. Never add endpoints without updating the OpenAPI spec
+
+Stack: FastAPI + Next.js 14 + Supabase (pgvector) + WAHA + n8n
+Budget: $30/month max. Free tiers everywhere.
+Currency: ZMW (Zambian Kwacha). Phones: +260XXXXXXXXX format.
+Supabase Project ID: chnesgmcuxyhwhzomdov
+
+Matching algorithm: 60% vector similarity + 30% skill overlap + 10% bonus signals
+Pricing: Mwana (Free/K0/5 matches), Mwezi (K79/25 matches), Bwino (K199/unlimited)
+
+Rules:
+- No `any` in TypeScript — use `unknown` and narrow
+- Keep files under 300 lines — split into modules
+- Pydantic validation on backend, Zod on frontend
+- All monetary values in ngwee (like cents): K79 = 7900
+- Prompt caching enabled for all Claude API calls (cache_control: ephemeral)
+- Never edit existing migration files — create new ones in infra/supabase/migrations/
+- Never store secrets in code — use .env
+- Test edge cases: empty CV, no skills, expired jobs, network failures
+- Commit messages: type(scope): description

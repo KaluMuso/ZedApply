@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
-from app.api.v1 import auth, jobs, matches, cv, webhooks
+from app.api.v1 import auth, jobs, matches, cv, cover_letter, subscription, profile, webhooks, whatsapp_webhook
 
 settings = get_settings()
 
@@ -32,7 +32,11 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(jobs.router, prefix="/api/v1")
 app.include_router(matches.router, prefix="/api/v1")
 app.include_router(cv.router, prefix="/api/v1")
+app.include_router(cover_letter.router, prefix="/api/v1")
+app.include_router(subscription.router, prefix="/api/v1")
+app.include_router(profile.router, prefix="/api/v1")
 app.include_router(webhooks.router, prefix="/api/v1")
+app.include_router(whatsapp_webhook.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

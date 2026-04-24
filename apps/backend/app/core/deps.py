@@ -34,6 +34,11 @@ async def get_current_user_id(
             settings.jwt_secret,
             algorithms=[settings.jwt_algorithm],
         )
+        if payload.get("type") == "refresh":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token: use /auth/refresh with refresh_token",
+            )
         user_id: str | None = payload.get("sub")
         if user_id is None:
             raise HTTPException(

@@ -12,6 +12,11 @@ class SubscriptionTier(str, Enum):
     bwino = "bwino"
 
 
+class PaymentTier(str, Enum):
+    mwezi = "mwezi"
+    bwino = "bwino"
+
+
 class PaymentMethod(str, Enum):
     mtn_money = "mtn_money"
     airtel_money = "airtel_money"
@@ -28,7 +33,7 @@ class Subscription(BaseModel):
 
 
 class PaymentInitiate(BaseModel):
-    tier: SubscriptionTier
+    tier: PaymentTier
     payment_method: PaymentMethod
     phone: str = Field(..., pattern=r"^\+260[0-9]{9}$")
 

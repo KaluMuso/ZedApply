@@ -1,162 +1,24 @@
-"""Webhook handlers for DPO Pay and WAHA WhatsApp."""
+"""Payment webhooks (DPO + Lenco)."""
 
-from fastapi import APIRouter, Request, Depends
+from __future__ import annotations
+
+import json
+import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
+from typing import Any
+
+from fastapi import APIRouter, Depends, Request, Response, status
 
 from app.core.deps import get_supabase
-from app.services.whatsapp import send_whatsapp_message, send_match_digest
+from app.services.dpo_pay import verify_payment as verify_dpo_payment
+from app.services.payment_fulfillment import (
+    apply_subscription_upgrade,
+    find_payment_for_lenco,
+    verify_lenco_signature,
+)
 
 router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
 
-
-# ─── WAHA WhatsApp Webhook ───
-
-WHATSAPP_COMMANDS = {
-    "hi": "welcome",
-    "hello": "welcome",
-    "menu": "menu",
-    "help": "menu",
-    "matches": "matches",
-    "jobs": "matches",
-    "cv": "cv_info",
-    "plan": "subscription",
-    "upgrade": "subscription",
-    "more": "more_matches",
-}
-
-
-@router.post("/whatsapp")
-async def whatsapp_webhook(
-    request: Request,
-    supabase=Depends(get_supabase),
-):
-    """Handle incoming WhatsApp messages from WAHA."""
-    body = await request.json()
-
-    event = body.get("event")
-    if event != "message":
-        return {"status": "ignored"}
-
-    payload = body.get("payload", {})
-    message_body = payload.get("body", "").strip().lower()
-    from_number = payload.get("from", "").replace("@c.us", "")
-
-    if not from_number or not message_body:
-        return {"status": "ignored"}
-
-    phone = f"+{from_number}"
-
-    # Route to handler
-    command = WHATSAPP_COMMANDS.get(message_body, "unknown")
-
-    if command == "welcome":
-        await send_whatsapp_message(
-            phone,
-            "*Welcome to Zed CV!* \n\n"
-            "I help you find jobs that match your skills in Zambia.\n\n"
-            "Commands:\n"
-            "*matches* - See your job matches\n"
-            "*cv* - Check your CV status\n"
-            "*plan* - View subscription info\n"
-            "*help* - Show this menu",
-        )
-
-    elif command == "menu":
-        await send_whatsapp_message(
-            phone,
-            "*Zed CV Menu*\n\n"
-            "*matches* - See your job matches\n"
-            "*cv* - Check your CV status\n"
-            "*plan* - View your plan\n"
-            "*upgrade* - Upgrade your plan",
-        )
-
-    elif command == "matches":
-        # Find user
-        user_result = (
-            supabase.table("users")
-            .select("id")
-            .eq("phone", phone)
-            .limit(1)
-            .execute()
-        )
-
-        if not user_result.data:
-            await send_whatsapp_message(
-                phone,
-                "You haven't signed up yet! Visit zedcv.com to create your account and upload your CV.",
-            )
-        else:
-            user_id = user_result.data[0]["id"]
-            matches_result = (
-                supabase.table("matches")
-                .select("*, jobs(title, company)")
-                .eq("user_id", user_id)
-                .order("score", desc=True)
-                .limit(5)
-                .execute()
-            )
-
-            if matches_result.data:
-                match_list = []
-                for m in matches_result.data:
-                    job = m.get("jobs", {})
-                    match_list.append(
-                        {
-                            "title": job.get("title", "Unknown"),
-                            "company": job.get("company", "Unknown"),
-                            "score": m["score"],
-                            "matched_skills": m.get("matched_skills", []),
-                        }
-                    )
-                await send_match_digest(phone, match_list)
-            else:
-                await send_whatsapp_message(
-                    phone,
-                    "No matches yet. Upload your CV at zedcv.com and we'll start matching!",
-                )
-
-    elif command == "subscription":
-        user_result = (
-            supabase.table("users")
-            .select("id, subscription_tier")
-            .eq("phone", phone)
-            .limit(1)
-            .execute()
-        )
-
-        if user_result.data:
-            tier = user_result.data[0]["subscription_tier"]
-            tier_info = {
-                "mwana": "Mwana (Free) - 5 matches/month",
-                "mwezi": "Mwezi (K79/mo) - 25 matches/month + CV generation",
-                "bwino": "Bwino (K199/mo) - Unlimited matches + cover letters",
-            }
-            await send_whatsapp_message(
-                phone,
-                f"*Your Plan:* {tier_info.get(tier, tier)}\n\n"
-                f"Visit zedcv.com/pricing to upgrade.",
-            )
-
-    else:
-        # Try to parse as a number (job selection from digest)
-        if message_body.isdigit():
-            num = int(message_body)
-            if 1 <= num <= 5:
-                await send_whatsapp_message(
-                    phone,
-                    f"Opening job #{num} details...\nVisit zedcv.com/matches for full details and to apply.",
-                )
-                return {"status": "ok"}
-
-        await send_whatsapp_message(
-            phone,
-            "I didn't understand that. Reply *help* to see available commands.",
-        )
-
-    return {"status": "ok"}
-
-
-# ─── DPO Pay Webhook ───
 
 @router.post("/dpo")
 async def dpo_webhook(
@@ -167,18 +29,116 @@ async def dpo_webhook(
 
     DPO sends XML payloads. We verify the transaction and update subscription.
     """
-    body = await request.body()
-    # TODO: Parse XML, verify signature, extract transaction details
-    # For now, log the raw payload for development
-    import logging
-    logging.info(f"DPO webhook received: {body[:500]}")
+    raw = await request.body()
+    root = ET.fromstring(raw.decode("utf-8", errors="ignore"))
+    lookup = {elem.tag.split("}")[-1]: (elem.text or "").strip() for elem in root.iter()}
 
-    # Placeholder — full implementation requires:
-    # 1. Parse XML to get TransactionToken, TransactionRef, Result
-    # 2. Verify with DPO API: POST /API/v6/verifyToken
-    # 3. If Result == "000" (success):
-    #    - Update payments table status to "completed"
-    #    - Update subscription tier and period
-    #    - Send WhatsApp confirmation to user
+    transaction_token = (
+        lookup.get("TransactionToken")
+        or lookup.get("TransToken")
+        or lookup.get("Token")
+        or ""
+    )
+    if not transaction_token:
+        return {"status": "ignored", "reason": "missing token"}
 
-    return {"status": "received"}
+    verification = await verify_dpo_payment(transaction_token)
+    payment_status = verification["status"]
+
+    payment_result = (
+        supabase.table("payments")
+        .select("id,user_id,amount,provider,status,webhook_data")
+        .eq("provider_ref", transaction_token)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if not payment_result.data:
+        return {"status": "ignored", "reason": "payment not found"}
+
+    payment = payment_result.data[0]
+    prior_status = payment.get("status")
+    update_payload: dict[str, Any] = {
+        "status": payment_status,
+        "webhook_data": {"dpo_payload": lookup, "verification": verification},
+    }
+    if payment_status == "completed":
+        update_payload["completed_at"] = datetime.now(timezone.utc).isoformat()
+
+    supabase.table("payments").update(update_payload).eq("id", payment["id"]).execute()
+
+    if payment_status != "completed":
+        return {"status": "processed", "payment_status": payment_status}
+
+    if prior_status == "completed":
+        return {"status": "processed", "payment_status": "completed", "note": "already completed"}
+
+    requested_tier = (payment.get("webhook_data") or {}).get("requested_tier", "mwezi")
+    await apply_subscription_upgrade(payment["user_id"], requested_tier, supabase)
+
+    return {"status": "processed", "payment_status": "completed"}
+
+
+@router.post("/lenco")
+async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
+    """Handle Lenco webhook events (collections).
+
+    Signature verification follows Lenco docs:
+    webhook_hash_key = SHA256(api_token); signature = HMAC-SHA512(raw_body, webhook_hash_key)
+    """
+    raw = await request.body()
+    signature = request.headers.get("x-lenco-signature") or request.headers.get("X-Lenco-Signature")
+
+    if not verify_lenco_signature(raw, signature):
+        return Response(status_code=status.HTTP_401_UNAUTHORIZED)
+
+    try:
+        event = json.loads(raw.decode("utf-8"))
+    except json.JSONDecodeError:
+        return {"status": "ignored", "reason": "invalid json"}
+
+    event_name = str(event.get("event") or "")
+    data = event.get("data") or {}
+    if not isinstance(data, dict):
+        return {"status": "ignored", "reason": "invalid payload"}
+
+    reference = str(data.get("reference") or "").strip()
+    lenco_reference = str(data.get("lencoReference") or "").strip()
+    payment = find_payment_for_lenco(reference, lenco_reference, supabase)
+    if not payment:
+        return {"status": "ignored", "reason": "payment not found"}
+
+    prior_status = payment.get("status")
+
+    collection_status = str(data.get("status") or "").lower()
+    success_events = {"collection.successful", "collection.settled"}
+    failure_events = {"collection.failed"}
+
+    new_status: str | None = None
+    if event_name in success_events and collection_status == "successful":
+        new_status = "completed"
+    elif event_name in failure_events or collection_status == "failed":
+        new_status = "failed"
+
+    if new_status is None:
+        supabase.table("payments").update({"webhook_data": {"lenco_event": event}}).eq("id", payment["id"]).execute()
+        return {"status": "acknowledged", "event": event_name}
+
+    update_payload: dict[str, Any] = {
+        "status": new_status,
+        "webhook_data": {"lenco_event": event},
+    }
+    if new_status == "completed":
+        update_payload["completed_at"] = datetime.now(timezone.utc).isoformat()
+
+    supabase.table("payments").update(update_payload).eq("id", payment["id"]).execute()
+
+    if new_status != "completed":
+        return {"status": "processed", "payment_status": new_status}
+
+    if prior_status == "completed":
+        return {"status": "processed", "payment_status": "completed", "note": "already completed"}
+
+    requested_tier = (payment.get("webhook_data") or {}).get("requested_tier", "mwezi")
+    await apply_subscription_upgrade(payment["user_id"], requested_tier, supabase)
+    return {"status": "processed", "payment_status": "completed"}

@@ -71,6 +71,13 @@ components:
           type: string
           format: uuid
 
+    RefreshTokenRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+
     # ─── User Profile ───
     UserProfile:
       type: object
@@ -385,6 +392,18 @@ components:
         payload:
           type: object
 
+    # ─── Lenco Webhook ───
+    LencoWebhookEvent:
+      type: object
+      required: [event, data]
+      properties:
+        event:
+          type: string
+          description: Lenco webhook event name (e.g. collection.successful)
+        data:
+          type: object
+          description: Event-specific payload from Lenco
+
     # ─── Health ───
     HealthCheck:
       type: object
@@ -463,6 +482,31 @@ paths:
                 $ref: '#/components/schemas/AuthTokens'
         '401':
           description: Invalid OTP
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /auth/refresh:
+    post:
+      operationId: refreshAuthTokens
+      summary: Refresh JWT access token
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: New tokens issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '401':
+          description: Invalid or expired refresh token
           content:
             application/json:
               schema:
@@ -777,6 +821,30 @@ paths:
       responses:
         '200':
           description: Webhook processed
+
+  /webhooks/lenco:
+    post:
+      operationId: lencoWebhook
+      summary: Lenco payment webhook
+      tags: [Webhooks]
+      parameters:
+        - name: X-Lenco-Signature
+          in: header
+          required: false
+          schema:
+            type: string
+          description: HMAC SHA512 signature of the raw JSON body (see Lenco docs)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LencoWebhookEvent'
+      responses:
+        '200':
+          description: Webhook acknowledged
+        '401':
+          description: Invalid webhook signature
 
   /webhooks/whatsapp:
     post:

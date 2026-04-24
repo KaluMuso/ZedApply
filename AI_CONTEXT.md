@@ -19,11 +19,13 @@ Zed CV is an AI-powered job matching SaaS for Zambia. It scrapes/ingests job lis
 | Automation | n8n | Oracle Cloud Always Free | Free |
 | WhatsApp | WAHA (self-hosted Docker) | Oracle Cloud Always Free | Free |
 | Embeddings | OpenAI text-embedding-3-small | OpenAI API | ~$2/mo |
-| LLM (parsing) | Claude Haiku / Gemini Flash | API | ~$5-15/mo |
+| LLM (parsing) | Claude Haiku (with prompt caching) | API | ~$5-15/mo |
 | Payments | DPO Pay | DPO Pay API | Per-txn |
 | Currency | ZMW (Zambian Kwacha) | — | — |
 
 ## Database (Supabase)
+- Project ID: chnesgmcuxyhwhzomdov
+- Region: eu-west-2
 - Uses `pgvector` extension for embedding storage (1536 dimensions)
 - Heartbeat cron via n8n every 6 hours to prevent free tier pausing
 - All migrations in `infra/supabase/migrations/`
@@ -51,7 +53,7 @@ final_score = (vector_similarity * 0.6) + (skill_overlap * 0.3) + (bonus_signals
 All skills are lowercased and mapped through aliases before comparison:
 - "js" → "javascript", "ts" → "typescript"
 - "ms word" → "microsoft office", "ppt" → "powerpoint"
-- Aliases stored in `packages/utils/src/skills-aliases.ts`
+- Aliases stored in `packages/utils/src/skills-aliases.ts` and `skill_aliases` DB table
 
 ## Pricing Tiers (ZMW)
 | Tier | Price | Matches/Month | Features |
@@ -67,19 +69,24 @@ All skills are lowercased and mapped through aliases before comparison:
 - Error responses follow RFC 7807 Problem Details format
 - All monetary values in ZMW as integers (ngwee, like cents)
 
+## Cost Optimization
+- **Prompt caching**: All Claude API calls use cached system prompts (60-80% cost reduction)
+- **Embedding cache**: ai_cache table deduplicates embedding requests
+- **LLM explanations**: Only generated for matches > 70 score (not all matches)
+- **Batch processing**: n8n handles bulk operations off-peak
+
 ## File Structure
 ```
 zed-cv/
-├── AI_CONTEXT.md          ← YOU ARE HERE
+├── CLAUDE.md              ← Auto-loaded by Claude Code
+├── AI_CONTEXT.md          ← Full context for all AI tools
 ├── apps/
 │   ├── backend/           ← FastAPI application
 │   │   ├── app/
 │   │   │   ├── api/v1/    ← Route handlers
 │   │   │   ├── core/      ← Config, security, dependencies
-│   │   │   ├── models/    ← SQLAlchemy/Supabase models
 │   │   │   ├── schemas/   ← Pydantic schemas
-│   │   │   ├── services/  ← Business logic
-│   │   │   └── workers/   ← Background tasks
+│   │   │   └── services/  ← Business logic
 │   │   ├── requirements.txt
 │   │   └── main.py
 │   └── frontend/          ← Next.js 14 application
@@ -88,12 +95,12 @@ zed-cv/
 │       ├── src/lib/       ← API client, utils
 │       └── package.json
 ├── packages/
-│   ├── types/             ← Shared TypeScript types (generated from OpenAPI)
-│   └── utils/             ← Shared utilities (skills aliases, scoring)
+│   ├── types/             ← Shared TypeScript types
+│   └── utils/             ← Shared utilities
 ├── infra/
-│   ├── supabase/migrations/ ← SQL migration files
-│   ├── n8n/               ← n8n workflow JSON exports
-│   └── waha/              ← WAHA Docker config
+│   ├── supabase/migrations/
+│   ├── n8n/
+│   └── waha/
 └── docs/
     └── openapi.yaml       ← API contract (source of truth)
 ```
@@ -112,11 +119,11 @@ zed-cv/
 
 ## Environment Variables Required
 ```
-SUPABASE_URL=
+SUPABASE_URL=https://chnesgmcuxyhwhzomdov.supabase.co
 SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_KEY=
 OPENAI_API_KEY=
-ANTHROPIC_API_KEY=        # For Claude Haiku
+ANTHROPIC_API_KEY=
 DPO_PAY_COMPANY_TOKEN=
 DPO_PAY_SERVICE_TYPE=
 WAHA_API_URL=http://localhost:3000
@@ -125,9 +132,9 @@ JWT_SECRET=
 ```
 
 ## Critical Warnings
-- ⚠️ Supabase free tier pauses after 7 days inactivity — n8n heartbeat is MANDATORY
-- ⚠️ Oracle Cloud free tier: ARM Ampere A1 (4 OCPU, 24GB RAM shared across all VMs)
-- ⚠️ No Zambian job site has public APIs — ingestion starts manual, then semi-automated
-- ⚠️ WAHA requires persistent Docker container — monitor for disconnections
-- ⚠️ DPO Pay webhooks must be verified with signature check
-- ⚠️ User CVs contain PII — encrypt at rest, never log full content
+- Supabase free tier pauses after 7 days inactivity — n8n heartbeat is MANDATORY
+- Oracle Cloud free tier: ARM Ampere A1 (4 OCPU, 24GB RAM shared across all VMs)
+- No Zambian job site has public APIs — ingestion starts manual, then semi-automated
+- WAHA requires persistent Docker container — monitor for disconnections
+- DPO Pay webhooks must be verified with signature check
+- User CVs contain PII — encrypt at rest, never log full content

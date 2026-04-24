@@ -4,11 +4,11 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from jose import jwt
+from jose import jwt, JWTError
 
 from app.core.config import get_settings, Settings
 from app.core.deps import get_supabase
-from app.schemas.auth import OTPRequest, OTPVerify, AuthTokens
+from app.schemas.auth import OTPRequest, OTPVerify, AuthTokens, RefreshTokenRequest
 from app.services.whatsapp import send_whatsapp_otp
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -138,7 +138,77 @@ async def verify_otp(
     refresh_payload = {
         "sub": user_id,
         "type": "refresh",
-        "exp": now + timedelta(days=30),
+        "exp": now + timedelta(days=settings.jwt_refresh_expire_days),
+        "iat": now,
+    }
+
+    access_token = jwt.encode(access_payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    refresh_token = jwt.encode(refresh_payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+    return AuthTokens(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user_id=user_id,
+    )
+
+
+@router.post("/refresh", response_model=AuthTokens)
+async def refresh_tokens(
+    body: RefreshTokenRequest,
+    settings: Settings = Depends(get_settings),
+    supabase=Depends(get_supabase),
+):
+    """Issue new access (and refresh) JWTs from a valid refresh token."""
+    try:
+        payload = jwt.decode(
+            body.refresh_token,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+        )
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+
+    if payload.get("type") != "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
+
+    user_result = (
+        supabase.table("users")
+        .select("id, phone")
+        .eq("id", user_id)
+        .limit(1)
+        .execute()
+    )
+    if not user_result.data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+
+    phone = user_result.data[0]["phone"]
+    now = datetime.now(timezone.utc)
+    access_payload = {
+        "sub": user_id,
+        "phone": phone,
+        "exp": now + timedelta(minutes=settings.jwt_expire_minutes),
+        "iat": now,
+    }
+    refresh_payload = {
+        "sub": user_id,
+        "type": "refresh",
+        "exp": now + timedelta(days=settings.jwt_refresh_expire_days),
         "iat": now,
     }
 
