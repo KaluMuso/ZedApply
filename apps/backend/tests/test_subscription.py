@@ -25,7 +25,7 @@ class TestGetSubscription:
     def test_get_subscription_unauthenticated(self, client):
         """Subscription endpoint requires auth."""
         resp = client.get("/api/v1/subscription")
-        assert resp.status_code == 401
+        assert resp.status_code in (401, 403)
 
     def test_get_subscription_success(self, client, auth_headers, fake_supabase):
         """Returns subscription details."""

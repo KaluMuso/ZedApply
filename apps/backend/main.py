@@ -6,7 +6,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from app.core.config import get_settings
 from app.core.rate_limit import limiter
-from app.api.v1 import auth, jobs, matches, cv, webhooks, profile, subscription, cover_letter
+from app.api.v1 import auth, jobs, matches, cv, webhooks, profile, subscription, cover_letter, admin
 
 settings = get_settings()
 
@@ -33,6 +33,7 @@ app.include_router(cv.router, prefix="/api/v1")
 app.include_router(profile.router, prefix="/api/v1")
 app.include_router(subscription.router, prefix="/api/v1")
 app.include_router(cover_letter.router, prefix="/api/v1")
+app.include_router(admin.router, prefix="/api/v1")
 app.include_router(webhooks.router, prefix="/api/v1")
 
 

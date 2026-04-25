@@ -4,13 +4,12 @@ import { useState } from "react";
 import { subscription } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { TIER_INFO } from "@/lib/constants";
-import { Check, X } from "lucide-react";
+import { Check, X, Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { motion, useReducedMotion } from "framer-motion";
 
@@ -51,7 +50,6 @@ type Pay = "mtn" | "airtel";
 
 export default function PricingPage() {
   const { token, isAuthenticated } = useAuth();
-  const [annual, setAnnual] = useState(false);
   const [open, setOpen] = useState<null | (typeof planRows)[number]["tier"]>(null);
   const [pay, setPay] = useState<Pay>("mtn");
   const [phone, setPhone] = useState("+260");
@@ -100,29 +98,8 @@ export default function PricingPage() {
     <div className="max-w-6xl mx-auto">
       <h1 className="text-3xl sm:text-4xl font-bold text-center">ZMW pricing, simple tiers</h1>
       <p className="text-center text-muted-foreground text-base mt-2">
-        Mwana, Mwezi, Bwino. Same numbers monthly or annual for now{annual && " (annual toggle is UI only until billing ships)."}
+        Mwana, Mwezi, Bwino. Monthly billing in kwacha — change or cancel any time.
       </p>
-      <div className="flex items-center justify-center gap-2 mt-6" role="group" aria-label="Billing">
-        <span className={!annual ? "text-foreground" : "text-muted-foreground"}>Monthly</span>
-        <button
-          className="relative h-8 w-14 min-h-11 w-16 rounded-full border border-border bg-muted p-0.5"
-          onClick={() => {
-            setAnnual((a) => !a);
-          }}
-          type="button"
-          aria-pressed={annual}
-          aria-label="Toggle annual billing"
-        >
-          <span
-            className={cn(
-              "block h-7 w-7 rounded-full bg-primary shadow transition-transform",
-              annual ? "translate-x-6" : "translate-x-0"
-            )}
-            aria-hidden
-          />
-        </button>
-        <span className={annual ? "text-foreground" : "text-muted-foreground"}>Annual</span>
-      </div>
 
       <div className="mt-8 grid sm:grid-cols-3 gap-4 sm:gap-5">
         {planRows.map((p) => {
@@ -142,7 +119,7 @@ export default function PricingPage() {
                   <CardDescription>{info.bemba}</CardDescription>
                   <p className="pt-2 text-3xl font-bold">
                     {priceLabel(p.tier)}
-                    <span className="text-sm font-normal text-muted-foreground"> {p.tier === "mwana" ? "forever" : (annual ? "/ year (TBD)" : "/ month")}</span>
+                    <span className="text-sm font-normal text-muted-foreground"> {p.tier === "mwana" ? "forever" : "/ month"}</span>
                   </p>
                 </CardHeader>
                 <CardContent className="flex-1">

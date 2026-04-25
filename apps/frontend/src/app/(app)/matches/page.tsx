@@ -24,7 +24,7 @@ function MatchRows({
   data: MatchData[];
   token: string;
   onHide: (id: string) => void;
-  onViewJob: () => void;
+  onViewJob: (jobId: string) => void;
   onCover: (jobId: string) => void;
 }) {
   return (
@@ -51,7 +51,7 @@ function MatchRows({
                 className="min-h-9 text-xs"
                 type="button"
                 variant="outline"
-                onClick={onViewJob}
+                onClick={() => onViewJob(match.job.id)}
               >
                 View job
               </Button>
@@ -285,8 +285,8 @@ export default function MatchesPage() {
             data={list}
             token={token!}
             onHide={(id) => setHidden((h) => new Set([...h, id]))}
-            onViewJob={() => {
-              router.push("/jobs");
+            onViewJob={(jobId) => {
+              router.push(`/jobs?id=${jobId}`);
             }}
             onCover={onCover}
           />
@@ -300,8 +300,8 @@ export default function MatchesPage() {
             data={below}
             token={token!}
             onHide={(id) => setHidden((h) => new Set([...h, id]))}
-            onViewJob={() => {
-              router.push("/jobs");
+            onViewJob={(jobId) => {
+              router.push(`/jobs?id=${jobId}`);
             }}
             onCover={onCover}
           />

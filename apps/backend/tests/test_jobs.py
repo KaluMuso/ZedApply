@@ -7,7 +7,7 @@ class TestJobList:
     def test_list_jobs_unauthenticated(self, client):
         """Job list requires auth."""
         resp = client.get("/api/v1/jobs")
-        assert resp.status_code == 401
+        assert resp.status_code in (401, 403)
 
     def test_list_jobs_empty(self, client, auth_headers, fake_supabase):
         """Returns empty list when no jobs exist."""

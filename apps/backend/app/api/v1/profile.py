@@ -1,23 +1,28 @@
 """User profile routes."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from app.core.deps import get_supabase, get_current_user_id
-from app.schemas.user import UserProfile, UserProfileUpdate
+from app.schemas.user import (
+    UserProfile,
+    UserProfileUpdate,
+    UserPreferences,
+    UserPreferencesUpdate,
+    ProfileDeleted,
+    UserSkill,
+    UserSkillCreate,
+    UserSkillUpdate,
+    UserSkillsList,
+)
 
 router = APIRouter(prefix="/profile", tags=["Profile"])
 
 
-@router.get("", response_model=UserProfile)
-async def get_profile(
-    user_id: str = Depends(get_current_user_id),
-    supabase=Depends(get_supabase),
-):
+def _build_profile(user_id: str, supabase) -> UserProfile:
     result = supabase.table("users").select("*").eq("id", user_id).single().execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="User not found")
 
     user = result.data
 
-    # Get user skills
     skills_result = (
         supabase.table("user_skills")
         .select("skills(name)")
@@ -26,7 +31,6 @@ async def get_profile(
     )
     skills = [s["skills"]["name"] for s in (skills_result.data or []) if s.get("skills")]
 
-    # Check if user has a primary CV
     cv_result = (
         supabase.table("cvs")
         .select("id")
@@ -51,6 +55,14 @@ async def get_profile(
     )
 
 
+@router.get("", response_model=UserProfile)
+async def get_profile(
+    user_id: str = Depends(get_current_user_id),
+    supabase=Depends(get_supabase),
+):
+    return _build_profile(user_id, supabase)
+
+
 @router.patch("", response_model=UserProfile)
 async def update_profile(
     body: UserProfileUpdate,
@@ -62,6 +74,188 @@ async def update_profile(
         raise HTTPException(status_code=422, detail="No fields to update")
 
     supabase.table("users").update(update_data).eq("id", user_id).execute()
+    return _build_profile(user_id, supabase)
 
-    # Return the updated profile by reusing get_profile logic
-    return await get_profile(user_id=user_id, supabase=supabase)
+
+@router.delete("", response_model=ProfileDeleted)
+async def delete_profile(
+    user_id: str = Depends(get_current_user_id),
+    supabase=Depends(get_supabase),
+):
+    """Hard-delete the caller's account.
+
+    FK ON DELETE CASCADE on user_id columns handles user_skills, cvs, matches,
+    subscriptions, payments, generated_documents, application_outcomes.
+    """
+    existing = supabase.table("users").select("id").eq("id", user_id).limit(1).execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    supabase.table("users").delete().eq("id", user_id).execute()
+    return ProfileDeleted(deleted=True, user_id=user_id)
+
+
+@router.get("/preferences", response_model=UserPreferences)
+async def get_preferences(
+    user_id: str = Depends(get_current_user_id),
+    supabase=Depends(get_supabase),
+):
+    result = (
+        supabase.table("users")
+        .select("whatsapp_alerts, language")
+        .eq("id", user_id)
+        .single()
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=404, detail="User not found")
+    return UserPreferences(
+        whatsapp_alerts=result.data.get("whatsapp_alerts", True),
+        language=result.data.get("language", "en"),
+    )
+
+
+@router.patch("/preferences", response_model=UserPreferences)
+async def update_preferences(
+    body: UserPreferencesUpdate,
+    user_id: str = Depends(get_current_user_id),
+    supabase=Depends(get_supabase),
+):
+    update_data = body.model_dump(exclude_none=True)
+    if not update_data:
+        raise HTTPException(status_code=422, detail="No fields to update")
+
+    supabase.table("users").update(update_data).eq("id", user_id).execute()
+    result = (
+        supabase.table("users")
+        .select("whatsapp_alerts, language")
+        .eq("id", user_id)
+        .single()
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=404, detail="User not found")
+    return UserPreferences(
+        whatsapp_alerts=result.data.get("whatsapp_alerts", True),
+        language=result.data.get("language", "en"),
+    )
+
+
+def _resolve_skill_id(name: str, supabase) -> str | None:
+    """Look up a canonical skill_id by name, checking direct match then aliases.
+
+    Returns None if the skill does not yet exist in the catalogue.
+    """
+    n = name.strip().lower()
+    if not n:
+        return None
+    direct = supabase.table("skills").select("id").eq("name", n).limit(1).execute()
+    if direct.data:
+        return direct.data[0]["id"]
+    alias = (
+        supabase.table("skill_aliases").select("skill_id").eq("alias", n).limit(1).execute()
+    )
+    if alias.data:
+        return alias.data[0]["skill_id"]
+    return None
+
+
+def _list_user_skills(user_id: str, supabase) -> list[UserSkill]:
+    rows = (
+        supabase.table("user_skills")
+        .select("proficiency, source, skills(name)")
+        .eq("user_id", user_id)
+        .execute()
+    )
+    out: list[UserSkill] = []
+    for r in rows.data or []:
+        s = r.get("skills") or {}
+        if not s.get("name"):
+            continue
+        out.append(
+            UserSkill(
+                name=s["name"],
+                proficiency=r.get("proficiency") or "intermediate",
+                source=r.get("source") or "manual",
+            )
+        )
+    out.sort(key=lambda x: x.name)
+    return out
+
+
+@router.get("/skills", response_model=UserSkillsList)
+async def list_skills(
+    user_id: str = Depends(get_current_user_id),
+    supabase=Depends(get_supabase),
+):
+    return UserSkillsList(skills=_list_user_skills(user_id, supabase))
+
+
+@router.post("/skills", response_model=UserSkillsList, status_code=status.HTTP_201_CREATED)
+async def add_skill(
+    body: UserSkillCreate,
+    user_id: str = Depends(get_current_user_id),
+    supabase=Depends(get_supabase),
+):
+    name = body.name.strip().lower()
+    if not name:
+        raise HTTPException(status_code=422, detail="Skill name is required")
+
+    skill_id = _resolve_skill_id(name, supabase)
+    if not skill_id:
+        created = supabase.table("skills").insert({"name": name}).execute()
+        if not created.data:
+            raise HTTPException(status_code=500, detail="Could not register skill")
+        skill_id = created.data[0]["id"]
+
+    supabase.table("user_skills").upsert(
+        {
+            "user_id": user_id,
+            "skill_id": skill_id,
+            "proficiency": body.proficiency,
+            "source": "manual",
+        },
+        on_conflict="user_id,skill_id",
+    ).execute()
+    return UserSkillsList(skills=_list_user_skills(user_id, supabase))
+
+
+@router.patch("/skills/{name}", response_model=UserSkillsList)
+async def update_skill(
+    name: str,
+    body: UserSkillUpdate,
+    user_id: str = Depends(get_current_user_id),
+    supabase=Depends(get_supabase),
+):
+    skill_id = _resolve_skill_id(name, supabase)
+    if not skill_id:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    existing = (
+        supabase.table("user_skills")
+        .select("user_id")
+        .eq("user_id", user_id)
+        .eq("skill_id", skill_id)
+        .limit(1)
+        .execute()
+    )
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Skill not on profile")
+    supabase.table("user_skills").update({"proficiency": body.proficiency}).eq(
+        "user_id", user_id
+    ).eq("skill_id", skill_id).execute()
+    return UserSkillsList(skills=_list_user_skills(user_id, supabase))
+
+
+@router.delete("/skills/{name}", response_model=UserSkillsList)
+async def remove_skill(
+    name: str,
+    user_id: str = Depends(get_current_user_id),
+    supabase=Depends(get_supabase),
+):
+    skill_id = _resolve_skill_id(name, supabase)
+    if not skill_id:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    supabase.table("user_skills").delete().eq("user_id", user_id).eq(
+        "skill_id", skill_id
+    ).execute()
+    return UserSkillsList(skills=_list_user_skills(user_id, supabase))

@@ -56,11 +56,14 @@ export function Footer() {
               connections.
             </p>
             <p className="mt-3 text-sm text-muted-foreground">
-              <span className="sr-only">Social — </span>
-              <a href="https://twitter.com" className="hover:text-primary" target="_blank" rel="noreferrer">
-                @zedcv
-              </a>{" "}
-              (coming soon)
+              Questions? Email{" "}
+              <a
+                href="mailto:convergeozambia@gmail.com"
+                className="text-primary hover:underline"
+              >
+                convergeozambia@gmail.com
+              </a>
+              .
             </p>
           </div>
           <div className="hidden sm:block">
@@ -115,7 +118,7 @@ export function Footer() {
           <p className="text-sm text-muted-foreground text-center sm:text-left">
             © 2026 Zed CV. Made with care in Lusaka, Zambia.
           </p>
-          <p className="text-sm text-muted-foreground">Language: English (Bemba — coming soon)</p>
+          <p className="text-sm text-muted-foreground">Language: English &middot; Bemba (set in Settings)</p>
         </div>
         <p className="text-center sm:text-left text-xs text-muted-foreground/80 pt-2">
           MTN Mobile Money and Airtel Money supported for subscriptions in Zambia.

@@ -3,9 +3,13 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { profile as profileApi, type UserPreferences } from "@/lib/api";
+import { useAppStore } from "@/lib/zustand-store";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -15,23 +19,68 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-/* Using native checkbox — no Switch in list if not installed */
 export default function SettingsPage() {
   const router = useRouter();
   const { isAuthenticated, isLoading, logout, token } = useAuth();
-  const [alerts, setAlerts] = useState(true);
+  const { setProfile: setZust } = useAppStore();
+  const [prefs, setPrefs] = useState<UserPreferences | null>(null);
+  const [prefsLoading, setPrefsLoading] = useState(true);
+  const [savingAlerts, setSavingAlerts] = useState(false);
+  const [savingLang, setSavingLang] = useState(false);
   const [openDelete, setOpenDelete] = useState(false);
+  const [delConfirm, setDelConfirm] = useState("");
+  const [delLoading, setDelLoading] = useState(false);
+
   useEffect(() => {
     if (isLoading) {
       return;
     }
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !token) {
       router.push("/auth");
+      return;
     }
-  }, [isAuthenticated, isLoading, router]);
+    profileApi
+      .getPreferences(token)
+      .then(setPrefs)
+      .catch((e) => toast.error(e instanceof Error ? e.message : "Failed to load preferences"))
+      .finally(() => setPrefsLoading(false));
+  }, [isAuthenticated, isLoading, router, token]);
+
   if (isLoading || !isAuthenticated) {
     return <p className="text-sm text-muted-foreground">…</p>;
   }
+
+  const updateAlerts = async (next: boolean) => {
+    if (!token || !prefs) {
+      return;
+    }
+    setSavingAlerts(true);
+    try {
+      const r = await profileApi.updatePreferences(token, { whatsapp_alerts: next });
+      setPrefs(r);
+      toast.success(next ? "WhatsApp alerts on." : "WhatsApp alerts off.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save");
+    } finally {
+      setSavingAlerts(false);
+    }
+  };
+
+  const updateLanguage = async (next: "en" | "bem") => {
+    if (!token) {
+      return;
+    }
+    setSavingLang(true);
+    try {
+      const r = await profileApi.updatePreferences(token, { language: next });
+      setPrefs(r);
+      toast.success("Language preference saved.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save");
+    } finally {
+      setSavingLang(false);
+    }
+  };
 
   return (
     <div>
@@ -41,20 +90,22 @@ export default function SettingsPage() {
       <Card className="mb-4">
         <CardHeader>
           <CardTitle>WhatsApp & alerts</CardTitle>
-          <CardDescription>Changes are stored in this session until we wire notification APIs.</CardDescription>
+          <CardDescription>Control daily nudges and match alerts to your WhatsApp.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex items-center justify-between gap-4 min-h-11">
-            <span className="text-sm">Daily job alerts on WhatsApp (preferred)</span>
-            <input
-              type="checkbox"
-              className="h-5 w-5 rounded border-input"
-              checked={alerts}
-              onChange={(e) => {
-                setAlerts(e.target.checked);
-                toast.success("Preference saved in this device session.");
-              }}
-            />
+            <span className="text-sm">Daily job alerts on WhatsApp</span>
+            {prefsLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            ) : (
+              <input
+                type="checkbox"
+                className="h-5 w-5 rounded border-input"
+                checked={prefs?.whatsapp_alerts ?? true}
+                disabled={savingAlerts}
+                onChange={(e) => updateAlerts(e.target.checked)}
+              />
+            )}
           </div>
         </CardContent>
       </Card>
@@ -62,18 +113,29 @@ export default function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Language</CardTitle>
-          <CardDescription>We will add Bemba in a later release. English is default for now.</CardDescription>
+          <CardDescription>Bemba is partially supported. WhatsApp messages will switch to Bemba where available.</CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-sm">English (Zambia)</p>
+          {prefsLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          ) : (
+            <select
+              className="h-10 min-h-10 rounded-md border border-input bg-background px-3 text-sm"
+              value={prefs?.language ?? "en"}
+              disabled={savingLang}
+              onChange={(e) => updateLanguage(e.target.value as "en" | "bem")}
+            >
+              <option value="en">English (Zambia)</option>
+              <option value="bem">Bemba (icibemba)</option>
+            </select>
+          )}
         </CardContent>
       </Card>
 
       <div className="mt-8 rounded-xl border border-destructive/40 p-4">
         <h2 className="text-sm font-semibold text-destructive">Delete account</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Permanently remove this account. A backend `DELETE` endpoint is still to be added — for now you can sign
-          out from every device and contact support to purge data.
+          Permanently remove your profile, CV, skills, matches, and payment history. This cannot be undone.
         </p>
         <Button
           className="mt-3"
@@ -85,23 +147,57 @@ export default function SettingsPage() {
         </Button>
       </div>
 
-      <Dialog open={openDelete} onOpenChange={setOpenDelete}>
+      <Dialog
+        open={openDelete}
+        onOpenChange={(o) => {
+          setOpenDelete(o);
+          if (!o) {
+            setDelConfirm("");
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Are you sure?</DialogTitle>
             <DialogDescription>
-              This is not connected to a live delete yet. We will only sign you out. Contact support to erase data
-              (GDPR-style) until the API is ready.
+              Type <span className="font-mono font-semibold">DELETE</span> to confirm. We will erase your data immediately.
             </DialogDescription>
           </DialogHeader>
+          <Input
+            autoFocus
+            value={delConfirm}
+            onChange={(e) => setDelConfirm(e.target.value)}
+            placeholder="DELETE"
+            className="h-10"
+          />
           <DialogFooter>
-            <Button variant="outline" type="button" onClick={() => setOpenDelete(false)}>Cancel</Button>
+            <Button variant="outline" type="button" onClick={() => setOpenDelete(false)} disabled={delLoading}>
+              Cancel
+            </Button>
             <Button
               variant="destructive"
               type="button"
-              onClick={() => { logout(); if (token) { localStorage.removeItem("zed_cv_token"); } setOpenDelete(false); router.push("/"); toast.success("Signed out"); }}
+              disabled={delConfirm !== "DELETE" || delLoading}
+              onClick={async () => {
+                if (!token) {
+                  return;
+                }
+                setDelLoading(true);
+                try {
+                  await profileApi.remove(token);
+                  toast.success("Account deleted.");
+                  setOpenDelete(false);
+                  logout();
+                  setZust(null);
+                  router.push("/");
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : "Could not delete");
+                } finally {
+                  setDelLoading(false);
+                }
+              }}
             >
-              Sign out
+              {delLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Delete forever"}
             </Button>
           </DialogFooter>
         </DialogContent>

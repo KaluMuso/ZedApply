@@ -84,6 +84,23 @@ export interface UserProfile {
   years_experience?: number;
 }
 
+export interface UserPreferences {
+  whatsapp_alerts: boolean;
+  language: "en" | "bem";
+}
+
+export type SkillProficiency = "beginner" | "intermediate" | "advanced" | "expert";
+
+export interface UserSkill {
+  name: string;
+  proficiency: SkillProficiency;
+  source: "cv_parse" | "manual" | "assessment";
+}
+
+export interface UserSkillsList {
+  skills: UserSkill[];
+}
+
 export const profile = {
   get: (token: string) => apiFetch<UserProfile>("/profile", { token }),
   update: (
@@ -100,6 +117,159 @@ export const profile = {
       token,
       body: JSON.stringify(data),
     }),
+  remove: (token: string) =>
+    apiFetch<{ deleted: boolean; user_id: string }>("/profile", {
+      method: "DELETE",
+      token,
+    }),
+  getPreferences: (token: string) =>
+    apiFetch<UserPreferences>("/profile/preferences", { token }),
+  updatePreferences: (token: string, data: Partial<UserPreferences>) =>
+    apiFetch<UserPreferences>("/profile/preferences", {
+      method: "PATCH",
+      token,
+      body: JSON.stringify(data),
+    }),
+  getSkills: (token: string) => apiFetch<UserSkillsList>("/profile/skills", { token }),
+  addSkill: (token: string, data: { name: string; proficiency?: SkillProficiency }) =>
+    apiFetch<UserSkillsList>("/profile/skills", {
+      method: "POST",
+      token,
+      body: JSON.stringify(data),
+    }),
+  updateSkill: (token: string, name: string, proficiency: SkillProficiency) =>
+    apiFetch<UserSkillsList>(`/profile/skills/${encodeURIComponent(name)}`, {
+      method: "PATCH",
+      token,
+      body: JSON.stringify({ proficiency }),
+    }),
+  removeSkill: (token: string, name: string) =>
+    apiFetch<UserSkillsList>(`/profile/skills/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+      token,
+    }),
+};
+
+// ── Admin ──
+export interface AdminStats {
+  users_total: number;
+  users_active_30d: number;
+  subscriptions_active: number;
+  subscriptions_paid: number;
+  jobs_total: number;
+  jobs_active: number;
+  jobs_expired: number;
+  matches_24h: number;
+  matches_total: number;
+  revenue_ngwee_30d: number;
+  revenue_ngwee_total: number;
+}
+
+export interface AdminUserRow {
+  id: string;
+  phone: string;
+  full_name: string | null;
+  location: string | null;
+  subscription_tier: string;
+  role: string;
+  matches_used: number;
+  matches_limit: number;
+  created_at: string | null;
+}
+
+export interface AdminUserList {
+  users: AdminUserRow[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+}
+
+export interface AdminJobRow {
+  id: string;
+  title: string;
+  company: string | null;
+  location: string | null;
+  source: string;
+  quality_score: number;
+  is_active: boolean;
+  closing_date: string | null;
+  posted_at: string | null;
+}
+
+export interface AdminJobList {
+  jobs: AdminJobRow[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+}
+
+export interface AdminPaymentRow {
+  id: string;
+  user_id: string;
+  user_phone: string | null;
+  amount: number;
+  currency: string;
+  payment_method: string;
+  provider: string | null;
+  status: string;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
+export interface AdminPaymentList {
+  payments: AdminPaymentRow[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+  total_completed_ngwee: number;
+}
+
+export const admin = {
+  stats: (token: string) => apiFetch<AdminStats>("/admin/stats", { token }),
+  users: (
+    token: string,
+    params?: { page?: number; per_page?: number; search?: string; tier?: string }
+  ) => {
+    const q = new URLSearchParams();
+    if (params?.page) q.set("page", String(params.page));
+    if (params?.per_page) q.set("per_page", String(params.per_page));
+    if (params?.search) q.set("search", params.search);
+    if (params?.tier) q.set("tier", params.tier);
+    return apiFetch<AdminUserList>(`/admin/users?${q}`, { token });
+  },
+  jobs: (
+    token: string,
+    params?: { page?: number; per_page?: number; expired?: boolean; is_active?: boolean }
+  ) => {
+    const q = new URLSearchParams();
+    if (params?.page) q.set("page", String(params.page));
+    if (params?.per_page) q.set("per_page", String(params.per_page));
+    if (params?.expired !== undefined) q.set("expired", String(params.expired));
+    if (params?.is_active !== undefined) q.set("is_active", String(params.is_active));
+    return apiFetch<AdminJobList>(`/admin/jobs?${q}`, { token });
+  },
+  bulkDeactivate: (
+    token: string,
+    body: { job_ids?: string[]; expired_only?: boolean }
+  ) =>
+    apiFetch<{ deactivated: number }>("/admin/jobs/bulk-deactivate", {
+      method: "POST",
+      token,
+      body: JSON.stringify(body),
+    }),
+  payments: (
+    token: string,
+    params?: { page?: number; per_page?: number; status?: string }
+  ) => {
+    const q = new URLSearchParams();
+    if (params?.page) q.set("page", String(params.page));
+    if (params?.per_page) q.set("per_page", String(params.per_page));
+    if (params?.status) q.set("status", params.status);
+    return apiFetch<AdminPaymentList>(`/admin/payments?${q}`, { token });
+  },
 };
 
 // ── CV ──

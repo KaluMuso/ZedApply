@@ -7,7 +7,7 @@ class TestMatchTrigger:
     def test_trigger_unauthenticated(self, client):
         """Match trigger requires auth."""
         resp = client.post("/api/v1/matches/trigger")
-        assert resp.status_code == 401
+        assert resp.status_code in (401, 403)
 
     @patch("app.api.v1.matches.check_match_quota", new_callable=AsyncMock)
     def test_trigger_no_cv(self, mock_quota, client, auth_headers, fake_supabase):

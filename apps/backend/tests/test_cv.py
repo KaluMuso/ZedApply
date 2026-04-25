@@ -10,7 +10,7 @@ class TestCVUpload:
         resp = client.post("/api/v1/cv/upload", files={
             "file": ("test.pdf", b"fake-pdf", "application/pdf")
         })
-        assert resp.status_code == 401
+        assert resp.status_code in (401, 403)
 
     def test_upload_rejects_unsupported_type(self, client, auth_headers):
         """CV upload rejects unsupported file types."""

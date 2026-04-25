@@ -28,6 +28,7 @@ class FakeSupabaseQuery:
     def __init__(self, data=None, count=None):
         self._data = data or []
         self._count = count
+        self._single = False
 
     def select(self, *a, **kw):
         return self
@@ -57,6 +58,12 @@ class FakeSupabaseQuery:
     def gte(self, *a):
         return self
 
+    def lt(self, *a):
+        return self
+
+    def in_(self, *a):
+        return self
+
     def ilike(self, *a):
         return self
 
@@ -73,11 +80,19 @@ class FakeSupabaseQuery:
         return self
 
     def single(self):
+        self._single = True
         return self
 
     def execute(self):
         result = MagicMock()
-        result.data = self._data
+        if self._single:
+            # Real supabase-py returns the first row as a dict (or None) on .single()
+            if isinstance(self._data, list):
+                result.data = self._data[0] if self._data else None
+            else:
+                result.data = self._data
+        else:
+            result.data = self._data
         result.count = self._count
         return result
 

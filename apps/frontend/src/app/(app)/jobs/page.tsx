@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { jobs as jobsApi, type Job, coverLetter } from "@/lib/api";
 import { JobCard } from "@/components/features/JobCard";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -13,7 +13,7 @@ import { LayoutGrid, List, MapPin, Search, Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/error-utils";
 import { toast } from "sonner";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 
@@ -31,7 +31,17 @@ function isClosingSoon(d: string | null) {
 }
 
 export default function JobsPage() {
+  return (
+    <Suspense fallback={<JobListSkeleton n={6} />}>
+      <JobsPageInner />
+    </Suspense>
+  );
+}
+
+function JobsPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const focusedJobId = searchParams.get("id");
   const { token, isAuthenticated } = useAuth();
   const [jobsList, setJobsList] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,7 +77,7 @@ export default function JobsPage() {
     fetchJobs();
   }, [fetchJobs]);
 
-  const openDetail = (id: string) => {
+  const openDetail = useCallback((id: string) => {
     setDetail(null);
     setDetailLoading(true);
     jobsApi
@@ -79,7 +89,13 @@ export default function JobsPage() {
         toast.error("Job could not be opened.");
       })
       .finally(() => setDetailLoading(false));
-  };
+  }, []);
+
+  useEffect(() => {
+    if (focusedJobId) {
+      openDetail(focusedJobId);
+    }
+  }, [focusedJobId, openDetail]);
 
   const searchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -264,6 +280,9 @@ export default function JobsPage() {
           if (!o) {
             setDetail(null);
             setDetailLoading(false);
+            if (focusedJobId) {
+              router.replace("/jobs");
+            }
           }
         }}
       >

@@ -2,9 +2,8 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { profile as profileApi, cv as cvApi, subscription as subApi, type UserProfile, type Subscription } from "@/lib/api";
+import { profile as profileApi, cv as cvApi, subscription as subApi, type UserProfile, type Subscription, type UserSkill, type SkillProficiency } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { SkillBadge } from "@/components/features/SkillBadge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -21,7 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Loader2 } from "lucide-react";
+import { Loader2, Trash2, Plus } from "lucide-react";
 import { useAppStore } from "@/lib/zustand-store";
 
 function initials(phone: string, name: string | null) {
@@ -37,7 +36,7 @@ function initials(phone: string, name: string | null) {
 export default function ProfilePage() {
   const router = useRouter();
   const { setProfile: setZust } = useAppStore();
-  const { token, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { token, isAuthenticated, isLoading: authLoading, logout } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [sub, setSub] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,7 +46,14 @@ export default function ProfilePage() {
   const [uploadMsg, setUploadMsg] = useState("");
   const [drag, setDrag] = useState(false);
   const [delOpen, setDelOpen] = useState(false);
+  const [delLoading, setDelLoading] = useState(false);
+  const [delConfirm, setDelConfirm] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const [skills, setSkills] = useState<UserSkill[]>([]);
+  const [skillsLoading, setSkillsLoading] = useState(true);
+  const [newSkillName, setNewSkillName] = useState("");
+  const [newSkillProf, setNewSkillProf] = useState<SkillProficiency>("intermediate");
+  const [skillBusy, setSkillBusy] = useState<string | null>(null);
 
   useEffect(() => {
     if (authLoading) {
@@ -71,7 +77,72 @@ export default function ProfilePage() {
       })
       .catch(() => setProfile(null))
       .finally(() => setLoading(false));
+
+    profileApi
+      .getSkills(token)
+      .then((r) => setSkills(r.skills))
+      .catch(() => setSkills([]))
+      .finally(() => setSkillsLoading(false));
   }, [token, isAuthenticated, authLoading, router, setZust]);
+
+  const addSkill = async () => {
+    if (!token) {
+      return;
+    }
+    const name = newSkillName.trim();
+    if (!name) {
+      return;
+    }
+    setSkillBusy("__add__");
+    try {
+      const r = await profileApi.addSkill(token, { name, proficiency: newSkillProf });
+      setSkills(r.skills);
+      setNewSkillName("");
+      setNewSkillProf("intermediate");
+      toast.success(`Added "${name}".`);
+      const fresh = await profileApi.get(token);
+      setProfile(fresh);
+      setZust(fresh);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not add skill");
+    } finally {
+      setSkillBusy(null);
+    }
+  };
+
+  const changeProficiency = async (name: string, p: SkillProficiency) => {
+    if (!token) {
+      return;
+    }
+    setSkillBusy(name);
+    try {
+      const r = await profileApi.updateSkill(token, name, p);
+      setSkills(r.skills);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not update");
+    } finally {
+      setSkillBusy(null);
+    }
+  };
+
+  const removeSkill = async (name: string) => {
+    if (!token) {
+      return;
+    }
+    setSkillBusy(name);
+    try {
+      const r = await profileApi.removeSkill(token, name);
+      setSkills(r.skills);
+      const fresh = await profileApi.get(token);
+      setProfile(fresh);
+      setZust(fresh);
+      toast.success(`Removed "${name}".`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not remove");
+    } finally {
+      setSkillBusy(null);
+    }
+  };
 
   const save = async () => {
     if (!token) {
@@ -120,9 +191,13 @@ export default function ProfilePage() {
       try {
         const r = await cvApi.upload(token, file);
         setUploadMsg(`Upload ok — ${r.skills_extracted.length} skills read.`);
-        const u = await profileApi.get(token);
+        const [u, sk] = await Promise.all([
+          profileApi.get(token),
+          profileApi.getSkills(token),
+        ]);
         setProfile(u);
         setZust(u);
+        setSkills(sk.skills);
         toast.success("CV processed.");
       } catch (e) {
         setUploadMsg(e instanceof Error ? e.message : "Upload failed");
@@ -275,18 +350,113 @@ export default function ProfilePage() {
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Extracted skills</CardTitle>
-              <CardDescription>We sync these with our skills graph after each parse.</CardDescription>
+              <CardTitle>Your skills</CardTitle>
+              <CardDescription>
+                Add anything we missed and set how strong you are. We use proficiency in matching and cover letters.
+              </CardDescription>
             </CardHeader>
-            <CardContent>
-              {profile.skills.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Upload a CV to extract skills.</p>
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {profile.skills.map((s) => (
-                    <SkillBadge key={s} skill={s} matched />
-                  ))}
+            <CardContent className="space-y-4">
+              <form
+                className="flex flex-col gap-2 sm:flex-row sm:items-end"
+                onSubmit={(e) => { e.preventDefault(); addSkill(); }}
+              >
+                <div className="flex-1">
+                  <label className="text-xs text-muted-foreground mb-1 block" htmlFor="new-skill-name">
+                    Skill
+                  </label>
+                  <Input
+                    id="new-skill-name"
+                    value={newSkillName}
+                    onChange={(e) => setNewSkillName(e.target.value)}
+                    placeholder="e.g. Customer support"
+                    className="h-10"
+                    maxLength={100}
+                    disabled={skillBusy === "__add__"}
+                  />
                 </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block" htmlFor="new-skill-prof">
+                    Level
+                  </label>
+                  <select
+                    id="new-skill-prof"
+                    className="h-10 min-h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    value={newSkillProf}
+                    onChange={(e) => setNewSkillProf(e.target.value as SkillProficiency)}
+                    disabled={skillBusy === "__add__"}
+                  >
+                    <option value="beginner">Beginner</option>
+                    <option value="intermediate">Intermediate</option>
+                    <option value="advanced">Advanced</option>
+                    <option value="expert">Expert</option>
+                  </select>
+                </div>
+                <Button
+                  type="submit"
+                  className="min-h-10"
+                  disabled={!newSkillName.trim() || skillBusy === "__add__"}
+                >
+                  {skillBusy === "__add__" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Plus className="h-4 w-4 mr-1" /> Add
+                    </>
+                  )}
+                </Button>
+              </form>
+
+              {skillsLoading ? (
+                <p className="text-sm text-muted-foreground">Loading your skills…</p>
+              ) : skills.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No skills yet. Upload a CV above or add them by hand.
+                </p>
+              ) : (
+                <ul className="divide-y divide-border/60 rounded-md border border-border/60">
+                  {skills.map((s) => {
+                    const busy = skillBusy === s.name;
+                    return (
+                      <li
+                        key={s.name}
+                        className="flex flex-wrap items-center gap-2 px-3 py-2 sm:flex-nowrap"
+                      >
+                        <span className="flex-1 min-w-0 text-sm font-medium text-foreground capitalize truncate">
+                          {s.name}
+                        </span>
+                        <span className="text-xs text-muted-foreground hidden sm:inline">
+                          {s.source === "cv_parse" ? "from CV" : s.source === "manual" ? "added" : s.source}
+                        </span>
+                        <select
+                          className="h-9 min-h-9 rounded-md border border-input bg-background px-2 text-xs"
+                          value={s.proficiency}
+                          onChange={(e) => changeProficiency(s.name, e.target.value as SkillProficiency)}
+                          disabled={busy}
+                          aria-label={`Proficiency for ${s.name}`}
+                        >
+                          <option value="beginner">Beginner</option>
+                          <option value="intermediate">Intermediate</option>
+                          <option value="advanced">Advanced</option>
+                          <option value="expert">Expert</option>
+                        </select>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="min-h-9 min-w-9 h-9 w-9 p-0"
+                          onClick={() => removeSkill(s.name)}
+                          disabled={busy}
+                          aria-label={`Remove ${s.name}`}
+                        >
+                          {busy ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
             </CardContent>
           </Card>
@@ -318,7 +488,9 @@ export default function ProfilePage() {
 
       <div className="mt-10 p-4 rounded-xl border border-destructive/30">
         <h2 className="text-sm font-medium text-destructive">Danger zone</h2>
-        <p className="text-sm text-muted-foreground">Remove account and local session.</p>
+        <p className="text-sm text-muted-foreground">
+          Permanently remove your account, CV, matches, and subscription history. This cannot be undone.
+        </p>
         <Button
           className="mt-2"
           type="button"
@@ -327,16 +499,59 @@ export default function ProfilePage() {
         >
           Delete account
         </Button>
-        <Dialog open={delOpen} onOpenChange={setDelOpen}>
+        <Dialog
+          open={delOpen}
+          onOpenChange={(o) => {
+            setDelOpen(o);
+            if (!o) {
+              setDelConfirm("");
+            }
+          }}
+        >
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Delete is coming soon on the API</DialogTitle>
+              <DialogTitle>Delete your account?</DialogTitle>
               <DialogDescription>
-                For now you can only sign out. Contact the team to erase PII. TODO: <code>DELETE /profile</code>
+                This removes your profile, CV, skills, matches, subscription, and payment history. Type{" "}
+                <span className="font-mono font-semibold">DELETE</span> below to confirm.
               </DialogDescription>
             </DialogHeader>
+            <Input
+              autoFocus
+              value={delConfirm}
+              onChange={(e) => setDelConfirm(e.target.value)}
+              placeholder="DELETE"
+              className="h-10"
+            />
             <DialogFooter>
-              <Button type="button" onClick={() => setDelOpen(false)}>Back</Button>
+              <Button type="button" variant="outline" onClick={() => setDelOpen(false)} disabled={delLoading}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={delConfirm !== "DELETE" || delLoading}
+                onClick={async () => {
+                  if (!token) {
+                    return;
+                  }
+                  setDelLoading(true);
+                  try {
+                    await profileApi.remove(token);
+                    toast.success("Account deleted. Goodbye for now.");
+                    setDelOpen(false);
+                    logout();
+                    setZust(null);
+                    router.push("/");
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "Could not delete");
+                  } finally {
+                    setDelLoading(false);
+                  }
+                }}
+              >
+                {delLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Delete forever"}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

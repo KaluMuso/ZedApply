@@ -2,12 +2,11 @@
 
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
-import { Check, FileUp, MessageCircle, Sparkles, Smartphone, Wallet, Bell, PenLine, Search } from "lucide-react";
+import { Check, FileUp, MessageCircle, Sparkles, Smartphone, Wallet, Bell, PenLine, Search, ShieldCheck, Languages, Wifi } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { TIER_INFO } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { AnimatedCounter } from "./animated-counter";
 
 const features = [
   { icon: Search, t: "AI-Powered Matching", d: "Vector + skill matching tuned for the Zambian market." },
@@ -190,22 +189,51 @@ export function LandingPage() {
 
       <section className="py-12 sm:py-20" id="about" aria-labelledby="social-h">
         <h2 id="social-h" className="sr-only">
-          Community growth
+          Built for Zambia
         </h2>
         <div className="text-center max-w-2xl mx-auto mb-10">
           <h3 className="text-xl sm:text-2xl font-bold text-foreground">Built for real people on real phones</h3>
           <p className="text-muted-foreground text-base mt-2">
-            We focus on 3G-friendly screens, big tap targets, and the channels that work in Zambia. Numbers below
-            track where we are heading — your city could be next.
+            3G-friendly screens, big tap targets, and the channels that already work in Zambia. We are early —
+            here is what you can count on from day one.
           </p>
         </div>
-        <div className="grid grid-cols-3 gap-3 sm:gap-6 max-w-2xl mx-auto">
-          <AnimatedCounter value={6} label="Cities in rotation" />
-          <AnimatedCounter value={2} suffix="K+" label="Sign-up goal" />
-          <AnimatedCounter value={85} suffix="%" label="Target match quality" />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
+          {[
+            {
+              icon: ShieldCheck,
+              t: "WhatsApp OTP sign-in",
+              d: "No passwords to forget, no email loops. Verify with the number you already use.",
+            },
+            {
+              icon: Wallet,
+              t: "MTN & Airtel Money",
+              d: "Pay in kwacha when you upgrade. Mwana stays free forever — no card needed.",
+            },
+            {
+              icon: Languages,
+              t: "English & Bemba",
+              d: "Switch your WhatsApp messages to icibemba in Settings. More languages on the way.",
+            },
+          ].map((p) => {
+            const Icon = p.icon;
+            return (
+              <div
+                key={p.t}
+                className="rounded-2xl border border-border/80 bg-card/50 p-5 text-center sm:text-left"
+              >
+                <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary mb-3" aria-hidden>
+                  <Icon className="h-5 w-5" />
+                </div>
+                <h4 className="font-semibold text-foreground">{p.t}</h4>
+                <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{p.d}</p>
+              </div>
+            );
+          })}
         </div>
-        <p className="text-center text-xs text-muted-foreground mt-3">
-          Aspirational targets — we update the dashboard as the network grows.
+        <p className="text-center text-xs text-muted-foreground mt-6 inline-flex items-center gap-1.5 w-full justify-center">
+          <Wifi className="h-3.5 w-3.5" aria-hidden />
+          Tested on 3G. We will publish real usage numbers once the platform is live.
         </p>
       </section>
 

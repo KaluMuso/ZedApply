@@ -71,6 +71,157 @@ components:
         location: { type: string }
         years_experience: { type: integer, minimum: 0 }
 
+    UserPreferences:
+      type: object
+      properties:
+        whatsapp_alerts: { type: boolean, default: true }
+        language: { type: string, enum: [en, bem], default: en }
+
+    UserPreferencesUpdate:
+      type: object
+      properties:
+        whatsapp_alerts: { type: boolean }
+        language: { type: string, enum: [en, bem] }
+
+    ProfileDeleted:
+      type: object
+      properties:
+        deleted: { type: boolean }
+        user_id: { type: string, format: uuid }
+
+    UserSkill:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 100 }
+        proficiency:
+          type: string
+          enum: [beginner, intermediate, advanced, expert]
+          default: intermediate
+        source:
+          type: string
+          enum: [cv_parse, manual, assessment]
+          default: manual
+
+    UserSkillsList:
+      type: object
+      properties:
+        skills:
+          type: array
+          items: { $ref: '#/components/schemas/UserSkill' }
+
+    UserSkillCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        proficiency:
+          type: string
+          enum: [beginner, intermediate, advanced, expert]
+          default: intermediate
+
+    UserSkillUpdate:
+      type: object
+      required: [proficiency]
+      properties:
+        proficiency:
+          type: string
+          enum: [beginner, intermediate, advanced, expert]
+
+    AdminStats:
+      type: object
+      properties:
+        users_total: { type: integer }
+        users_active_30d: { type: integer }
+        subscriptions_active: { type: integer }
+        subscriptions_paid: { type: integer }
+        jobs_total: { type: integer }
+        jobs_active: { type: integer }
+        jobs_expired: { type: integer }
+        matches_24h: { type: integer }
+        matches_total: { type: integer }
+        revenue_ngwee_30d: { type: integer }
+        revenue_ngwee_total: { type: integer }
+
+    AdminUserRow:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        phone: { type: string }
+        full_name: { type: string }
+        location: { type: string }
+        subscription_tier: { type: string, enum: [mwana, mwezi, bwino] }
+        role: { type: string, enum: [user, superadmin] }
+        matches_used: { type: integer }
+        matches_limit: { type: integer }
+        created_at: { type: string, format: date-time }
+
+    AdminUserList:
+      type: object
+      properties:
+        users: { type: array, items: { $ref: '#/components/schemas/AdminUserRow' } }
+        total: { type: integer }
+        page: { type: integer }
+        per_page: { type: integer }
+        pages: { type: integer }
+
+    AdminJobRow:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        company: { type: string }
+        location: { type: string }
+        source: { type: string, enum: [manual, scraper, ocr, partner] }
+        quality_score: { type: integer }
+        is_active: { type: boolean }
+        closing_date: { type: string, format: date }
+        posted_at: { type: string, format: date-time }
+
+    AdminJobList:
+      type: object
+      properties:
+        jobs: { type: array, items: { $ref: '#/components/schemas/AdminJobRow' } }
+        total: { type: integer }
+        page: { type: integer }
+        per_page: { type: integer }
+        pages: { type: integer }
+
+    BulkDeactivateRequest:
+      type: object
+      properties:
+        job_ids: { type: array, items: { type: string, format: uuid }, maxItems: 500 }
+        expired_only: { type: boolean, default: false }
+
+    BulkDeactivateResponse:
+      type: object
+      properties:
+        deactivated: { type: integer }
+
+    AdminPaymentRow:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        user_phone: { type: string }
+        amount: { type: integer, description: "ngwee" }
+        currency: { type: string }
+        payment_method: { type: string }
+        provider: { type: string }
+        status: { type: string }
+        created_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time }
+
+    AdminPaymentList:
+      type: object
+      properties:
+        payments: { type: array, items: { $ref: '#/components/schemas/AdminPaymentRow' } }
+        total: { type: integer }
+        page: { type: integer }
+        per_page: { type: integer }
+        pages: { type: integer }
+        total_completed_ngwee: { type: integer }
+
     CVUploadResponse:
       type: object
       properties:
@@ -266,6 +417,173 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/UserProfile' }
+    delete:
+      operationId: deleteProfile
+      summary: Hard-delete the caller's account and cascade-related rows
+      tags: [Profile]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProfileDeleted' }
+
+  /profile/preferences:
+    get:
+      operationId: getPreferences
+      tags: [Profile]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserPreferences' }
+    patch:
+      operationId: updatePreferences
+      tags: [Profile]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserPreferencesUpdate' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserPreferences' }
+
+  /profile/skills:
+    get:
+      operationId: listSkills
+      tags: [Profile]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserSkillsList' }
+    post:
+      operationId: addSkill
+      tags: [Profile]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserSkillCreate' }
+      responses:
+        '201':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserSkillsList' }
+
+  /profile/skills/{name}:
+    parameters:
+      - in: path
+        name: name
+        required: true
+        schema: { type: string }
+    patch:
+      operationId: updateSkill
+      tags: [Profile]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserSkillUpdate' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserSkillsList' }
+        '404': { description: Skill not on profile }
+    delete:
+      operationId: removeSkill
+      tags: [Profile]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserSkillsList' }
+        '404': { description: Skill not found }
+
+  /admin/stats:
+    get:
+      operationId: adminStats
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminStats' }
+        '403': { description: Superadmin only }
+
+  /admin/users:
+    get:
+      operationId: adminListUsers
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, default: 25 } }
+        - { name: search, in: query, schema: { type: string } }
+        - { name: tier, in: query, schema: { type: string, enum: [mwana, mwezi, bwino] } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminUserList' }
+        '403': { description: Superadmin only }
+
+  /admin/jobs:
+    get:
+      operationId: adminListJobs
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, default: 25 } }
+        - { name: expired, in: query, schema: { type: boolean } }
+        - { name: is_active, in: query, schema: { type: boolean } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminJobList' }
+        '403': { description: Superadmin only }
+
+  /admin/jobs/bulk-deactivate:
+    post:
+      operationId: adminBulkDeactivateJobs
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BulkDeactivateRequest' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BulkDeactivateResponse' }
+        '403': { description: Superadmin only }
+
+  /admin/payments:
+    get:
+      operationId: adminListPayments
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, default: 25 } }
+        - { name: status, in: query, schema: { type: string, enum: [pending, completed, failed, refunded] } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminPaymentList' }
+        '403': { description: Superadmin only }
 
   /cv/upload:
     post:

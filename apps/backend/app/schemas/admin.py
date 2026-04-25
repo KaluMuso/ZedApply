@@ -1,0 +1,89 @@
+"""Schemas for admin endpoints."""
+from datetime import datetime
+from typing import Optional
+from pydantic import BaseModel, Field
+
+
+class AdminStats(BaseModel):
+    users_total: int = 0
+    users_active_30d: int = 0
+    subscriptions_active: int = 0
+    subscriptions_paid: int = 0
+    jobs_total: int = 0
+    jobs_active: int = 0
+    jobs_expired: int = 0
+    matches_24h: int = 0
+    matches_total: int = 0
+    revenue_ngwee_30d: int = 0
+    revenue_ngwee_total: int = 0
+
+
+class AdminUserRow(BaseModel):
+    id: str
+    phone: str
+    full_name: Optional[str] = None
+    location: Optional[str] = None
+    subscription_tier: str = "mwana"
+    role: str = "user"
+    matches_used: int = 0
+    matches_limit: int = 0
+    created_at: Optional[datetime] = None
+
+
+class AdminUserList(BaseModel):
+    users: list[AdminUserRow]
+    total: int
+    page: int
+    per_page: int
+    pages: int
+
+
+class AdminJobRow(BaseModel):
+    id: str
+    title: str
+    company: Optional[str] = None
+    location: Optional[str] = None
+    source: str
+    quality_score: int = 0
+    is_active: bool = True
+    closing_date: Optional[str] = None
+    posted_at: Optional[datetime] = None
+
+
+class AdminJobList(BaseModel):
+    jobs: list[AdminJobRow]
+    total: int
+    page: int
+    per_page: int
+    pages: int
+
+
+class BulkDeactivateRequest(BaseModel):
+    job_ids: list[str] = Field(default_factory=list, max_length=500)
+    expired_only: bool = False
+
+
+class BulkDeactivateResponse(BaseModel):
+    deactivated: int
+
+
+class AdminPaymentRow(BaseModel):
+    id: str
+    user_id: str
+    user_phone: Optional[str] = None
+    amount: int
+    currency: str = "ZMW"
+    payment_method: str
+    provider: Optional[str] = None
+    status: str
+    created_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+
+class AdminPaymentList(BaseModel):
+    payments: list[AdminPaymentRow]
+    total: int
+    page: int
+    per_page: int
+    pages: int
+    total_completed_ngwee: int = 0
