@@ -47,6 +47,7 @@ async def get_profile(
         skills=skills,
         cv_uploaded=cv_uploaded,
         subscription_tier=user.get("subscription_tier", "mwana"),
+        role=user.get("role", "user"),
     )
 
 

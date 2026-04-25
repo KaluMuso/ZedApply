@@ -11,6 +11,7 @@ class UserProfile(BaseModel):
     skills: list[str] = []
     cv_uploaded: bool = False
     subscription_tier: str = "mwana"
+    role: str = "user"
 
 class UserProfileUpdate(BaseModel):
     full_name: Optional[str] = Field(None, max_length=255)

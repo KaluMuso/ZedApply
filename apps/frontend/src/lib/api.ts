@@ -79,11 +79,22 @@ export interface UserProfile {
   skills: string[];
   cv_uploaded: boolean;
   subscription_tier: string;
+  role?: string;
+  location?: string | null;
+  years_experience?: number;
 }
 
 export const profile = {
   get: (token: string) => apiFetch<UserProfile>("/profile", { token }),
-  update: (token: string, data: Partial<UserProfile>) =>
+  update: (
+    token: string,
+    data: {
+      full_name?: string | null;
+      email?: string | null;
+      location?: string | null;
+      years_experience?: number;
+    }
+  ) =>
     apiFetch<UserProfile>("/profile", {
       method: "PATCH",
       token,
@@ -213,4 +224,17 @@ export const subscription = {
 // ── Health ──
 export const health = {
   check: () => apiFetch<{ status: string }>("/health"),
+};
+
+// ── Cover letter ──
+export const coverLetter = {
+  generate: (token: string, jobId: string, tone?: "formal" | "friendly" | "confident") =>
+    apiFetch<{ letter: string; word_count: number; tone: string; document_id: string }>(
+      "/cover-letter/generate",
+      {
+        method: "POST",
+        token,
+        body: JSON.stringify({ job_id: jobId, tone: tone || "formal" }),
+      }
+    ),
 };

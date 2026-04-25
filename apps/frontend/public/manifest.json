@@ -1,0 +1,18 @@
+{
+  "name": "Zed CV",
+  "short_name": "Zed CV",
+  "description": "AI-powered job matching for Zambia",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#166534",
+  "lang": "en",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
