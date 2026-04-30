@@ -10,7 +10,7 @@ class UserProfile(BaseModel):
     years_experience: int = 0
     skills: list[str] = []
     cv_uploaded: bool = False
-    subscription_tier: str = "mwana"
+    subscription_tier: str = "free"
     role: str = "user"
 
 class UserProfileUpdate(BaseModel):

@@ -22,6 +22,8 @@ app.add_middleware(
         "https://zed-cv.vercel.app",
         "https://www.zedcv.com",
         "https://zedcv.com",
+        "https://vergeo.company",
+        "https://www.vergeo.company",
     ],
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
 )

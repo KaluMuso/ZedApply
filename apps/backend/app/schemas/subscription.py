@@ -4,9 +4,9 @@ from typing import Optional
 from enum import Enum
 
 class SubscriptionTier(str, Enum):
-    mwana = "mwana"
-    mwezi = "mwezi"
-    bwino = "bwino"
+    free = "free"
+    starter = "starter"
+    professional = "professional"
 
 class PaymentMethod(str, Enum):
     mtn_money = "mtn_money"

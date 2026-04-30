@@ -117,7 +117,7 @@ function UsersTab({ token }: { token: string }) {
                     <TableCell>{u.full_name || <span className="text-muted-foreground">—</span>}</TableCell>
                     <TableCell className="font-mono text-xs">{u.phone}</TableCell>
                     <TableCell>
-                      <Badge variant={u.subscription_tier === "mwana" ? "secondary" : "default"}>
+                      <Badge variant={u.subscription_tier === "free" ? "secondary" : "default"}>
                         {u.subscription_tier}
                       </Badge>
                     </TableCell>

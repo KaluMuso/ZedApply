@@ -1,4 +1,4 @@
-"""Cover letter generation routes — Bwino tier or superadmin."""
+"""Cover letter generation routes — Professional tier or superadmin."""
 from typing import Literal, Optional
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -41,10 +41,10 @@ async def generate(
             .single()
             .execute()
         )
-        if not sub.data or sub.data["tier"] != "bwino":
+        if not sub.data or sub.data["tier"] != "professional":
             raise HTTPException(
                 status_code=403,
-                detail="Cover letter generation requires the Bwino plan (K199/mo). "
+                detail="Cover letter generation requires the Professional plan (K250/mo). "
                        "Upgrade at zedcv.com/pricing",
             )
 

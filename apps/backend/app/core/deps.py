@@ -56,8 +56,20 @@ def is_superadmin(user: dict) -> bool:
     return user.get("role") == "superadmin"
 
 
+def is_admin_or_superadmin(user: dict) -> bool:
+    """Check if user has admin-level access."""
+    return user.get("role") in {"admin", "superadmin"}
+
+
 async def require_superadmin(current_user: dict = Depends(get_current_user)) -> dict:
     """Dependency that 403s if the caller is not a superadmin."""
     if not is_superadmin(current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superadmin only")
+    return current_user
+
+
+async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
+    """Dependency that 403s if the caller is not admin or superadmin."""
+    if not is_admin_or_superadmin(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
     return current_user

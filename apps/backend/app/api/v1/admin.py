@@ -5,7 +5,7 @@ mirrors this check, but the API enforces it as the source of truth.
 """
 import math
 from fastapi import APIRouter, Depends, HTTPException, Query
-from app.core.deps import get_supabase, require_superadmin
+from app.core.deps import get_supabase, require_admin
 from app.schemas.admin import (
     AdminStats,
     AdminUserRow,
@@ -18,7 +18,7 @@ from app.schemas.admin import (
     AdminPaymentList,
 )
 
-router = APIRouter(prefix="/admin", tags=["Admin"], dependencies=[Depends(require_superadmin)])
+router = APIRouter(prefix="/admin", tags=["Admin"], dependencies=[Depends(require_admin)])
 
 
 @router.get("/stats", response_model=AdminStats)
@@ -76,7 +76,7 @@ async def list_users(
                 phone=u["phone"],
                 full_name=u.get("full_name"),
                 location=u.get("location"),
-                subscription_tier=u.get("subscription_tier") or "mwana",
+                subscription_tier=u.get("subscription_tier") or "free",
                 role=u.get("role") or "user",
                 matches_used=sub.get("matches_used", 0),
                 matches_limit=sub.get("matches_limit", 0),
@@ -211,3 +211,48 @@ async def list_payments(
         pages=pages,
         total_completed_ngwee=total_completed,
     )
+
+
+@router.patch("/users/{user_id}/role")
+async def update_user_role(
+    user_id: str,
+    body: dict,
+    supabase=Depends(get_supabase),
+):
+    role = body.get("role")
+    if role not in {"user", "admin", "superadmin"}:
+        raise HTTPException(status_code=422, detail="role must be one of: user, admin, superadmin")
+    res = supabase.table("users").update({"role": role}).eq("id", user_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"id": user_id, "role": role}
+
+
+@router.post("/jobs")
+async def create_admin_job(body: dict, supabase=Depends(get_supabase)):
+    required = {"title", "description", "source"}
+    missing = [k for k in required if not body.get(k)]
+    if missing:
+        raise HTTPException(status_code=422, detail=f"Missing required fields: {', '.join(missing)}")
+    res = supabase.table("jobs").insert(body).execute()
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Failed to create job")
+    return res.data[0]
+
+
+@router.patch("/jobs/{job_id}")
+async def update_admin_job(job_id: str, body: dict, supabase=Depends(get_supabase)):
+    if not body:
+        raise HTTPException(status_code=422, detail="No fields to update")
+    res = supabase.table("jobs").update(body).eq("id", job_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return res.data[0]
+
+
+@router.delete("/jobs/{job_id}")
+async def delete_admin_job(job_id: str, supabase=Depends(get_supabase)):
+    res = supabase.table("jobs").delete().eq("id", job_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"deleted": True, "id": job_id}

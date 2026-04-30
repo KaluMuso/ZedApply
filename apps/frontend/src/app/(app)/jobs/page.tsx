@@ -45,6 +45,7 @@ function JobsPageInner() {
   const { token, isAuthenticated } = useAuth();
   const [jobsList, setJobsList] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [location, setLocation] = useState<string>("all");
   const locParam = location === "all" ? "" : location;
@@ -58,6 +59,7 @@ function JobsPageInner() {
 
   const fetchJobs = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await jobsApi.list({
         page,
@@ -66,8 +68,10 @@ function JobsPageInner() {
       });
       setJobsList(res.jobs);
       setTotalPages(res.pages);
-    } catch {
+    } catch (err) {
       setJobsList([]);
+      setError(err instanceof Error ? err.message : "Failed to load jobs. Please try again.");
+      console.error("Jobs fetch error:", err);
     } finally {
       setLoading(false);
     }
@@ -228,6 +232,15 @@ function JobsPageInner() {
           </div>
         </div>
       </form>
+
+      {error && (
+        <div className="text-center py-8 bg-red-50 rounded-xl border border-red-200 mb-4">
+          <p className="text-red-600 text-sm">{error}</p>
+          <button onClick={fetchJobs} className="mt-2 text-sm text-brand-600 underline">
+            Retry
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <JobListSkeleton n={view === "list" ? 4 : 6} />

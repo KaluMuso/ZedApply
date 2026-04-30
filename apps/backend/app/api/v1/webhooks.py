@@ -43,7 +43,7 @@ async def whatsapp_webhook(request: Request, supabase=Depends(get_supabase)):
         user = supabase.table("users").select("id, subscription_tier").eq("phone", phone).limit(1).execute()
         if user.data:
             tier = user.data[0]["subscription_tier"]
-            info = {"mwana": "Mwana (Free) - 5 matches/month", "mwezi": "Mwezi (K79/mo) - 25 matches/month", "bwino": "Bwino (K199/mo) - Unlimited"}
+            info = {"free": "Free - 5 matches/month", "starter": "Starter (K125/mo) - 25 matches/month", "professional": "Professional (K250/mo) - 125 matches/month"}
             await send_whatsapp_message(phone, f"*Your Plan:* {info.get(tier, tier)}\n\nVisit zedcv.com/pricing to upgrade.")
     elif message_body.isdigit() and 1 <= int(message_body) <= 5:
         await send_whatsapp_message(phone, f"Opening job #{message_body} details...\nVisit zedcv.com/matches for full details.")
@@ -112,8 +112,8 @@ async def dpo_webhook(request: Request, supabase=Depends(get_supabase)):
 
         # Determine tier from payment amount (ngwee)
         amount_ngwee = payment["amount"]
-        new_tier = "mwezi" if amount_ngwee <= 10000 else "bwino"
-        new_limit = 25 if new_tier == "mwezi" else 999999
+        new_tier = "starter" if amount_ngwee <= 12500 else "professional"
+        new_limit = 25 if new_tier == "starter" else 125
         now = datetime.now(timezone.utc)
 
         # Upgrade subscription
@@ -134,7 +134,7 @@ async def dpo_webhook(request: Request, supabase=Depends(get_supabase)):
         # Send WhatsApp confirmation
         user = supabase.table("users").select("phone").eq("id", user_id).single().execute()
         if user.data:
-            tier_name = "Mwezi (K79/mo)" if new_tier == "mwezi" else "Bwino (K199/mo)"
+            tier_name = "Starter (K125/mo)" if new_tier == "starter" else "Professional (K250/mo)"
             try:
                 await send_whatsapp_message(
                     user.data["phone"],

@@ -15,27 +15,33 @@ import { motion, useReducedMotion } from "framer-motion";
 
 const planRows = [
   {
-    tier: "mwana" as const,
+    tier: "free" as const,
     features: [
       { t: "5 job matches / month", ok: true },
       { t: "Basic WhatsApp alerts", ok: true },
-      { t: "AI cover letters", ok: false },
+      { t: "Basic CV analysis", ok: true },
+      { t: "AI-generated cover letters", ok: false },
     ],
   },
   {
-    tier: "mwezi" as const,
+    tier: "starter" as const,
     features: [
-      { t: "30 matches, cover help", ok: true },
+      { t: "25 job matches per month", ok: true },
+      { t: "AI-generated cover letters", ok: true },
+      { t: "Downloadable CV from profile", ok: true },
       { t: "Priority in queue", ok: true },
-      { t: "Truly unlimited", ok: false },
+      { t: "WhatsApp + web dashboard", ok: true },
     ],
   },
   {
-    tier: "bwino" as const,
+    tier: "professional" as const,
     features: [
-      { t: "Generous “unlimited” (fair use)", ok: true },
-      { t: "All features + insights", ok: true },
+      { t: "125 job matches per month", ok: true },
+      { t: "Tailored CVs for each job", ok: true },
+      { t: "AI cover letter generation", ok: true },
+      { t: "Career coaching insights", ok: true },
       { t: "Priority support", ok: true },
+      { t: "Everything in Starter", ok: true },
     ],
   },
 ] as const;
@@ -59,12 +65,12 @@ export default function PricingPage() {
   const priceLabel = (k: (typeof planRows)[number]["tier"]) => TIER_INFO[k].priceLabel;
 
   const cta = (k: (typeof planRows)[number]["tier"]) => {
-    if (k === "mwana") {
+    if (k === "free") {
       if (!isAuthenticated) {
         window.location.href = "/auth";
         return;
       }
-      toast("You are already on the free Mwana plan.");
+      toast("You are already on the Free plan.");
       return;
     }
     if (!isAuthenticated) {
@@ -98,13 +104,13 @@ export default function PricingPage() {
     <div className="max-w-6xl mx-auto">
       <h1 className="text-3xl sm:text-4xl font-bold text-center">ZMW pricing, simple tiers</h1>
       <p className="text-center text-muted-foreground text-base mt-2">
-        Mwana, Mwezi, Bwino. Monthly billing in kwacha — change or cancel any time.
+        Free, Starter, Professional. Monthly billing in kwacha — change or cancel any time.
       </p>
 
       <div className="mt-8 grid sm:grid-cols-3 gap-4 sm:gap-5">
         {planRows.map((p) => {
           const info = TIER_INFO[p.tier];
-          const isHighlight = p.tier === "mwezi";
+          const isHighlight = p.tier === "starter";
           return (
             <motion.div
               key={p.tier}
@@ -119,7 +125,7 @@ export default function PricingPage() {
                   <CardDescription>{info.bemba}</CardDescription>
                   <p className="pt-2 text-3xl font-bold">
                     {priceLabel(p.tier)}
-                    <span className="text-sm font-normal text-muted-foreground"> {p.tier === "mwana" ? "forever" : "/ month"}</span>
+                    <span className="text-sm font-normal text-muted-foreground"> {p.tier === "free" ? "forever" : "/ month"}</span>
                   </p>
                 </CardHeader>
                 <CardContent className="flex-1">
@@ -142,7 +148,7 @@ export default function PricingPage() {
                     onClick={() => cta(p.tier)}
                     variant={isHighlight ? "default" : "outline"}
                   >
-                    {p.tier === "mwana" ? "Get started" : p.tier === "mwezi" ? "Subscribe" : "Go premium"}
+                    {p.tier === "free" ? "Get Started" : p.tier === "starter" ? "Subscribe" : "Go Premium"}
                   </Button>
                 </CardFooter>
               </Card>

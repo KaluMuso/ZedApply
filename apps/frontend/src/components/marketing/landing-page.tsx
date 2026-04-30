@@ -245,15 +245,15 @@ export function LandingPage() {
           Bemba names. Honest ZMW pricing. Full comparison on the pricing page.
         </p>
         <div className="grid sm:grid-cols-3 gap-4 max-w-5xl mx-auto">
-          {(["mwana", "mwezi", "bwino"] as const).map((key) => {
+          {(["free", "starter", "professional"] as const).map((key) => {
             const t = TIER_INFO[key];
             return (
               <Card
                 key={key}
-                className={cn("border-2", key === "mwezi" && "ring-2 ring-primary shadow-lg")}
+                className={cn("border-2", key === "starter" && "ring-2 ring-primary shadow-lg")}
               >
                 <CardHeader>
-                  {key === "mwezi" && <span className="text-xs font-medium text-primary">Most popular</span>}
+                  {key === "starter" && <span className="text-xs font-medium text-primary">Most popular</span>}
                   <CardTitle>{t.name}</CardTitle>
                   <CardDescription>{t.bemba}</CardDescription>
                 </CardHeader>
@@ -261,7 +261,7 @@ export function LandingPage() {
                   <p className="text-2xl font-bold text-foreground">
                     {t.priceLabel}{" "}
                     <span className="text-sm font-normal text-muted-foreground">
-                      {key === "mwana" ? "forever" : "/ month"}
+                      {key === "free" ? "forever" : "/ month"}
                     </span>
                   </p>
                 </CardContent>

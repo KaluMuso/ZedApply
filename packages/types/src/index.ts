@@ -2,7 +2,7 @@
  * Shared types for Zed CV — matches OpenAPI spec.
  */
 
-export type SubscriptionTier = "mwana" | "mwezi" | "bwino";
+export type SubscriptionTier = "free" | "starter" | "professional";
 export type JobSource = "manual" | "scraper" | "ocr" | "partner";
 export type SubscriptionStatus = "active" | "expired" | "cancelled" | "past_due";
 export type PaymentMethodType = "mtn_money" | "airtel_money";
@@ -50,7 +50,7 @@ export interface Subscription {
   current_period_start: string; current_period_end: string | null;
   matches_used: number; matches_limit: number;
 }
-export interface PaymentInitiate { tier: Exclude<SubscriptionTier, "mwana">; payment_method: PaymentMethodType; phone: string; }
+export interface PaymentInitiate { tier: Exclude<SubscriptionTier, "free">; payment_method: PaymentMethodType; phone: string; }
 export interface PaymentInitiateResponse { transaction_token: string; payment_url: string; status: "pending" | "redirect"; }
 
 export interface CoverLetterRequest { job_id: string; tone?: CoverLetterTone; }
@@ -60,7 +60,7 @@ export interface HealthCheck { status: "healthy" | "degraded" | "unhealthy"; ver
 export interface ProblemDetail { type: string; title: string; status: number; detail?: string; }
 
 export const PRICING = {
-  mwana: { price_zmw: 0, matches_limit: 5, label: "Mwana (Free)" },
-  mwezi: { price_zmw: 7900, matches_limit: 25, label: "Mwezi" },
-  bwino: { price_zmw: 19900, matches_limit: 999999, label: "Bwino" },
+  free: { price_zmw: 0, matches_limit: 5, label: "Free" },
+  starter: { price_zmw: 12500, matches_limit: 25, label: "Starter" },
+  professional: { price_zmw: 25000, matches_limit: 125, label: "Professional" },
 } as const;

@@ -21,7 +21,7 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
     profileApi
       .get(token)
       .then((p) => {
-        if (p.role === "superadmin") {
+        if (p.role === "superadmin" || p.role === "admin") {
           setOk(true);
         } else {
           router.replace("/");

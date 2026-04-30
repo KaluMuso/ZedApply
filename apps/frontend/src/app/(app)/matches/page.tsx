@@ -105,6 +105,7 @@ export default function MatchesPage() {
   const [data, setData] = useState<{ matches: MatchData[]; remaining_quota: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [runLoading, setRunLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [hidden, setHidden] = useState<Set<string>>(() => new Set());
   const reduce = useReducedMotion() ?? false;
 
@@ -122,6 +123,7 @@ export default function MatchesPage() {
       return;
     }
     setLoading(true);
+    setError(null);
     matchesApi
       .get(token)
       .then((d) => {
@@ -134,6 +136,7 @@ export default function MatchesPage() {
         if (isAuth) {
           router.push("/auth");
         } else {
+          setError(message);
           toast.error(message);
         }
       })
@@ -213,7 +216,14 @@ export default function MatchesPage() {
     return <div className="p-6 text-muted-foreground">Preparing your dashboard…</div>;
   }
   if (!data) {
-    return <EmptyState title="Couldn’t load your matches" description="Try signing in again from the home page." />;
+    return (
+      <div className="space-y-3">
+        <EmptyState title="Couldn’t load your matches" description={error || "Try signing in again from the home page."} />
+        <div className="text-center">
+          <Button type="button" variant="outline" onClick={load}>Retry</Button>
+        </div>
+      </div>
+    );
   }
 
   const list = data.matches

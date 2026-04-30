@@ -59,7 +59,7 @@ components:
         years_experience: { type: integer, minimum: 0 }
         skills: { type: array, items: { type: string } }
         cv_uploaded: { type: boolean }
-        subscription_tier: { type: string, enum: [mwana, mwezi, bwino] }
+        subscription_tier: { type: string, enum: [free, starter, professional] }
         role: { type: string, enum: [user, superadmin] }
         created_at: { type: string, format: date-time }
 
@@ -150,7 +150,7 @@ components:
         phone: { type: string }
         full_name: { type: string }
         location: { type: string }
-        subscription_tier: { type: string, enum: [mwana, mwezi, bwino] }
+        subscription_tier: { type: string, enum: [free, starter, professional] }
         role: { type: string, enum: [user, superadmin] }
         matches_used: { type: integer }
         matches_limit: { type: integer }
@@ -306,7 +306,7 @@ components:
       type: object
       properties:
         id: { type: string, format: uuid }
-        tier: { type: string, enum: [mwana, mwezi, bwino] }
+        tier: { type: string, enum: [free, starter, professional] }
         status: { type: string, enum: [active, expired, cancelled] }
         current_period_start: { type: string, format: date-time }
         current_period_end: { type: string, format: date-time }
@@ -317,7 +317,7 @@ components:
       type: object
       required: [tier, payment_method]
       properties:
-        tier: { type: string, enum: [mwezi, bwino] }
+        tier: { type: string, enum: [starter, professional] }
         payment_method: { type: string, enum: [mtn_money, airtel_money] }
         phone: { type: string, pattern: '^\+260[0-9]{9}$' }
 
@@ -528,7 +528,7 @@ paths:
         - { name: page, in: query, schema: { type: integer, default: 1 } }
         - { name: per_page, in: query, schema: { type: integer, default: 25 } }
         - { name: search, in: query, schema: { type: string } }
-        - { name: tier, in: query, schema: { type: string, enum: [mwana, mwezi, bwino] } }
+        - { name: tier, in: query, schema: { type: string, enum: [free, starter, professional] } }
       responses:
         '200':
           content:

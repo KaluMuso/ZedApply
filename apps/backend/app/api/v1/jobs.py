@@ -13,7 +13,7 @@ router = APIRouter(prefix="/jobs", tags=["Jobs"])
 async def list_jobs(
     page: int = Query(1, ge=1), per_page: int = Query(20, ge=1, le=50),
     location: str | None = None, search: str | None = None,
-    user_id: str = Depends(get_current_user_id), supabase=Depends(get_supabase),
+    supabase=Depends(get_supabase),
 ):
     query = supabase.table("jobs").select("*, job_skills(skills(name))", count="exact").eq("is_active", True).order("posted_at", desc=True)
     if location:
@@ -36,7 +36,7 @@ async def list_jobs(
 
 
 @router.get("/{job_id}", response_model=Job)
-async def get_job(job_id: str, user_id: str = Depends(get_current_user_id), supabase=Depends(get_supabase)):
+async def get_job(job_id: str, supabase=Depends(get_supabase)):
     result = supabase.table("jobs").select("*, job_skills(skills(name))").eq("id", job_id).single().execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Job not found")

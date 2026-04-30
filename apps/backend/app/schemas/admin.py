@@ -23,7 +23,7 @@ class AdminUserRow(BaseModel):
     phone: str
     full_name: Optional[str] = None
     location: Optional[str] = None
-    subscription_tier: str = "mwana"
+    subscription_tier: str = "free"
     role: str = "user"
     matches_used: int = 0
     matches_limit: int = 0

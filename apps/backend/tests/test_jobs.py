@@ -4,10 +4,11 @@ from tests.conftest import FakeSupabaseQuery
 
 
 class TestJobList:
-    def test_list_jobs_unauthenticated(self, client):
-        """Job list requires auth."""
+    def test_list_jobs_unauthenticated(self, client, fake_supabase):
+        """Job list is public."""
+        fake_supabase.set_table("jobs", FakeSupabaseQuery(data=[], count=0))
         resp = client.get("/api/v1/jobs")
-        assert resp.status_code in (401, 403)
+        assert resp.status_code == 200
 
     def test_list_jobs_empty(self, client, auth_headers, fake_supabase):
         """Returns empty list when no jobs exist."""

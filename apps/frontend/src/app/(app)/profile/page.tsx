@@ -40,6 +40,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [sub, setSub] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ full_name: "", email: "", location: "", years: 0 });
   const [uploading, setUploading] = useState(false);
@@ -65,6 +66,7 @@ export default function ProfilePage() {
     }
     Promise.all([profileApi.get(token), subApi.get(token)])
       .then(([p, s]) => {
+        setError(null);
         setProfile(p);
         setZust(p);
         setSub(s);
@@ -75,7 +77,10 @@ export default function ProfilePage() {
           years: p.years_experience || 0,
         });
       })
-      .catch(() => setProfile(null))
+      .catch((err) => {
+        setProfile(null);
+        setError(err instanceof Error ? err.message : "Failed to load profile. Please try again.");
+      })
       .finally(() => setLoading(false));
 
     profileApi
@@ -213,11 +218,21 @@ export default function ProfilePage() {
     return <p className="text-sm text-muted-foreground py-8">Loading profile…</p>;
   }
   if (!profile) {
-    return <p className="text-sm text-destructive py-8">Could not load your profile. Try signing in again.</p>;
+    return (
+      <div className="text-center py-8 bg-red-50 rounded-xl border border-red-200">
+        <p className="text-red-600 text-sm">{error || "Could not load profile. Try signing in again."}</p>
+        <button
+          onClick={() => router.refresh()}
+          className="mt-2 text-sm text-brand-600 underline"
+        >
+          Retry
+        </button>
+      </div>
+    );
   }
 
-  const tkey = (profile.subscription_tier || "mwana") as keyof typeof TIER_INFO;
-  const tinfo = TIER_INFO[tkey] || TIER_INFO.mwana;
+  const tkey = (profile.subscription_tier || "free") as keyof typeof TIER_INFO;
+  const tinfo = TIER_INFO[tkey] || TIER_INFO.free;
   const usePct = sub
     ? Math.min(100, (sub.matches_used / Math.max(1, sub.matches_limit)) * 100)
     : 0;

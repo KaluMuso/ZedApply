@@ -50,7 +50,7 @@ def _build_profile(user_id: str, supabase) -> UserProfile:
         years_experience=user.get("years_experience", 0),
         skills=skills,
         cv_uploaded=cv_uploaded,
-        subscription_tier=user.get("subscription_tier", "mwana"),
+        subscription_tier=user.get("subscription_tier", "free"),
         role=user.get("role", "user"),
     )
 
