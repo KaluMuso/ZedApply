@@ -28,14 +28,12 @@ export default function AuthPage() {
 
   const fullPhone = `+260${phoneDigits.replace(/\s/g, "")}`;
 
-  // If the visitor is already signed in, send them to /matches.
-  // The flicker check (step !== "success") avoids stomping on the
-  // post-login welcome screen rendered just before this hook re-runs.
+  // Redirect if already authenticated
   useEffect(() => {
-    if (!authLoading && isAuthenticated && step !== "success") {
+    if (!authLoading && isAuthenticated) {
       router.replace("/matches");
     }
-  }, [authLoading, isAuthenticated, step, router]);
+  }, [authLoading, isAuthenticated, router]);
 
   // Resend countdown
   useEffect(() => {

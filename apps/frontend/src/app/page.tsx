@@ -5,6 +5,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Counter } from "@/components/ui/Counter";
 import { ScoreRing } from "@/components/ui/ScoreRing";
 import { ChevronMotif } from "@/components/ui/ChevronMotif";
+import { useScrollReveal } from "@/hooks/useScrollReveal";
 import { useAuth } from "@/lib/auth";
 
 const stats = [
@@ -57,9 +58,8 @@ const testimonials = [
 ];
 
 export default function HomePage() {
+  useScrollReveal();
   const { isAuthenticated } = useAuth();
-  const ctaHref = isAuthenticated ? "/matches" : "/auth";
-  const ctaLabel = isAuthenticated ? "Go to Dashboard" : "Get Started Free";
 
   return (
     <div>
@@ -80,7 +80,7 @@ export default function HomePage() {
         </div>
 
         <div className="relative z-10 max-w-[1280px] mx-auto px-6 pt-16 pb-20 md:pt-24 md:pb-28">
-          <div className="max-w-3xl">
+          <div className="max-w-3xl fade-up">
             <div className="eyebrow mb-4">AI-powered job matching</div>
             <h1
               className="font-display leading-[0.95] tracking-tight"
@@ -106,9 +106,15 @@ export default function HomePage() {
             </p>
 
             <div className="flex flex-col sm:flex-row gap-3 mt-8">
-              <Link href={ctaHref} className="btn btn-primary btn-lg">
-                {ctaLabel} <Icon name="arrowRight" size={16} />
-              </Link>
+              {isAuthenticated ? (
+                <Link href="/matches" className="btn btn-primary btn-lg">
+                  Go to Dashboard <Icon name="arrowRight" size={16} />
+                </Link>
+              ) : (
+                <Link href="/auth" className="btn btn-primary btn-lg">
+                  Get Started Free <Icon name="arrowRight" size={16} />
+                </Link>
+              )}
               <Link href="/pricing" className="btn btn-ghost btn-lg">
                 View Plans
               </Link>
@@ -225,7 +231,7 @@ export default function HomePage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {howItWorks.map((step, i) => (
-              <div key={step.title} className="card card-hover p-8">
+              <div key={step.title} className="card card-hover p-8 reveal" style={{ transitionDelay: `${i * 100}ms` }}>
                 <div
                   className="w-12 h-12 rounded-xl flex items-center justify-center mb-5"
                   style={{
@@ -292,8 +298,8 @@ export default function HomePage() {
                 relevance, skills overlap, location fit — so you can see where
                 you shine and where to grow.
               </p>
-              <Link href={ctaHref} className="btn btn-primary">
-                {isAuthenticated ? "Open dashboard" : "Try it free"} <Icon name="arrowRight" size={14} />
+              <Link href={isAuthenticated ? "/matches" : "/auth"} className="btn btn-primary">
+                {isAuthenticated ? "View your matches" : "Try it free"} <Icon name="arrowRight" size={14} />
               </Link>
             </div>
 
@@ -372,8 +378,8 @@ export default function HomePage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {testimonials.map((t) => (
-              <div key={t.name} className="card p-6">
+            {testimonials.map((t, i) => (
+              <div key={t.name} className="card p-6 reveal" style={{ transitionDelay: `${i * 100}ms` }}>
                 <div className="flex gap-1 mb-4">
                   {[1, 2, 3, 4, 5].map((s) => (
                     <Icon
@@ -472,7 +478,7 @@ export default function HomePage() {
                 jobs, faster.
               </p>
               <Link
-                href={ctaHref}
+                href={isAuthenticated ? "/matches" : "/auth"}
                 className="btn btn-lg"
                 style={{
                   background: "#faf7f2",
@@ -480,7 +486,7 @@ export default function HomePage() {
                   fontWeight: 600,
                 }}
               >
-                {ctaLabel} <Icon name="arrowRight" size={16} />
+                {isAuthenticated ? "Go to Dashboard" : "Get Started Free"} <Icon name="arrowRight" size={16} />
               </Link>
             </div>
           </div>

@@ -4,48 +4,18 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-import { profile as profileApi } from "@/lib/api";
 import { useTheme } from "@/components/ThemeProvider";
 import { Logo } from "@/components/ui/Logo";
 import { Icon } from "@/components/ui/Icon";
 import { Avatar } from "@/components/ui/Avatar";
 
-// Single in-memory cache so role lookup happens once per token across nav
-// re-renders. Reset whenever the token changes.
-let cachedRole: { token: string; role: string } | null = null;
-
 export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [role, setRole] = useState<string | null>(
-    cachedRole?.role ?? null
-  );
-  const { isAuthenticated, logout, user, token } = useAuth();
+  const { isAuthenticated, logout, user } = useAuth();
   const { dark, toggle } = useTheme();
   const pathname = usePathname();
-
-  useEffect(() => {
-    if (!token) {
-      setRole(null);
-      cachedRole = null;
-      return;
-    }
-    if (cachedRole?.token === token) {
-      setRole(cachedRole.role);
-      return;
-    }
-    profileApi
-      .get(token)
-      .then((p) => {
-        const r = p.role || "user";
-        cachedRole = { token, role: r };
-        setRole(r);
-      })
-      .catch(() => setRole("user"));
-  }, [token]);
-
-  const isAdmin = role === "superadmin" || role === "admin";
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 10);
@@ -147,15 +117,34 @@ export function Navbar() {
                       >
                         My Matches
                       </Link>
-                      {isAdmin && (
-                        <Link
-                          href="/admin"
-                          className="block px-4 py-2 text-sm hover:bg-[var(--bg-2)] transition-colors"
-                          style={{ color: "var(--copper-500)" }}
-                        >
-                          Admin Dashboard
-                        </Link>
-                      )}
+                      <hr style={{ borderColor: "var(--line)" }} className="my-1" />
+                      <Link
+                        href="/profile?tab=cv-generator"
+                        className="block px-4 py-2 text-sm hover:bg-[var(--bg-2)] transition-colors"
+                        style={{ color: "var(--ink-2)" }}
+                      >
+                        <span className="flex items-center gap-2">
+                          <Icon name="edit" size={13} /> CV Generator
+                        </span>
+                      </Link>
+                      <Link
+                        href="/profile?tab=cv-analysis"
+                        className="block px-4 py-2 text-sm hover:bg-[var(--bg-2)] transition-colors"
+                        style={{ color: "var(--ink-2)" }}
+                      >
+                        <span className="flex items-center gap-2">
+                          <Icon name="target" size={13} /> CV Analysis
+                        </span>
+                      </Link>
+                      <Link
+                        href="/admin"
+                        className="block px-4 py-2 text-sm hover:bg-[var(--bg-2)] transition-colors"
+                        style={{ color: "var(--ink-2)" }}
+                      >
+                        <span className="flex items-center gap-2">
+                          <Icon name="settings" size={13} /> Admin Dashboard
+                        </span>
+                      </Link>
                       <hr style={{ borderColor: "var(--line)" }} className="my-1" />
                       <button
                         onClick={logout}
@@ -234,16 +223,6 @@ export function Navbar() {
                     >
                       Profile
                     </Link>
-                    {isAdmin && (
-                      <Link
-                        href="/admin"
-                        onClick={() => setMenuOpen(false)}
-                        className="btn btn-ghost w-full"
-                        style={{ color: "var(--copper-500)" }}
-                      >
-                        Admin Dashboard
-                      </Link>
-                    )}
                     <button
                       onClick={() => {
                         logout();
