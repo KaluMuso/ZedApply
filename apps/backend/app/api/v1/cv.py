@@ -197,10 +197,10 @@ async def generate(
             .execute()
         )
         tier = (sub.data[0].get("tier") if sub.data else None) or "free"
-        if tier not in ("starter", "professional"):
+        if tier not in ("starter", "professional", "super_standard"):
             raise HTTPException(
                 status_code=403,
-                detail="Tailored CV generation requires the Starter or Professional plan. "
+                detail="Tailored CV generation requires the Starter or higher plan. "
                        "Upgrade at /pricing.",
             )
 

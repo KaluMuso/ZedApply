@@ -11,8 +11,8 @@ from app.schemas.subscription import (
 
 router = APIRouter(prefix="/subscription", tags=["Subscription"])
 
-TIER_LIMITS = {"free": 5, "starter": 25, "professional": 125}
-TIER_PRICES_NGWEE = {"starter": 12500, "professional": 25000}
+TIER_LIMITS = {"free": 5, "starter": 25, "professional": 125, "super_standard": 99999}
+TIER_PRICES_NGWEE = {"starter": 12500, "professional": 25000, "super_standard": 50000}
 
 
 @router.get("", response_model=Subscription)
@@ -50,7 +50,10 @@ async def initiate_payment(
 ):
     tier_value = body.tier.value if hasattr(body.tier, "value") else body.tier
     if tier_value not in TIER_PRICES_NGWEE:
-        raise HTTPException(status_code=422, detail="Invalid tier. Choose starter or professional.")
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid tier. Choose starter, professional, or super_standard.",
+        )
 
     amount_ngwee = TIER_PRICES_NGWEE[tier_value]
 
@@ -86,7 +89,11 @@ async def initiate_payment(
 
     payment_id = payment_result.data[0]["id"]
     amount_zmw = amount_ngwee / 100
-    tier_name = "Starter" if tier_value == "starter" else "Professional"
+    tier_name = {
+        "starter": "Starter",
+        "professional": "Professional",
+        "super_standard": "Super Standard",
+    }.get(tier_value, "Plan")
 
     # Route to the appropriate payment provider
     if provider == "lenco":

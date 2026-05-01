@@ -10,7 +10,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "sonner";
 import { formatDate } from "./shared";
 
-type Tier = "free" | "starter" | "professional";
+import type { SubscriptionTier } from "@/lib/api";
+
+type Tier = SubscriptionTier;
 
 export function UsersTab({ token }: { token: string }) {
   const [data, setData] = useState<AdminUserRow[]>([]);
@@ -107,6 +109,7 @@ export function UsersTab({ token }: { token: string }) {
                         <option value="free">free</option>
                         <option value="starter">starter</option>
                         <option value="professional">professional</option>
+                        <option value="super_standard">super_standard</option>
                       </select>
                     </TableCell>
                     <TableCell className="tabular-nums">{u.matches_used}/{u.matches_limit}</TableCell>

@@ -25,8 +25,9 @@ from app.schemas.admin import (
 )
 
 # Default match quotas per tier — kept here so tier changes update the cap
-# in lockstep without a separate config indirection.
-TIER_MATCH_LIMITS = {"free": 5, "starter": 25, "professional": 125}
+# in lockstep without a separate config indirection. super_standard uses a
+# high sentinel that the UI renders as "Unlimited".
+TIER_MATCH_LIMITS = {"free": 5, "starter": 25, "professional": 125, "super_standard": 99999}
 
 router = APIRouter(prefix="/admin", tags=["Admin"], dependencies=[Depends(require_admin)])
 
@@ -321,7 +322,7 @@ async def list_matches(
 async def list_subscriptions(
     page: int = Query(1, ge=1),
     per_page: int = Query(25, ge=1, le=100),
-    tier: str | None = Query(None, pattern="^(free|starter|professional)$"),
+    tier: str | None = Query(None, pattern="^(free|starter|professional|super_standard)$"),
     status: str | None = Query(None, pattern="^(active|expired|cancelled|past_due)$"),
     supabase=Depends(get_supabase),
 ):
@@ -332,7 +333,7 @@ async def list_subscriptions(
         .eq("status", "active")
         .execute()
     )
-    counts = {"free": 0, "starter": 0, "professional": 0}
+    counts = {"free": 0, "starter": 0, "professional": 0, "super_standard": 0}
     for row in breakdown_res.data or []:
         t = row.get("tier")
         if t in counts:
@@ -341,6 +342,7 @@ async def list_subscriptions(
         free=counts["free"],
         starter=counts["starter"],
         professional=counts["professional"],
+        super_standard=counts["super_standard"],
         total_active=sum(counts.values()),
     )
 

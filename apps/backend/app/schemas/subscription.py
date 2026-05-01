@@ -7,6 +7,7 @@ class SubscriptionTier(str, Enum):
     free = "free"
     starter = "starter"
     professional = "professional"
+    super_standard = "super_standard"
 
 class PaymentMethod(str, Enum):
     mtn_money = "mtn_money"

@@ -247,10 +247,17 @@ export interface AdminMatchList {
   pages: number;
 }
 
+export type SubscriptionTier =
+  | "free"
+  | "starter"
+  | "professional"
+  | "super_standard";
+
 export interface AdminTierBreakdown {
   free: number;
   starter: number;
   professional: number;
+  super_standard: number;
   total_active: number;
 }
 
@@ -258,7 +265,7 @@ export interface AdminSubscriptionRow {
   user_id: string;
   user_phone: string | null;
   full_name: string | null;
-  tier: "free" | "starter" | "professional";
+  tier: SubscriptionTier;
   status: string;
   matches_used: number;
   matches_limit: number;
@@ -355,7 +362,7 @@ export const admin = {
   updateSubscription: (
     token: string,
     userId: string,
-    tier: "free" | "starter" | "professional"
+    tier: SubscriptionTier
   ) =>
     apiFetch<AdminSubscriptionRow>(
       `/admin/subscriptions/${encodeURIComponent(userId)}`,
@@ -552,4 +559,22 @@ export const coverLetter = {
         body: JSON.stringify({ job_id: jobId, tone: tone || "formal" }),
       }
     ),
+};
+
+// ── Interview prep ──
+export interface InterviewPrepResult {
+  content: string;
+  word_count: number;
+  job_title: string;
+  company: string | null;
+  cached: boolean;
+}
+
+export const interviewPrep = {
+  generate: (token: string, jobId: string) =>
+    apiFetch<InterviewPrepResult>("/interview-prep/generate", {
+      method: "POST",
+      token,
+      body: JSON.stringify({ job_id: jobId }),
+    }),
 };

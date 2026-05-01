@@ -10,6 +10,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Avatar } from "@/components/ui/Avatar";
 import { Counter } from "@/components/ui/Counter";
 import Link from "next/link";
+import { InterviewPrepModal } from "./_components/InterviewPrepModal";
 
 export default function MatchesPage() {
   const router = useRouter();
@@ -22,6 +23,7 @@ export default function MatchesPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [scoreFilter, setScoreFilter] = useState(0);
   const [sort, setSort] = useState<"score" | "closing">("score");
+  const [prepFor, setPrepFor] = useState<MatchData | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -286,6 +288,13 @@ export default function MatchesPage() {
                     Apply now <Icon name="external" size={13} />
                   </button>
                   <button
+                    onClick={() => setPrepFor(match)}
+                    className="btn btn-accent btn-sm w-40"
+                    title="Generate interview prep notes for this role"
+                  >
+                    Interview Call <Icon name="zap" size={13} />
+                  </button>
+                  <button
                     onClick={() =>
                       setExpanded(expanded === match.id ? null : match.id)
                     }
@@ -396,6 +405,17 @@ export default function MatchesPage() {
             </article>
           ))}
         </div>
+      )}
+
+      {token && prepFor && (
+        <InterviewPrepModal
+          open={!!prepFor}
+          onClose={() => setPrepFor(null)}
+          token={token}
+          jobId={prepFor.job.id}
+          jobTitle={prepFor.job.title}
+          company={prepFor.job.company}
+        />
       )}
 
       {/* Upgrade CTA */}

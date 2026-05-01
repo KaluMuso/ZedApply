@@ -49,23 +49,28 @@ export function OverviewTab({
       )}
 
       {breakdown && (
-        <div className="mt-3 grid sm:grid-cols-3 gap-3">
+        <div className="mt-3 grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard
-            label="Free tier"
+            label="Free"
             value={breakdown.free.toLocaleString()}
             hint={`${Math.round(
               (breakdown.free / Math.max(breakdown.total_active, 1)) * 100
             )}% of active`}
           />
           <StatCard
-            label="Starter tier"
+            label="Starter"
             value={breakdown.starter.toLocaleString()}
-            hint="K79/mo"
+            hint="K125/mo"
           />
           <StatCard
-            label="Professional tier"
+            label="Professional"
             value={breakdown.professional.toLocaleString()}
-            hint="K199/mo"
+            hint="K250/mo"
+          />
+          <StatCard
+            label="Super Standard"
+            value={breakdown.super_standard.toLocaleString()}
+            hint="K500/mo · unlimited"
           />
         </div>
       )}

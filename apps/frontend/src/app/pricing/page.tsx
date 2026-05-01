@@ -52,12 +52,27 @@ const plans: Plan[] = [
     period: "/month",
     tier: "professional",
     features: [
-      "Unlimited job matches",
+      "125 job matches per month",
       "AI cover letter generation",
       "Career coaching insights",
       "Priority support",
       "CV rewriting per role",
       "Everything in Starter",
+    ],
+    highlight: false,
+  },
+  {
+    name: "Super Standard",
+    subtitle: "Top tier",
+    price: "K500",
+    period: "/month",
+    tier: "super_standard",
+    features: [
+      "Unlimited job matches",
+      "Interview prep notes (Interview Call)",
+      "Everything in Professional",
+      "Priority delivery",
+      "Concierge onboarding",
     ],
     highlight: false,
   },
@@ -82,15 +97,24 @@ const faqs = [
   },
 ];
 
-const comparisonFeatures = [
-  { name: "Job matches / month", free: "5", starter: "25", pro: "Unlimited" },
-  { name: "WhatsApp alerts", free: true, starter: true, pro: true },
-  { name: "CV analysis", free: "Basic", starter: "Advanced", pro: "Advanced" },
-  { name: "Tailored CVs", free: false, starter: true, pro: true },
-  { name: "Cover letters", free: false, starter: false, pro: true },
-  { name: "Score breakdowns", free: false, starter: true, pro: true },
-  { name: "CV rewriting per role", free: false, starter: false, pro: true },
-  { name: "Priority support", free: false, starter: false, pro: true },
+interface ComparisonFeature {
+  name: string;
+  free: string | boolean;
+  starter: string | boolean;
+  pro: string | boolean;
+  super_standard: string | boolean;
+}
+
+const comparisonFeatures: ComparisonFeature[] = [
+  { name: "Job matches / month", free: "5", starter: "25", pro: "125", super_standard: "Unlimited" },
+  { name: "WhatsApp alerts", free: true, starter: true, pro: true, super_standard: true },
+  { name: "CV analysis", free: "Basic", starter: "Advanced", pro: "Advanced", super_standard: "Advanced" },
+  { name: "Tailored CVs", free: false, starter: true, pro: true, super_standard: true },
+  { name: "Cover letters", free: false, starter: false, pro: true, super_standard: true },
+  { name: "Score breakdowns", free: false, starter: true, pro: true, super_standard: true },
+  { name: "CV rewriting per role", free: false, starter: false, pro: true, super_standard: true },
+  { name: "Priority support", free: false, starter: false, pro: true, super_standard: true },
+  { name: "Interview prep notes", free: false, starter: false, pro: false, super_standard: true },
 ];
 
 type PaymentMethod = "mtn" | "airtel" | "card";
@@ -157,7 +181,7 @@ export default function PricingPage() {
       </div>
 
       {/* Plan cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto mb-16 md:mb-24">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto mb-16 md:mb-24">
         {plans.map((plan) => (
           <div
             key={plan.name}
@@ -260,6 +284,9 @@ export default function PricingPage() {
                 <th className="py-3 px-4 text-center font-medium">
                   Professional
                 </th>
+                <th className="py-3 px-4 text-center font-medium">
+                  Super Standard
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -271,7 +298,7 @@ export default function PricingPage() {
                   <td className="py-3 pr-4" style={{ color: "var(--ink-2)" }}>
                     {feat.name}
                   </td>
-                  {(["free", "starter", "pro"] as const).map((tier) => {
+                  {(["free", "starter", "pro", "super_standard"] as const).map((tier) => {
                     const val = feat[tier];
                     return (
                       <td key={tier} className="py-3 px-4 text-center">

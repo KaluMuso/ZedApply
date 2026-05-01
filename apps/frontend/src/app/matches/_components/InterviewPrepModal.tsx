@@ -1,0 +1,234 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import {
+  interviewPrep as interviewPrepApi,
+  type InterviewPrepResult,
+  ApiError,
+} from "@/lib/api";
+import { Icon } from "@/components/ui/Icon";
+
+export function InterviewPrepModal({
+  open,
+  onClose,
+  token,
+  jobId,
+  jobTitle,
+  company,
+}: {
+  open: boolean;
+  onClose: () => void;
+  token: string;
+  jobId: string;
+  jobTitle: string;
+  company: string | null;
+}) {
+  const [data, setData] = useState<InterviewPrepResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [tierLocked, setTierLocked] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setData(null);
+      setError(null);
+      setTierLocked(false);
+      setCopied(false);
+      return;
+    }
+    setLoading(true);
+    interviewPrepApi
+      .generate(token, jobId)
+      .then((r) => setData(r))
+      .catch((e) => {
+        if (e instanceof ApiError && e.status === 403) {
+          setTierLocked(true);
+        } else {
+          setError(e instanceof Error ? e.message : "Could not generate prep notes.");
+        }
+      })
+      .finally(() => setLoading(false));
+  }, [open, token, jobId]);
+
+  const onCopy = async () => {
+    if (!data) return;
+    try {
+      await navigator.clipboard.writeText(data.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError("Could not copy to clipboard.");
+    }
+  };
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+      <div
+        className="fixed inset-0"
+        style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
+        onClick={onClose}
+      />
+      <div
+        className="relative z-10 w-full max-w-2xl max-h-[90vh] flex flex-col rounded-t-2xl sm:rounded-2xl"
+        style={{ background: "var(--surface)", boxShadow: "var(--shadow-lg)" }}
+      >
+        <header className="flex items-start justify-between gap-4 p-5 sm:p-6 border-b" style={{ borderColor: "var(--line)" }}>
+          <div className="min-w-0">
+            <div className="eyebrow mb-1">Interview prep</div>
+            <h3
+              className="font-display text-xl sm:text-2xl truncate"
+              style={{ letterSpacing: "-0.01em" }}
+              title={jobTitle}
+            >
+              {jobTitle}
+            </h3>
+            {company && (
+              <p className="text-sm" style={{ color: "var(--muted)" }}>
+                {company}
+              </p>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center"
+            style={{ border: "1px solid var(--line-2)", color: "var(--muted)" }}
+          >
+            <Icon name="x" size={14} />
+          </button>
+        </header>
+
+        <div className="flex-1 overflow-y-auto p-5 sm:p-6">
+          {loading && (
+            <div className="flex items-center gap-2 text-sm" style={{ color: "var(--muted)" }}>
+              <span className="spinner" /> Generating tailored prep notes…
+            </div>
+          )}
+
+          {tierLocked && (
+            <div className="text-center py-8">
+              <div
+                className="w-14 h-14 mx-auto mb-4 rounded-2xl flex items-center justify-center"
+                style={{ background: "var(--copper-100)", color: "var(--copper-600)" }}
+              >
+                <Icon name="zap" size={22} />
+              </div>
+              <h4 className="font-display text-xl mb-2">Super Standard plan only</h4>
+              <p className="text-sm mb-5 max-w-md mx-auto" style={{ color: "var(--muted)" }}>
+                Interview prep notes are part of the Super Standard plan (K500/mo). It includes
+                everything in Professional plus unlimited matches and tailored prep briefs.
+              </p>
+              <Link href="/pricing" className="btn btn-accent">
+                See pricing <Icon name="arrowRight" size={14} />
+              </Link>
+            </div>
+          )}
+
+          {error && !tierLocked && (
+            <p className="text-sm" style={{ color: "var(--danger)" }}>
+              {error}
+            </p>
+          )}
+
+          {data && <PrepBody markdown={data.content} />}
+        </div>
+
+        {data && (
+          <footer
+            className="flex items-center justify-between gap-3 p-4 sm:p-5 border-t"
+            style={{ borderColor: "var(--line)" }}
+          >
+            <span className="text-xs" style={{ color: "var(--muted)" }}>
+              {data.word_count} words{data.cached ? " · cached" : ""}
+            </span>
+            <button onClick={onCopy} className="btn btn-ghost btn-sm">
+              {copied ? "Copied!" : "Copy notes"}
+            </button>
+          </footer>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PrepBody({ markdown }: { markdown: string }) {
+  // Lightweight renderer: headings (## / #), list items (- / *), paragraphs.
+  // Kept inline because we only ever render LLM output in this single modal.
+  const lines = markdown.split("\n");
+  const blocks: React.ReactNode[] = [];
+  let buffer: string[] = [];
+  let listBuffer: string[] = [];
+
+  const flushParagraph = () => {
+    if (buffer.length) {
+      blocks.push(
+        <p key={`p-${blocks.length}`} className="text-sm leading-relaxed mb-3">
+          {buffer.join(" ")}
+        </p>
+      );
+      buffer = [];
+    }
+  };
+  const flushList = () => {
+    if (listBuffer.length) {
+      blocks.push(
+        <ul key={`ul-${blocks.length}`} className="list-disc pl-5 mb-4 space-y-1.5">
+          {listBuffer.map((item, i) => (
+            <li key={i} className="text-sm leading-relaxed">
+              {item}
+            </li>
+          ))}
+        </ul>
+      );
+      listBuffer = [];
+    }
+  };
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+    if (line.startsWith("## ")) {
+      flushParagraph();
+      flushList();
+      blocks.push(
+        <h4
+          key={`h-${blocks.length}`}
+          className="font-display text-lg mt-5 mb-2"
+          style={{ letterSpacing: "-0.01em", color: "var(--copper-600)" }}
+        >
+          {line.slice(3)}
+        </h4>
+      );
+      continue;
+    }
+    if (line.startsWith("# ")) {
+      flushParagraph();
+      flushList();
+      blocks.push(
+        <h3 key={`h-${blocks.length}`} className="font-display text-xl mt-5 mb-2">
+          {line.slice(2)}
+        </h3>
+      );
+      continue;
+    }
+    if (line.startsWith("- ") || line.startsWith("* ")) {
+      flushParagraph();
+      listBuffer.push(line.slice(2));
+      continue;
+    }
+    flushList();
+    buffer.push(line);
+  }
+  flushParagraph();
+  flushList();
+
+  return <div>{blocks}</div>;
+}

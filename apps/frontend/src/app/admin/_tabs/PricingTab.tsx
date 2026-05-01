@@ -71,14 +71,14 @@ export function PricingTab({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(["free", "starter", "professional"] as const).map((t) => {
+                {(["free", "starter", "professional", "super_standard"] as const).map((t) => {
                   const count = breakdown[t];
                   const pct = breakdown.total_active
                     ? Math.round((count / breakdown.total_active) * 100)
                     : 0;
                   return (
                     <TableRow key={t}>
-                      <TableCell className="capitalize">{t}</TableCell>
+                      <TableCell>{t.replace("_", " ")}</TableCell>
                       <TableCell className="tabular-nums">{count.toLocaleString()}</TableCell>
                       <TableCell className="tabular-nums">{pct}%</TableCell>
                     </TableRow>

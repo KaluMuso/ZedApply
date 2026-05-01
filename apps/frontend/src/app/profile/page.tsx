@@ -23,8 +23,9 @@ const TABS: { key: Tab; label: string }[] = [
 
 const TIER_LABELS: Record<string, string> = {
   free: "Free",
-  starter: "Starter (K79/mo)",
-  professional: "Professional (K199/mo)",
+  starter: "Starter (K125/mo)",
+  professional: "Professional (K250/mo)",
+  super_standard: "Super Standard (K500/mo)",
 };
 
 export default function ProfilePage() {

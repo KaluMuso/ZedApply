@@ -59,7 +59,7 @@ components:
         years_experience: { type: integer, minimum: 0 }
         skills: { type: array, items: { type: string } }
         cv_uploaded: { type: boolean }
-        subscription_tier: { type: string, enum: [free, starter, professional] }
+        subscription_tier: { type: string, enum: [free, starter, professional, super_standard] }
         role: { type: string, enum: [user, superadmin] }
         created_at: { type: string, format: date-time }
 
@@ -150,7 +150,7 @@ components:
         phone: { type: string }
         full_name: { type: string }
         location: { type: string }
-        subscription_tier: { type: string, enum: [free, starter, professional] }
+        subscription_tier: { type: string, enum: [free, starter, professional, super_standard] }
         role: { type: string, enum: [user, superadmin] }
         matches_used: { type: integer }
         matches_limit: { type: integer }
@@ -287,6 +287,7 @@ components:
         free: { type: integer }
         starter: { type: integer }
         professional: { type: integer }
+        super_standard: { type: integer }
         total_active: { type: integer }
 
     AdminSubscriptionRow:
@@ -295,7 +296,7 @@ components:
         user_id: { type: string, format: uuid }
         user_phone: { type: string }
         full_name: { type: string }
-        tier: { type: string, enum: [free, starter, professional] }
+        tier: { type: string, enum: [free, starter, professional, super_standard] }
         status: { type: string, enum: [active, expired, cancelled, past_due] }
         matches_used: { type: integer }
         matches_limit: { type: integer }
@@ -316,7 +317,7 @@ components:
       type: object
       required: [tier]
       properties:
-        tier: { type: string, enum: [free, starter, professional] }
+        tier: { type: string, enum: [free, starter, professional, super_standard] }
 
     Job:
       type: object
@@ -387,7 +388,7 @@ components:
       type: object
       properties:
         id: { type: string, format: uuid }
-        tier: { type: string, enum: [free, starter, professional] }
+        tier: { type: string, enum: [free, starter, professional, super_standard] }
         status: { type: string, enum: [active, expired, cancelled] }
         current_period_start: { type: string, format: date-time }
         current_period_end: { type: string, format: date-time }
@@ -398,9 +399,24 @@ components:
       type: object
       required: [tier, payment_method]
       properties:
-        tier: { type: string, enum: [starter, professional] }
+        tier: { type: string, enum: [starter, professional, super_standard] }
         payment_method: { type: string, enum: [mtn_money, airtel_money] }
         phone: { type: string, pattern: '^\+260[0-9]{9}$' }
+
+    InterviewPrepRequest:
+      type: object
+      required: [job_id]
+      properties:
+        job_id: { type: string, format: uuid }
+
+    InterviewPrepResponse:
+      type: object
+      properties:
+        content: { type: string, description: "Markdown brief" }
+        word_count: { type: integer }
+        job_title: { type: string }
+        company: { type: string }
+        cached: { type: boolean }
 
     PaymentInitiateResponse:
       type: object
@@ -609,7 +625,7 @@ paths:
         - { name: page, in: query, schema: { type: integer, default: 1 } }
         - { name: per_page, in: query, schema: { type: integer, default: 25 } }
         - { name: search, in: query, schema: { type: string } }
-        - { name: tier, in: query, schema: { type: string, enum: [free, starter, professional] } }
+        - { name: tier, in: query, schema: { type: string, enum: [free, starter, professional, super_standard] } }
       responses:
         '200':
           content:
@@ -674,7 +690,7 @@ paths:
       parameters:
         - { name: page, in: query, schema: { type: integer, default: 1 } }
         - { name: per_page, in: query, schema: { type: integer, default: 25 } }
-        - { name: tier, in: query, schema: { type: string, enum: [free, starter, professional] } }
+        - { name: tier, in: query, schema: { type: string, enum: [free, starter, professional, super_standard] } }
         - { name: status, in: query, schema: { type: string, enum: [active, expired, cancelled, past_due] } }
       responses:
         '200':
@@ -829,6 +845,25 @@ paths:
       security: [{ bearerAuth: [] }]
       responses:
         '202': { description: Matching queued }
+
+  /interview-prep/generate:
+    post:
+      operationId: generateInterviewPrep
+      summary: Generate tailored interview prep notes for a specific job
+      tags: [Interview Prep]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InterviewPrepRequest' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InterviewPrepResponse' }
+        '403': { description: Super Standard tier required }
+        '404': { description: Job not found }
+        '422': { description: No CV uploaded }
 
   /cover-letter/generate:
     post:

@@ -113,6 +113,7 @@ class AdminTierBreakdown(BaseModel):
     free: int = 0
     starter: int = 0
     professional: int = 0
+    super_standard: int = 0
     total_active: int = 0
 
 
@@ -138,4 +139,4 @@ class AdminSubscriptionList(BaseModel):
 
 
 class AdminSubscriptionUpdate(BaseModel):
-    tier: str = Field(..., pattern="^(free|starter|professional)$")
+    tier: str = Field(..., pattern="^(free|starter|professional|super_standard)$")
