@@ -85,7 +85,7 @@ export default function SettingsPage() {
   return (
     <div>
       <h1 className="text-2xl sm:text-3xl font-bold mb-2">Settings</h1>
-      <p className="text-muted-foreground text-sm mb-6">How Zed CV reaches you and account safety.</p>
+      <p className="text-muted-foreground text-sm mb-6">How ZedApply reaches you and account safety.</p>
 
       <Card className="mb-4">
         <CardHeader>

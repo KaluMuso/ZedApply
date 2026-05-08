@@ -2,7 +2,7 @@ import { ImageResponse } from "next/og";
 
 export const runtime = "edge";
 
-export const alt = "Zed CV — AI job matching for Zambia";
+export const alt = "ZedApply — AI job matching for Zambia";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -37,7 +37,7 @@ export default function OgImage() {
               lineHeight: 1.1,
             }}
           >
-            Zed CV
+            ZedApply
           </div>
           <div
             style={{

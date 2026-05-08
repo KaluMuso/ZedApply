@@ -1,6 +1,6 @@
 {
-  "name": "Zed CV — AI Job Matching for Zambia",
-  "short_name": "Zed CV",
+  "name": "ZedApply — AI Job Matching for Zambia",
+  "short_name": "ZedApply",
   "description": "AI-matched jobs in Zambia, sent to your WhatsApp.",
   "start_url": "/",
   "scope": "/",

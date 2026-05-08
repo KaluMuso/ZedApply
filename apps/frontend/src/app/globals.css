@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── Zed CV Design Tokens ─── */
+/* ─── ZedApply Design Tokens ─── */
 :root {
   /* Type */
   --font-display: "Instrument Serif", "Times New Roman", serif;

@@ -12,7 +12,7 @@ const TABS = [
 /**
  * Mobile bottom tab bar — pill-style with sliding copper indicator.
  * Only visible on screens < 768px. Hidden on desktop.
- * Matches the Zed CV mobile prototype design.
+ * Matches the ZedApply mobile prototype design.
  */
 export function MobileTabBar() {
   const pathname = usePathname();

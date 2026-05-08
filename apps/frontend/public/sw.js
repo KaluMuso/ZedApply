@@ -1,4 +1,4 @@
-// Zed CV — Service Worker (cache-first for static, network-first for API)
+// ZedApply — Service Worker (cache-first for static, network-first for API)
 const CACHE_VERSION = 'zedcv-v2';
 const STATIC_ASSETS = [
   '/',

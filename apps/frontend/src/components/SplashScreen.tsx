@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 /**
- * PWA Splash Screen — matches the Zed CV mobile prototype.
+ * PWA Splash Screen — matches the ZedApply mobile prototype.
  * Green gradient background, copper "Z" logo with scale+rotate animation,
  * orbiting dots, tagline, and loading bar.
  *
@@ -41,7 +41,7 @@ export function SplashScreen({ onComplete }: { onComplete?: () => void }) {
       <div className="splash-logo">Z</div>
 
       {/* Tagline */}
-      <div className="splash-tagline">Zed CV &middot; Jobs that find you</div>
+      <div className="splash-tagline">ZedApply &middot; Jobs that find you</div>
 
       {/* Loading bar */}
       <div className="splash-bar">

@@ -6,7 +6,7 @@ export default function Loading() {
       aria-label="Loading"
     >
       <div className="h-10 w-10 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-      <p className="text-sm text-muted-foreground">Loading Zed CV…</p>
+      <p className="text-sm text-muted-foreground">Loading ZedApply…</p>
     </div>
   );
 }

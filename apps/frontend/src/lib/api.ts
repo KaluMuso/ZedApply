@@ -1,5 +1,5 @@
 /**
- * API client for Zed CV backend.
+ * API client for ZedApply backend.
  * All requests go through this client for consistent auth + error handling.
  */
 

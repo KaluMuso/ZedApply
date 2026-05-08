@@ -39,8 +39,8 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL("https://zedcv.vergeo.company"),
   title: {
-    default: "Zed CV — AI Job Matching for Zambia",
-    template: "%s | Zed CV",
+    default: "ZedApply — AI Job Matching for Zambia",
+    template: "%s | ZedApply",
   },
   description:
     "Find jobs that match your skills. AI-powered matching, CV generation, and WhatsApp delivery for Zambian professionals.",
@@ -57,21 +57,21 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Zed CV",
+    title: "ZedApply",
   },
   openGraph: {
     type: "website",
     locale: "en_ZM",
     url: "https://zedcv.vergeo.company",
-    siteName: "Zed CV",
-    title: "Zed CV — AI Job Matching for Zambia",
+    siteName: "ZedApply",
+    title: "ZedApply — AI Job Matching for Zambia",
     description:
       "Upload your CV and let AI score you against every open role in Zambia. Get matches on WhatsApp.",
-    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "Zed CV" }],
+    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "ZedApply" }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Zed CV — AI Job Matching for Zambia",
+    title: "ZedApply — AI Job Matching for Zambia",
     description:
       "Upload your CV and let AI score you against every open role in Zambia.",
   },

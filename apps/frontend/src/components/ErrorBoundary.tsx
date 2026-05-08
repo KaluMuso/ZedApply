@@ -22,7 +22,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error("[Zed CV] Uncaught error:", error, info.componentStack);
+    console.error("[ZedApply] Uncaught error:", error, info.componentStack);
   }
 
   render() {

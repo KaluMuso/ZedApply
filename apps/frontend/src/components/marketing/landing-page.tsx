@@ -61,7 +61,7 @@ export function LandingPage() {
               for you
             </h1>
             <p className="mt-4 text-base sm:text-lg text-muted-foreground max-w-xl">
-              Zed CV runs hybrid AI matching, then brings what matters to WhatsApp — the channel most
+              ZedApply runs hybrid AI matching, then brings what matters to WhatsApp — the channel most
               of us use every day.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -104,7 +104,7 @@ export function LandingPage() {
               <div
                 className="absolute inset-0 rounded-[2rem] border-4 border-muted bg-card shadow-2xl ring-1 ring-border/60"
                 role="img"
-                aria-label="Zed CV app on a phone (illustration)"
+                aria-label="ZedApply app on a phone (illustration)"
               >
                 <div className="h-6 rounded-t-[1.5rem] bg-muted flex items-center justify-center text-[0.6rem] text-muted-foreground">
                   Your matches
