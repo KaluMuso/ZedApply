@@ -14,8 +14,10 @@ class PaymentMethod(str, Enum):
     airtel_money = "airtel_money"
 
 
-# super_standard uses 99999 as a numeric "unlimited" sentinel so existing
-# quota arithmetic doesn't need a NULL branch (matches migration 005).
+# Single source of truth for per-tier monthly match quotas. Import from here;
+# do not redefine elsewhere. super_standard uses 99999 as a numeric "unlimited"
+# sentinel so existing quota arithmetic doesn't need a NULL branch (matches
+# migration 005).
 TIER_LIMITS: dict[str, int] = {
     "free": 10,
     "starter": 50,

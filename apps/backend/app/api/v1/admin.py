@@ -23,11 +23,7 @@ from app.schemas.admin import (
     AdminSubscriptionList,
     AdminSubscriptionUpdate,
 )
-
-# Default match quotas per tier — kept here so tier changes update the cap
-# in lockstep without a separate config indirection. super_standard uses a
-# high sentinel that the UI renders as "Unlimited".
-TIER_MATCH_LIMITS = {"free": 5, "starter": 25, "professional": 125, "super_standard": 99999}
+from app.schemas.subscription import TIER_LIMITS
 
 router = APIRouter(prefix="/admin", tags=["Admin"], dependencies=[Depends(require_admin)])
 
@@ -407,7 +403,7 @@ async def update_subscription(
     supabase=Depends(get_supabase),
 ):
     """Set a user's tier. Resets matches_limit to the tier default; matches_used preserved."""
-    new_limit = TIER_MATCH_LIMITS.get(body.tier, 5)
+    new_limit = TIER_LIMITS[body.tier]
     res = (
         supabase.table("subscriptions")
         .update({"tier": body.tier, "matches_limit": new_limit, "status": "active"})

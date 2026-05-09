@@ -11,7 +11,6 @@ from app.schemas.subscription import (
 
 router = APIRouter(prefix="/subscription", tags=["Subscription"])
 
-TIER_LIMITS = {"free": 5, "starter": 25, "professional": 125, "super_standard": 99999}
 TIER_PRICES_NGWEE = {"starter": 12500, "professional": 25000, "super_standard": 50000}
 
 
