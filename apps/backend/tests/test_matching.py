@@ -99,6 +99,15 @@ class TestTriggerMatching:
         self, mock_quota, client, auth_headers, fake_supabase
     ):
         """Rejects matching when quota is exhausted."""
+        # /matches/trigger uses Depends(get_current_user), which looks up
+        # the user in the `users` table. Tests must seed this table or
+        # auth fails with 401 before the quota check runs.
+        fake_supabase.set_table(
+            "users",
+            FakeSupabaseQuery(
+                data=[{"id": "test-user-id", "phone": "+260971234567", "role": "user"}]
+            ),
+        )
         resp = client.post("/api/v1/matches/trigger", headers=auth_headers)
         assert resp.status_code == 403
 
@@ -111,6 +120,12 @@ class TestTriggerMatching:
         self, mock_quota, client, auth_headers, fake_supabase
     ):
         """Rejects matching when no CV uploaded."""
+        fake_supabase.set_table(
+            "users",
+            FakeSupabaseQuery(
+                data=[{"id": "test-user-id", "phone": "+260971234567", "role": "user"}]
+            ),
+        )
         fake_supabase.set_table("cvs", FakeSupabaseQuery(data=[]))
         resp = client.post("/api/v1/matches/trigger", headers=auth_headers)
         assert resp.status_code == 422

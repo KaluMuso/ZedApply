@@ -83,10 +83,10 @@ class TestProfileSkills:
         resp = client.post(
             "/api/v1/profile/skills",
             headers=auth_headers,
-            json={"skill_name": "python"},
+            json={"name": "python"},
         )
-        # May be 201 or 404 depending on whether profile/skills router exists
-        assert resp.status_code in (200, 201, 404)
+        # POST /profile/skills returns 201 Created on success.
+        assert resp.status_code == 201
 
     def test_add_skill_rejects_empty_name(
         self, client, auth_headers, fake_supabase

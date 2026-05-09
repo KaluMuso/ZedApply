@@ -3,7 +3,9 @@ from unittest.mock import AsyncMock, patch
 
 
 class TestHealth:
-    @patch("main.check_waha_health", new_callable=AsyncMock)
+    # The /health endpoint imports check_waha_health lazily inside the
+    # request handler (main.py:45). Patch the source module, not `main`.
+    @patch("app.services.whatsapp.check_waha_health", new_callable=AsyncMock)
     def test_health_ok(self, mock_waha, client, fake_supabase):
         mock_waha.return_value = True
         resp = client.get("/api/v1/health")
