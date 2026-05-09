@@ -59,9 +59,9 @@ Zed CV is an AI-powered job matching SaaS for Zambian professionals. Users uploa
 |-------|-----------|-------|
 | Frontend | Next.js 14 App Router, React 18, Tailwind CSS 3.4, TypeScript | PWA with service worker, mobile tab bar |
 | Backend | FastAPI 0.111, Python 3.11+, Pydantic 2.7 | Async, Docker container |
-| Database | Supabase PostgreSQL 15 + pgvector | Vector embeddings (1536d), RLS enabled |
+| Database | Supabase PostgreSQL 15 + pgvector | Vector embeddings (768d), RLS enabled |
 | AI - LLM | OpenRouter → google/gemini-2.0-flash-001 | CV parsing, matching explanations, CV generation |
-| AI - Embeddings | OpenAI text-embedding-3-small (1536d) | CV + job embeddings |
+| AI - Embeddings | Google Gemini text-embedding-004 (768d) | CV + job embeddings (via Gemini API) |
 | AI - OCR | Anthropic Claude (fallback for image CVs) | Via anthropic SDK |
 | WhatsApp | WAHA (devlikeapro) | OTP, notifications, bot commands |
 | Email | Resend | Welcome, match digest, job alerts, interview notifications |
@@ -76,7 +76,7 @@ Zed CV is an AI-powered job matching SaaS for Zambian professionals. Users uploa
 **Core tables:**
 - `users` — phone, full_name, email, location, years_experience, subscription_tier, welcome_email_sent, email_notifications_enabled
 - `otp_codes` — phone, code, expires_at, verified, attempts
-- `cvs` — user_id, file_url, raw_text, parsed_data (JSONB), embedding (VECTOR 1536), is_primary
+- `cvs` — user_id, file_url, raw_text, parsed_data (JSONB), embedding (VECTOR 768), is_primary
 - `jobs` — title, company, location, description, requirements, salary_min/max, apply_url, source, embedding, quality_score, closing_date
 - `matches` — user_id, job_id, cv_id, score, vector_score, skill_score, bonus_score, matched_skills, missing_skills, status
 - `subscriptions` — user_id, tier, status, matches_used, matches_limit, current_period_start/end
@@ -172,7 +172,7 @@ Zed CV is an AI-powered job matching SaaS for Zambian professionals. Users uploa
 ### Core Platform
 - [x] Phone + WhatsApp OTP authentication
 - [x] CV upload (PDF, DOCX, JPG, PNG) with AI parsing
-- [x] Vector embedding generation (OpenAI text-embedding-3-small)
+- [x] Vector embedding generation (Gemini text-embedding-004, 768d)
 - [x] AI job matching (pgvector cosine similarity + skill overlap + bonuses)
 - [x] Match scoring with explanations
 - [x] Job browsing with filters (location, search, pagination)
@@ -429,7 +429,7 @@ Zed CV is an AI-powered job matching SaaS for Zambian professionals. Users uploa
 5. **Payment webhook maps tiers by price** — If prices change, the DPO webhook tier mapping breaks.
 
 ### Moderate
-6. **Embedding model mismatch risk** — Config says `text-embedding-3-small` but the actual model used in production may differ. Changing models would require re-embedding all CVs and jobs.
+6. **~~Embedding model mismatch risk~~** — RESOLVED by migration 007 (2026-05-09): source migrations now declare `vector(768)` matching the live Gemini `text-embedding-004` model and prod schema. Originally: source migrations declared `vector(1536)` (OpenAI sizing) while prod and the backend's `embedding_dimensions` config had been switched to 768 (Gemini), so a fresh-clone deploy would have silently failed at INSERT. Changing embedding models again would still require re-embedding all CVs and jobs.
 7. **No database migrations strategy** — Migrations are ad-hoc SQL files run manually. No Alembic or migration runner.
 8. **Test coverage gaps** — Tests exist but mock heavily. No integration tests against real Supabase.
 9. **No CI/CD pipeline** — GitHub push triggers Vercel for frontend, but backend deployment is manual.
