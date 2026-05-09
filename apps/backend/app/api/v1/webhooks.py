@@ -2,6 +2,7 @@
 import logging
 from fastapi import APIRouter, Request, Depends
 from app.core.deps import get_supabase
+from app.schemas.subscription import TIER_LIMITS, TIER_PRICES
 from app.services.whatsapp import send_whatsapp_message, send_match_digest
 from app.services.email import send_payment_confirmation_email
 
@@ -123,14 +124,27 @@ async def dpo_webhook(request: Request, supabase=Depends(get_supabase)):
             "completed_at": datetime.now(timezone.utc).isoformat(),
         }).eq("id", payment_id).execute()
 
-        # Determine tier from payment amount (ngwee)
+        # Determine tier from payment amount (ngwee). Reverse-lookup against
+        # the canonical TIER_PRICES dict — exact-match wins, otherwise fall
+        # back defensively to the highest paid tier whose price <= amount and
+        # mark the payment as needing review.
         amount_ngwee = payment["amount"]
-        if amount_ngwee <= 12500:
-            new_tier, new_limit = "starter", 50
-        elif amount_ngwee <= 25000:
-            new_tier, new_limit = "professional", 125
-        else:
-            new_tier, new_limit = "super_standard", 99999
+        paid_tiers = {price: tier for tier, price in TIER_PRICES.items() if tier != "free"}
+        new_tier = paid_tiers.get(amount_ngwee)
+        if new_tier is None:
+            logging.warning(
+                f"DPO webhook: unknown amount {amount_ngwee} ngwee for payment {payment_id}, "
+                f"falling back to highest tier <= amount"
+            )
+            sorted_paid = sorted(paid_tiers.items())  # ascending by price
+            new_tier = next(
+                (tier for price, tier in reversed(sorted_paid) if price <= amount_ngwee),
+                "starter",
+            )
+            # Cheap audit trail — preserved by the webhook_data update below.
+            parsed["_inexact_amount_match"] = True
+            parsed["_resolved_tier"] = new_tier
+        new_limit = TIER_LIMITS[new_tier]
         now = datetime.now(timezone.utc)
 
         # Period-end safety: if a webhook arrives mid-cycle (e.g. early renewal

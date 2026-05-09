@@ -7,11 +7,10 @@ from app.schemas.subscription import (
     Subscription,
     PaymentInitiate,
     PaymentInitiateResponse,
+    TIER_PRICES,
 )
 
 router = APIRouter(prefix="/subscription", tags=["Subscription"])
-
-TIER_PRICES_NGWEE = {"starter": 12500, "professional": 25000, "super_standard": 50000}
 
 
 @router.get("", response_model=Subscription)
@@ -55,13 +54,13 @@ async def initiate_payment(
         )
 
     tier_value = body.tier.value if hasattr(body.tier, "value") else body.tier
-    if tier_value not in TIER_PRICES_NGWEE:
+    if tier_value not in TIER_PRICES or tier_value == "free":
         raise HTTPException(
             status_code=422,
             detail="Invalid tier. Choose starter, professional, or super_standard.",
         )
 
-    amount_ngwee = TIER_PRICES_NGWEE[tier_value]
+    amount_ngwee = TIER_PRICES[tier_value]
 
     # Get or verify subscription exists
     sub_result = (
