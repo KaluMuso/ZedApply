@@ -52,6 +52,12 @@ class TestJobCreate:
     ):
         """Creates a job with embedding and dedup fingerprint."""
         mock_embed.return_value = [0.1] * 1536
+        fake_supabase.set_table(
+            "users",
+            FakeSupabaseQuery(
+                data=[{"id": "test-user-id", "phone": "+260971234567", "role": "admin"}]
+            ),
+        )
         fake_supabase.set_table("job_fingerprints", FakeSupabaseQuery(data=[]))
         fake_supabase.set_table(
             "jobs",
@@ -93,6 +99,12 @@ class TestJobCreate:
         """Rejects duplicate jobs based on fingerprint."""
         mock_embed.return_value = [0.1] * 1536
         fake_supabase.set_table(
+            "users",
+            FakeSupabaseQuery(
+                data=[{"id": "test-user-id", "phone": "+260971234567", "role": "admin"}]
+            ),
+        )
+        fake_supabase.set_table(
             "job_fingerprints",
             FakeSupabaseQuery(data=[{"job_id": "existing-job"}]),
         )
@@ -108,3 +120,26 @@ class TestJobCreate:
             },
         )
         assert resp.status_code == 409
+
+    def test_create_job_forbidden_for_non_admin(
+        self, client, auth_headers, fake_supabase
+    ):
+        """Authenticated free users cannot post jobs — must be admin/superadmin."""
+        fake_supabase.set_table(
+            "users",
+            FakeSupabaseQuery(
+                data=[{"id": "test-user-id", "phone": "+260971234567", "role": "user"}]
+            ),
+        )
+        resp = client.post(
+            "/api/v1/jobs",
+            headers=auth_headers,
+            json={
+                "title": "React Developer Needed",
+                "company": "StartupX",
+                "description": "Build modern UIs with React and TypeScript for our platform",
+                "location": "Kitwe",
+                "source": "manual",
+            },
+        )
+        assert resp.status_code == 403

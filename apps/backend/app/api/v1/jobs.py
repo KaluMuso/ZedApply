@@ -1,7 +1,7 @@
 """Job listing routes."""
 import hashlib
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from app.core.deps import get_supabase, get_current_user_id
+from app.core.deps import get_supabase, require_admin
 from app.core.rate_limit import limiter
 from app.schemas.jobs import Job, JobCreate, JobList
 from app.services.embedding import generate_embedding
@@ -50,7 +50,7 @@ async def get_job(job_id: str, supabase=Depends(get_supabase)):
 
 @router.post("", response_model=Job, status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
-async def create_job(request: Request, body: JobCreate, user_id: str = Depends(get_current_user_id), supabase=Depends(get_supabase)):
+async def create_job(request: Request, body: JobCreate, current_user: dict = Depends(require_admin), supabase=Depends(get_supabase)):
     fingerprint = hashlib.sha256(f"{body.title}|{body.company or ''}|{body.description[:200]}".lower().encode()).hexdigest()
     existing = supabase.table("job_fingerprints").select("job_id").eq("fingerprint", fingerprint).execute()
     if existing.data:
