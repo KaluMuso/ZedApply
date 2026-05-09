@@ -1,5 +1,7 @@
 """CV upload, analysis, and generation routes."""
 import hashlib
+import re
+import uuid
 from typing import Optional
 
 from pydantic import BaseModel, Field, model_validator
@@ -45,6 +47,20 @@ class CVGenerateResponse(BaseModel):
     job_title: str
     company: Optional[str] = None
 
+_FILENAME_SAFE_RE = re.compile(r"[^A-Za-z0-9._-]")
+
+
+def _safe_filename(name: str) -> str:
+    """Strip path traversal, control chars, and oddballs from an uploaded filename.
+
+    Strips leading dots so a hostile name like "../../etc/passwd" or ".bashrc"
+    can't escape the cvs/{user_id}/ prefix or land as a hidden file. Falls back
+    to a uuid-based name when the input is empty after sanitization.
+    """
+    cleaned = _FILENAME_SAFE_RE.sub("_", name).lstrip(".")[:200]
+    return cleaned or f"cv-{uuid.uuid4().hex}"
+
+
 ALLOWED_TYPES = {
     "application/pdf": "pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
@@ -83,7 +99,7 @@ async def upload_cv(request: Request, file: UploadFile = File(...), user_id: str
     except ValueError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
-    storage_path = f"cvs/{user_id}/{file.filename}"
+    storage_path = f"cvs/{user_id}/{_safe_filename(file.filename or '')}"
     supabase.storage.from_("documents").upload(storage_path, file_bytes, {"content-type": content_type})
 
     existing_cvs = supabase.table("cvs").select("id", count="exact").eq("user_id", user_id).limit(1).execute()
