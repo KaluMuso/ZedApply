@@ -50,7 +50,7 @@ async def check_match_quota(user_id: str, supabase: Client) -> tuple[bool, int]:
         .execute()
     )
     if not result.data:
-        return True, 5  # Free tier default
+        return True, 10  # Free tier default
     used = result.data["matches_used"]
     limit = result.data["matches_limit"]
     return max(0, limit - used) > 0, max(0, limit - used)

@@ -10,6 +10,7 @@ from app.core.rate_limit import limiter
 from app.services.cv_parser import extract_text_from_file, parse_cv_with_llm
 from app.services.cv_generator import analyze_cv, generate_cv
 from app.services.embedding import generate_embedding
+from app.services.email import send_welcome_email
 
 router = APIRouter(prefix="/cv", tags=["CV"])
 
@@ -85,6 +86,9 @@ async def upload_cv(request: Request, file: UploadFile = File(...), user_id: str
     storage_path = f"cvs/{user_id}/{file.filename}"
     supabase.storage.from_("documents").upload(storage_path, file_bytes, {"content-type": content_type})
 
+    existing_cvs = supabase.table("cvs").select("id", count="exact").eq("user_id", user_id).limit(1).execute()
+    is_first_upload = (existing_cvs.count or 0) == 0
+
     supabase.table("cvs").update({"is_primary": False}).eq("user_id", user_id).eq("is_primary", True).execute()
 
     result = supabase.table("cvs").insert({
@@ -113,6 +117,12 @@ async def upload_cv(request: Request, file: UploadFile = File(...), user_id: str
         profile_update["years_experience"] = parsed["years_experience"]
     if profile_update:
         supabase.table("users").update(profile_update).eq("id", user_id).execute()
+
+    if is_first_upload:
+        try:
+            await send_welcome_email(user_id, supabase)
+        except Exception:
+            pass
 
     return {"cv_id": cv_id, "parsed_skills": parsed.get("skills", []), "experience_summary": parsed.get("experience_summary", ""), "parsing_confidence": parsed.get("confidence", 0)}
 

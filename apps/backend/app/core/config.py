@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     # ── Superadmin phone (initial bootstrap) ──
     superadmin_phone: str = ""
 
+    # ── Email (Resend) ──
+    resend_api_key: str = ""
+    resend_from_email: str = "Zed CV <noreply@zedcv.com>"
+    app_url: str = "https://zedcv.com"
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

@@ -23,7 +23,7 @@ const plans: Plan[] = [
     period: "forever",
     tier: "free",
     features: [
-      "5 job matches per month",
+      "10 job matches per month",
       "WhatsApp alerts",
       "Basic CV analysis",
       "Job browsing",
@@ -37,7 +37,7 @@ const plans: Plan[] = [
     period: "/month",
     tier: "starter",
     features: [
-      "25 job matches per month",
+      "50 job matches per month",
       "AI-generated tailored CVs",
       "Priority matching",
       "WhatsApp + web dashboard",
@@ -89,7 +89,7 @@ const faqs = [
   },
   {
     q: "What counts as a 'match'?",
-    a: "Each time our AI scores your CV against a job listing and delivers the result to you (via WhatsApp or dashboard), that counts as one match. The Free tier includes 5 per month.",
+    a: "Each time our AI scores your CV against a job listing and delivers the result to you (via WhatsApp or dashboard), that counts as one match. The Free tier includes 10 per month.",
   },
   {
     q: "Is my CV data secure?",
@@ -106,7 +106,7 @@ interface ComparisonFeature {
 }
 
 const comparisonFeatures: ComparisonFeature[] = [
-  { name: "Job matches / month", free: "5", starter: "25", pro: "125", super_standard: "Unlimited" },
+  { name: "Job matches / month", free: "10", starter: "50", pro: "125", super_standard: "Unlimited" },
   { name: "WhatsApp alerts", free: true, starter: true, pro: true, super_standard: true },
   { name: "CV analysis", free: "Basic", starter: "Advanced", pro: "Advanced", super_standard: "Advanced" },
   { name: "Tailored CVs", free: false, starter: true, pro: true, super_standard: true },

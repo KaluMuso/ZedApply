@@ -5,6 +5,7 @@ from app.core.rate_limit import limiter
 from app.schemas.matching import MatchResult, MatchList
 from app.schemas.jobs import Job
 from app.services.matching import run_matching_for_user, store_matches, check_match_quota
+from app.services.email import send_match_digest_email
 
 router = APIRouter(prefix="/matches", tags=["Matching"])
 
@@ -61,3 +62,16 @@ async def _run_matching_task(user_id: str, cv_id: str, supabase):
     sub = supabase.table("subscriptions").select("matches_used").eq("user_id", user_id).single().execute()
     if sub.data:
         supabase.table("subscriptions").update({"matches_used": sub.data["matches_used"] + 1}).eq("user_id", user_id).execute()
+    if matches:
+        digest_rows = (
+            supabase.table("matches")
+            .select("score, jobs(title, company)")
+            .eq("user_id", user_id)
+            .order("score", desc=True)
+            .limit(5)
+            .execute()
+        )
+        try:
+            await send_match_digest_email(user_id, digest_rows.data or [], supabase)
+        except Exception:
+            pass

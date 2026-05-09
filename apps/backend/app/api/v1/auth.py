@@ -61,7 +61,7 @@ async def verify_otp(body: OTPVerify, settings: Settings = Depends(get_settings)
         if role == "superadmin":
             supabase.table("subscriptions").insert({"user_id": user_id, "tier": "professional", "status": "active", "matches_limit": 125}).execute()
         else:
-            supabase.table("subscriptions").insert({"user_id": user_id, "tier": "free", "status": "active", "matches_limit": 5}).execute()
+            supabase.table("subscriptions").insert({"user_id": user_id, "tier": "free", "status": "active", "matches_limit": 10}).execute()
 
     now = datetime.now(timezone.utc)
     access_token = jwt.encode({"sub": user_id, "phone": body.phone, "exp": now + timedelta(minutes=settings.jwt_expire_minutes), "iat": now}, settings.jwt_secret, algorithm=settings.jwt_algorithm)

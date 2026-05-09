@@ -22,11 +22,13 @@ class UserProfileUpdate(BaseModel):
 
 class UserPreferences(BaseModel):
     whatsapp_alerts: bool = True
+    email_notifications_enabled: bool = True
     language: Literal["en", "bem"] = "en"
 
 
 class UserPreferencesUpdate(BaseModel):
     whatsapp_alerts: Optional[bool] = None
+    email_notifications_enabled: Optional[bool] = None
     language: Optional[Literal["en", "bem"]] = None
 
 

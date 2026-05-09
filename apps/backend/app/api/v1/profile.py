@@ -102,7 +102,7 @@ async def get_preferences(
 ):
     result = (
         supabase.table("users")
-        .select("whatsapp_alerts, language")
+        .select("whatsapp_alerts, email_notifications_enabled, language")
         .eq("id", user_id)
         .single()
         .execute()
@@ -111,6 +111,7 @@ async def get_preferences(
         raise HTTPException(status_code=404, detail="User not found")
     return UserPreferences(
         whatsapp_alerts=result.data.get("whatsapp_alerts", True),
+        email_notifications_enabled=result.data.get("email_notifications_enabled", True),
         language=result.data.get("language", "en"),
     )
 
@@ -128,7 +129,7 @@ async def update_preferences(
     supabase.table("users").update(update_data).eq("id", user_id).execute()
     result = (
         supabase.table("users")
-        .select("whatsapp_alerts, language")
+        .select("whatsapp_alerts, email_notifications_enabled, language")
         .eq("id", user_id)
         .single()
         .execute()
@@ -137,6 +138,7 @@ async def update_preferences(
         raise HTTPException(status_code=404, detail="User not found")
     return UserPreferences(
         whatsapp_alerts=result.data.get("whatsapp_alerts", True),
+        email_notifications_enabled=result.data.get("email_notifications_enabled", True),
         language=result.data.get("language", "en"),
     )
 

@@ -75,12 +75,14 @@ components:
       type: object
       properties:
         whatsapp_alerts: { type: boolean, default: true }
+        email_notifications_enabled: { type: boolean, default: true }
         language: { type: string, enum: [en, bem], default: en }
 
     UserPreferencesUpdate:
       type: object
       properties:
         whatsapp_alerts: { type: boolean }
+        email_notifications_enabled: { type: boolean }
         language: { type: string, enum: [en, bem] }
 
     ProfileDeleted:
