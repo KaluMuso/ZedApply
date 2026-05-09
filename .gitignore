@@ -22,3 +22,8 @@ supabase/.temp/
 .pytest_cache/
 *.pem
 *.key
+
+# Claude Code per-machine settings (should never be tracked)
+.claude/settings.local.json
+# TypeScript incremental build cache
+*.tsbuildinfo
