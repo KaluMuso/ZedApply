@@ -33,13 +33,27 @@ async def request_otp(request: Request, body: OTPRequest, settings: Settings = D
 
 
 @router.post("/otp/verify", response_model=AuthTokens)
-async def verify_otp(body: OTPVerify, settings: Settings = Depends(get_settings), supabase=Depends(get_supabase)):
+@limiter.limit("10/minute")
+async def verify_otp(request: Request, body: OTPVerify, settings: Settings = Depends(get_settings), supabase=Depends(get_supabase)):
+    now_iso = datetime.now(timezone.utc).isoformat()
     result = (
         supabase.table("otp_codes").select("*").eq("phone", body.phone).eq("code", body.code)
-        .eq("verified", False).gte("expires_at", datetime.now(timezone.utc).isoformat())
+        .eq("verified", False).gte("expires_at", now_iso)
         .order("created_at", desc=True).limit(1).execute()
     )
     if not result.data:
+        # Wrong/expired code: bump attempts on the most-recent unverified OTP for this phone
+        # so the brute-force lockout actually engages. Read-then-write race is acceptable —
+        # the @limiter.limit above bounds attack rate, and under-counting beats locking out
+        # a legitimate user on stale state.
+        latest = (
+            supabase.table("otp_codes").select("id, attempts").eq("phone", body.phone)
+            .eq("verified", False).gte("expires_at", now_iso)
+            .order("created_at", desc=True).limit(1).execute()
+        )
+        if latest.data:
+            row = latest.data[0]
+            supabase.table("otp_codes").update({"attempts": (row.get("attempts") or 0) + 1}).eq("id", row["id"]).execute()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired OTP")
 
     otp = result.data[0]

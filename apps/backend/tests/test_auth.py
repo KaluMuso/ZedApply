@@ -44,6 +44,43 @@ class TestOTPVerify:
         )
         assert resp.status_code == 401
 
+    def test_verify_invalid_code_increments_attempts(self, client, fake_supabase):
+        """Wrong code path bumps attempts on the latest unverified OTP row.
+
+        Regression test for the brute-force window: previously the row was only
+        updated to verified=True on success, so the attempts >= max guard was
+        dead code.
+        """
+        captured = {}
+
+        class StubQuery(FakeSupabaseQuery):
+            """First select returns no match (wrong code); second select returns
+            the latest unverified row; update() captures the payload."""
+
+            def __init__(self):
+                super().__init__(data=[])
+                self._call = 0
+
+            def select(self, *a, **kw):
+                self._call += 1
+                if self._call == 1:
+                    self._data = []
+                else:
+                    self._data = [{"id": "otp-9", "attempts": 2}]
+                return self
+
+            def update(self, data):
+                captured["payload"] = data
+                return self
+
+        fake_supabase.set_table("otp_codes", StubQuery())
+        resp = client.post(
+            "/api/v1/auth/otp/verify",
+            json={"phone": "+260971234567", "code": "999999"},
+        )
+        assert resp.status_code == 401
+        assert captured.get("payload") == {"attempts": 3}
+
     def test_verify_valid_code_new_user(self, client, fake_supabase):
         """Valid OTP for new user creates account and returns tokens."""
         fake_supabase.set_table(
