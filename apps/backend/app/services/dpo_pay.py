@@ -9,9 +9,9 @@ DPO Pay uses an XML-based API. The flow:
 API docs: https://docs.dpogroup.com/
 """
 import logging
-from xml.etree import ElementTree as ET
 
 import httpx
+from defusedxml import ElementTree as ET
 
 from app.core.config import get_settings
 
