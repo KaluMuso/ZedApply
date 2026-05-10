@@ -47,6 +47,18 @@
 --   v_score, s_score (defensive), and f_score so every numeric column
 --   exits the function as REAL. b_score is already cast inline.
 --
+--   And a third cascade: with numeric columns fixed, prod surfaced
+--     ERROR 42804: Returned type character varying(100)[] does not
+--                  match expected type text[] in column 9.
+--   `skills.name` is VARCHAR(100), so `ARRAY(SELECT s2.name ...)`
+--   returns varchar(100)[]. Both `matched_skills` and `missing_skills`
+--   (columns 9-10) are declared TEXT[]. Cast each ARRAY projection to
+--   TEXT[] to align.
+--
+--   Full projection audit after this migration: all 10 declared columns
+--   exit the function as their declared type:
+--     1 job_id UUID, 2-4 TEXT, 5-8 REAL, 9-10 TEXT[].
+--
 --   Scoring formula, weights (60/30/10), skill aggregation, bonus CASE
 --   block, ORDER BY, LIMIT — all unchanged from migration 007 byte for
 --   byte. Only the type casts differ.
@@ -128,11 +140,11 @@ BEGIN
             ARRAY(SELECT s2.name
                     FROM job_skills js2
                     JOIN skills s2 ON s2.id = js2.skill_id
-                   WHERE js2.job_id = j.id AND s2.name = ANY(v_user_skills)) AS m_skills,
+                   WHERE js2.job_id = j.id AND s2.name = ANY(v_user_skills))::TEXT[] AS m_skills,
             ARRAY(SELECT s2.name
                     FROM job_skills js2
                     JOIN skills s2 ON s2.id = js2.skill_id
-                   WHERE js2.job_id = j.id AND NOT (s2.name = ANY(v_user_skills))) AS miss_skills
+                   WHERE js2.job_id = j.id AND NOT (s2.name = ANY(v_user_skills)))::TEXT[] AS miss_skills
         FROM jobs j
         WHERE j.is_active = true AND j.embedding IS NOT NULL
     )
