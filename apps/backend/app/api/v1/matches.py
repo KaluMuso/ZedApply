@@ -1,4 +1,6 @@
 """Matching routes."""
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, BackgroundTasks
 from app.core.deps import get_supabase, get_current_user_id, get_current_user, is_superadmin
 from app.core.rate_limit import limiter
@@ -6,6 +8,8 @@ from app.schemas.matching import MatchResult, MatchList
 from app.schemas.jobs import Job
 from app.services.matching import run_matching_for_user, store_matches, check_match_quota
 from app.services.email import send_match_digest_email
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/matches", tags=["Matching"])
 
@@ -57,21 +61,32 @@ async def trigger_matching(
 
 
 async def _run_matching_task(user_id: str, cv_id: str, supabase):
-    matches = await run_matching_for_user(user_id, supabase)
-    await store_matches(user_id, cv_id, matches, supabase)
-    sub = supabase.table("subscriptions").select("matches_used").eq("user_id", user_id).single().execute()
-    if sub.data:
-        supabase.table("subscriptions").update({"matches_used": sub.data["matches_used"] + 1}).eq("user_id", user_id).execute()
-    if matches:
-        digest_rows = (
-            supabase.table("matches")
-            .select("score, jobs(title, company)")
-            .eq("user_id", user_id)
-            .order("score", desc=True)
-            .limit(5)
-            .execute()
+    # Background task: must not propagate exceptions (would crash the
+    # worker silently). But we MUST log them — a silent except-pass here
+    # is what hid the match_jobs_for_user 42804 type-mismatch in prod for
+    # weeks (slice 2D-1f).
+    try:
+        matches = await run_matching_for_user(user_id, supabase)
+        await store_matches(user_id, cv_id, matches, supabase)
+        sub = supabase.table("subscriptions").select("matches_used").eq("user_id", user_id).single().execute()
+        if sub.data:
+            supabase.table("subscriptions").update({"matches_used": sub.data["matches_used"] + 1}).eq("user_id", user_id).execute()
+        if matches:
+            digest_rows = (
+                supabase.table("matches")
+                .select("score, jobs(title, company)")
+                .eq("user_id", user_id)
+                .order("score", desc=True)
+                .limit(5)
+                .execute()
+            )
+            try:
+                await send_match_digest_email(user_id, digest_rows.data or [], supabase)
+            except Exception:
+                logger.warning(
+                    "match digest email failed for user=%s", user_id, exc_info=True
+                )
+    except Exception:
+        logger.error(
+            "matching task failed for user=%s cv=%s", user_id, cv_id, exc_info=True
         )
-        try:
-            await send_match_digest_email(user_id, digest_rows.data or [], supabase)
-        except Exception:
-            pass
