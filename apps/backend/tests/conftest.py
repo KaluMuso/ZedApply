@@ -11,11 +11,18 @@ import pytest
 from fastapi.testclient import TestClient
 
 # -- Fake env vars so Settings() doesn't blow up -------------------------
+# Settings (app/core/config.py) requires: SUPABASE_URL, SUPABASE_KEY,
+# GEMINI_API_KEY, JWT_SECRET. CI's workflow injects these names directly
+# at job level (.github/workflows/ci.yml). Local pytest needs them here.
 os.environ["SUPABASE_URL"] = "https://fake.supabase.co"
-os.environ["SUPABASE_ANON_KEY"] = "fake-anon-key"
-os.environ["SUPABASE_SERVICE_KEY"] = "fake-service-key"
-os.environ["OPENAI_API_KEY"] = "sk-fake"
+os.environ["SUPABASE_KEY"] = "fake-service-key"
+os.environ["GEMINI_API_KEY"] = "fake-gemini-key"
 os.environ["JWT_SECRET"] = "test-secret-key-for-testing-only"
+# Legacy/back-compat — some older tests or services may still read these.
+# Cheap to keep; safe to remove in a follow-up cleanup.
+os.environ.setdefault("SUPABASE_ANON_KEY", "fake-anon-key")
+os.environ.setdefault("SUPABASE_SERVICE_KEY", "fake-service-key")
+os.environ.setdefault("OPENAI_API_KEY", "sk-fake")
 
 # Ensure the app package is importable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
