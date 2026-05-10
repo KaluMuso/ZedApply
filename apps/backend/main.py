@@ -10,6 +10,19 @@ from app.api.v1 import auth, jobs, matches, cv, webhooks, profile, subscription,
 
 settings = get_settings()
 
+# ── Observability: Sentry (no-op if SENTRY_DSN is empty) ──
+# Init must happen BEFORE the FastAPI app is created so the integration
+# can hook ASGI middleware. send_default_pii=False keeps user phone/email
+# out of error reports — Sentry only sees stack traces and breadcrumbs.
+if settings.sentry_dsn:
+    import sentry_sdk
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.sentry_environment,
+        traces_sample_rate=0.1,
+        send_default_pii=False,
+    )
+
 app = FastAPI(title=settings.app_name, version=settings.app_version, docs_url="/docs", redoc_url="/redoc")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)

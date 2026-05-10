@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     resend_from_email: str = "Zed CV <noreply@zedcv.com>"
     app_url: str = "https://zedcv.com"
 
+    # ── Observability (Sentry) ──
+    # If sentry_dsn is empty, Sentry init is a no-op. Set in prod env only.
+    sentry_dsn: str = ""
+    sentry_environment: str = "production"
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
