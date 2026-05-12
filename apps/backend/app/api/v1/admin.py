@@ -158,6 +158,34 @@ async def drain_cv_queue(
     return out
 
 
+@router.post("/waha/bootstrap-session")
+async def bootstrap_waha_session_endpoint(
+    session: str = Query("default", description="WAHA session name to ensure WORKING"),
+    timeout: int = Query(45, ge=5, le=120, description="Max seconds to wait for WORKING"),
+):
+    """Manually trigger the WAHA session bootstrap.
+
+    The backend already runs this on startup, but if WAHA restarts
+    mid-runtime (container crash, OOM, manual `docker compose restart waha`),
+    the startup hook won't re-fire and OTP delivery will start returning
+    503s. This endpoint lets admin re-run the bootstrap without restarting
+    the backend.
+
+    Returns `{ok: bool, session: str}`. Safe to call any time — the
+    underlying function is idempotent (no-op if session is already
+    WORKING).
+    """
+    from app.services.whatsapp import ensure_session_started
+    ok = await ensure_session_started(session_name=session, timeout_seconds=timeout)
+    if not ok:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Failed to bring session {session!r} to WORKING within {timeout}s. "
+                   "Check WAHA logs and consider scanning a fresh QR via the dashboard.",
+        )
+    return {"ok": True, "session": session}
+
+
 @router.post("/re-embed")
 async def re_embed_all(
     target: str = Query("all", description="One of: jobs, cvs, all"),

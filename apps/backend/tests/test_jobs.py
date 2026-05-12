@@ -255,3 +255,51 @@ class TestJobIngest:
         body = resp.json()
         assert body["ingested"] == 0
         assert body["duplicates"] == 1
+
+    @patch("app.api.v1.jobs.generate_embedding", new_callable=AsyncMock)
+    def test_ingest_skips_aggregator_cross_listing(
+        self, mock_embed, client, fake_supabase
+    ):
+        """A job whose apply_url points at a blacklisted aggregator
+        (e.g. zimbojobs.com) is counted in `skipped`, never embedded,
+        never written. Filter runs BEFORE the Gemini call so we don't
+        burn embedding quota on noise."""
+        fake_supabase.set_table("job_fingerprints", FakeSupabaseQuery(data=[]))
+
+        cross_listed = dict(self.SAMPLE_JOB)
+        cross_listed["title"] = "Software Engineer at Acme"
+        cross_listed["apply_url"] = "https://www.zimbojobs.com/jobs/12345"
+        cross_listed["source_url"] = "https://www.zimbojobs.com/jobs/12345"
+
+        resp = client.post(
+            "/api/v1/jobs/ingest",
+            json={"api_key": "test-ingest-key", "jobs": [cross_listed]},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ingested"] == 0
+        assert body["duplicates"] == 0
+        assert body["skipped"] == 1
+        assert body["errors"] == []
+        # The filter must short-circuit before embedding to save Gemini quota.
+        mock_embed.assert_not_called()
+
+    @patch("app.api.v1.jobs.generate_embedding", new_callable=AsyncMock)
+    def test_ingest_skip_filter_is_case_insensitive(
+        self, mock_embed, client, fake_supabase
+    ):
+        """Blacklist match must be case-insensitive — scrapers don't
+        normalize URLs."""
+        mock_embed.return_value = [0.1] * 768
+        fake_supabase.set_table("job_fingerprints", FakeSupabaseQuery(data=[]))
+
+        cross_listed = dict(self.SAMPLE_JOB)
+        cross_listed["apply_url"] = "HTTPS://WWW.ZIMBOJOBS.COM/JOBS/abc"
+        cross_listed["source_url"] = None
+
+        resp = client.post(
+            "/api/v1/jobs/ingest",
+            json={"api_key": "test-ingest-key", "jobs": [cross_listed]},
+        )
+        assert resp.json()["skipped"] == 1
+        mock_embed.assert_not_called()

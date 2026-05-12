@@ -129,4 +129,10 @@ class JobIngestErrorItem(BaseModel):
 class JobIngestResponse(BaseModel):
     ingested: int
     duplicates: int
+    # Rows the server chose to skip without ingesting AND without erroring.
+    # Currently used for cross-listing / aggregator-domain filtering, but
+    # the field is intentionally generic so future skip reasons can use
+    # the same counter without a schema change. n8n surfaces this in the
+    # execution view alongside `ingested` and `duplicates`.
+    skipped: int = 0
     errors: list[JobIngestErrorItem] = []

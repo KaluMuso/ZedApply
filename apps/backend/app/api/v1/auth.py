@@ -23,12 +23,22 @@ async def request_otp(request: Request, body: OTPRequest, settings: Settings = D
     if recent.data:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=f"Wait {settings.otp_cooldown_seconds}s between OTP requests")
 
-    code = "".join([str(secrets.randbelow(10)) for _ in range(6)])
+    code = "".join([str(secrets.randbelow(10)) for _ in range(settings.otp_code_length)])
     supabase.table("otp_codes").insert({
         "phone": body.phone, "code": code,
-        "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=settings.otp_expire_minutes)).isoformat(),
     }).execute()
-    await send_whatsapp_otp(body.phone, code)
+    try:
+        await send_whatsapp_otp(body.phone, code)
+    except Exception as e:
+        # Log but don't fail — the OTP is already stored, user can re-request if they don't get it.
+        # Better UX is to return a clear 503 here than to crash with text/plain 500.
+        import logging
+        logging.getLogger(__name__).error("WAHA send failed for %s: %s", body.phone, e)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="WhatsApp delivery is temporarily unavailable. Please try again in a minute.",
+        )
     return {"message": "OTP sent to your WhatsApp"}
 
 
@@ -79,6 +89,6 @@ async def verify_otp(request: Request, body: OTPVerify, settings: Settings = Dep
 
     now = datetime.now(timezone.utc)
     access_token = jwt.encode({"sub": user_id, "phone": body.phone, "exp": now + timedelta(minutes=settings.jwt_expire_minutes), "iat": now}, settings.jwt_secret, algorithm=settings.jwt_algorithm)
-    refresh_token = jwt.encode({"sub": user_id, "type": "refresh", "exp": now + timedelta(days=30), "iat": now}, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    refresh_token = jwt.encode({"sub": user_id, "type": "refresh", "exp": now + timedelta(days=settings.refresh_token_expire_days), "iat": now}, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
     return AuthTokens(access_token=access_token, refresh_token=refresh_token, user_id=user_id)

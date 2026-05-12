@@ -61,10 +61,33 @@ class Settings(BaseSettings):
     # n8n's "Zambia Job Scraper" workflow includes this as `api_key`.
     # Leave empty in dev to disable the ingest endpoint entirely.
     ingest_api_key: str = ""
+    # Comma-separated list of aggregator/cross-listing domains to filter
+    # at the /ingest boundary. The scraper sometimes pulls in jobs that
+    # were originally listed elsewhere (e.g. a Zambian-tagged role on
+    # zimbojobs.com that points its apply_url at a Zimbabwean board);
+    # those are noise for our matching. Comma-separated rather than a
+    # list because pydantic-settings does not parse list[str] from env
+    # vars without a JSON wrapper. Matched substring-style against both
+    # apply_url and source_url, case-insensitive.
+    aggregator_domains_blacklist: str = "zimbojobs.com,zimworx.com,zimworx.co.zw"
 
     # OTP
     otp_cooldown_seconds: int = 60
     max_otp_attempts: int = 5
+    # OTP code is N decimal digits, generated with secrets.randbelow(10).
+    # Changing this is a schema-friendly change but invalidates any
+    # already-issued unverified codes the moment the new build deploys.
+    otp_code_length: int = 6
+    otp_expire_minutes: int = 5
+    # Refresh JWT TTL. Bumped/lowered here without touching auth.py.
+    refresh_token_expire_days: int = 30
+    # Length of a paid subscription cycle in days. Drives DPO + Lenco
+    # webhook upgrade flows. Used twice in webhooks.py so kept here to
+    # avoid drift between providers.
+    subscription_period_days: int = 30
+    # Highest job index a user can reply with on WhatsApp ("reply 1-5").
+    # Aligned with send_match_digest which renders the top 5 matches.
+    whatsapp_reply_max_index: int = 5
 
     # Superadmin phone (initial bootstrap)
     superadmin_phone: str = ""

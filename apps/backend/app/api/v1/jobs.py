@@ -269,12 +269,38 @@ async def ingest_jobs(
         # whether the server has an ingest key configured.
         raise HTTPException(status_code=401, detail="Invalid ingest API key")
 
+    # Pre-compute the blacklist once per request rather than per-row.
+    # Lowercased and stripped so the per-row check is a simple substring.
+    aggregator_blacklist = [
+        d.strip().lower()
+        for d in (settings.aggregator_domains_blacklist or "").split(",")
+        if d.strip()
+    ]
+
     ingested = 0
     duplicates = 0
+    skipped = 0
     errors: list[JobIngestErrorItem] = []
 
     for idx, job in enumerate(body.jobs):
         try:
+            # Filter cross-listings / aggregator-domain noise BEFORE
+            # fingerprinting and embedding — both are expensive (DB call +
+            # Gemini call) and the filter is cheap.
+            if aggregator_blacklist:
+                urls_to_check = " ".join(
+                    filter(None, [job.apply_url or "", job.source_url or ""])
+                ).lower()
+                if urls_to_check and any(
+                    domain in urls_to_check for domain in aggregator_blacklist
+                ):
+                    skipped += 1
+                    logger.info(
+                        "ingest_jobs: row %d skipped as aggregator cross-listing (title=%r)",
+                        idx, job.title,
+                    )
+                    continue
+
             fp = _fingerprint(job.title, job.company, job.description)
             existing = (
                 supabase.table("job_fingerprints")
@@ -334,5 +360,6 @@ async def ingest_jobs(
     return JobIngestResponse(
         ingested=ingested,
         duplicates=duplicates,
+        skipped=skipped,
         errors=errors[:50],  # cap to keep response size bounded
     )

@@ -56,6 +56,43 @@ app.include_router(interview_prep.router, prefix="/api/v1")
 app.include_router(webhooks.router, prefix="/api/v1")
 
 
+@app.on_event("startup")
+async def bootstrap_waha_session() -> None:
+    """Ensure WAHA has a WORKING session before users hit /auth/otp/request.
+
+    WAHA persists creds.json across restarts but does NOT auto-start the
+    session on container boot. Without this hook, every WAHA restart
+    silently breaks OTP delivery until someone manually POSTs to
+    /api/sessions/start. The 2026-05-12 outage that took sign-in down
+    for hours was caused by exactly this.
+
+    We dispatch this as a background task so a slow/down WAHA never
+    blocks backend startup (uvicorn would otherwise hang for ~45s if
+    WAHA is unreachable on boot). The function is idempotent — safe to
+    call repeatedly, no-ops if already WORKING.
+    """
+    import asyncio
+    import logging
+    from app.services.whatsapp import ensure_session_started
+
+    async def _bootstrap() -> None:
+        log = logging.getLogger(__name__)
+        try:
+            ok = await ensure_session_started("default", timeout_seconds=45)
+            if ok:
+                log.info("WAHA session bootstrap: default session is WORKING")
+            else:
+                log.warning(
+                    "WAHA session bootstrap: default session did not reach "
+                    "WORKING within 45s. OTP delivery will fail with 503 "
+                    "until session is started manually (POST /api/sessions/start)."
+                )
+        except Exception as e:
+            log.warning("WAHA session bootstrap raised non-fatal error: %s", e)
+
+    asyncio.create_task(_bootstrap())
+
+
 @app.get("/api/v1/health")
 async def health_check():
     from app.services.whatsapp import check_waha_health
