@@ -117,7 +117,7 @@ const comparisonFeatures: ComparisonFeature[] = [
   { name: "Interview prep notes", free: false, starter: false, pro: false, super_standard: true },
 ];
 
-type PaymentMethod = "mtn" | "airtel" | "card";
+type PaymentMethod = "mtn" | "airtel" | "card" | "lenco";
 
 export default function PricingPage() {
   const { token, isAuthenticated } = useAuth();
@@ -406,14 +406,18 @@ export default function PricingPage() {
             </h3>
 
             <div className="space-y-5">
-              {/* Payment methods */}
+              {/* Payment methods — 2×2 grid so Lenco fits cleanly with the
+                  three DPO-backed methods. Lenco routes through our signed
+                  /webhooks/lenco handler (new today); the others go via DPO
+                  Pay's hosted redirect. */}
               <div>
                 <label className="eyebrow block mb-3">Payment method</label>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[
                     { key: "mtn" as const, label: "MTN MoMo", color: "#ffcc00" },
                     { key: "airtel" as const, label: "Airtel Money", color: "#e40000" },
                     { key: "card" as const, label: "Visa / MC", color: "#1a1f71" },
+                    { key: "lenco" as const, label: "Lenco", color: "#00b87c" },
                   ].map((method) => (
                     <button
                       key={method.key}
@@ -435,6 +439,15 @@ export default function PricingPage() {
                     </button>
                   ))}
                 </div>
+                {paymentMethod === "lenco" && (
+                  <p
+                    className="text-xs mt-2.5"
+                    style={{ color: "var(--muted)" }}
+                  >
+                    Lenco supports MTN MoMo and Airtel Money. You&apos;ll get a
+                    prompt on your phone — confirm to complete.
+                  </p>
+                )}
               </div>
 
               {/* Phone input */}

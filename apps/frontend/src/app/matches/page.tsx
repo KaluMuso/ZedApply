@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   matches as matchesApi,
   subscription as subscriptionApi,
+  ApiError,
   type MatchData,
   type Subscription,
 } from "@/lib/api";
@@ -47,7 +48,7 @@ const TIER_LABELS: Record<string, string> = {
 
 export default function MatchesPage() {
   const router = useRouter();
-  const { token, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { token, isAuthenticated, isLoading: authLoading, logout } = useAuth();
   const [data, setData] = useState<{
     matches: MatchData[];
     remaining_quota: number;
@@ -74,11 +75,28 @@ export default function MatchesPage() {
       subscriptionApi.get(token),
     ])
       .then(([matchesRes, subRes]) => {
+        // 401 anywhere means the token is dead (typical: 24h JWT expired
+        // while the user wasn't on the site). Clear it and bounce to
+        // /auth with a `next` param so they land back here after signing
+        // in. Without this, the page used to render a permanent "Could
+        // not load matches" with no recovery path.
+        const unauthorized =
+          (matchesRes.status === "rejected" &&
+            matchesRes.reason instanceof ApiError &&
+            matchesRes.reason.status === 401) ||
+          (subRes.status === "rejected" &&
+            subRes.reason instanceof ApiError &&
+            subRes.reason.status === 401);
+        if (unauthorized) {
+          logout();
+          router.replace("/auth?next=/matches");
+          return;
+        }
         if (matchesRes.status === "fulfilled") setData(matchesRes.value);
         if (subRes.status === "fulfilled") setSub(subRes.value);
       })
       .finally(() => setLoading(false));
-  }, [token, isAuthenticated, authLoading, router]);
+  }, [token, isAuthenticated, authLoading, router, logout]);
 
   if (loading || authLoading) {
     return (

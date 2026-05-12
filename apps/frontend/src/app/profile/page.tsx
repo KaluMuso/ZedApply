@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { profile as profileApi, type UserProfile } from "@/lib/api";
+import { profile as profileApi, ApiError, type UserProfile } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Icon } from "@/components/ui/Icon";
 import { Avatar } from "@/components/ui/Avatar";
@@ -30,7 +30,7 @@ const TIER_LABELS: Record<string, string> = {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { token, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { token, isAuthenticated, isLoading: authLoading, logout } = useAuth();
   const [profileData, setProfileData] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("cv");
@@ -38,15 +38,25 @@ export default function ProfilePage() {
   useEffect(() => {
     if (authLoading) return;
     if (!isAuthenticated || !token) {
-      router.push("/auth");
+      router.push("/auth?next=/profile");
       return;
     }
     profileApi
       .get(token)
       .then(setProfileData)
-      .catch(() => setProfileData(null))
+      .catch((err) => {
+        // 401 = stale JWT (typical: 24h expiry while user was away).
+        // Clear and bounce to /auth so the user has a recovery path
+        // instead of staring at "Could not load profile" forever.
+        if (err instanceof ApiError && err.status === 401) {
+          logout();
+          router.replace("/auth?next=/profile");
+          return;
+        }
+        setProfileData(null);
+      })
       .finally(() => setLoading(false));
-  }, [token, isAuthenticated, authLoading, router]);
+  }, [token, isAuthenticated, authLoading, router, logout]);
 
   const refresh = () => {
     if (!token) return;

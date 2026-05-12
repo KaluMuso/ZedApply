@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { auth } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { z } from "zod";
@@ -17,6 +17,7 @@ const otpSchema = z.string().length(6, "OTP must be 6 digits");
 
 export default function AuthPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { login, isAuthenticated, isLoading: authLoading } = useAuth();
   const [step, setStep] = useState<"phone" | "otp" | "success">("phone");
   const [phoneDigits, setPhoneDigits] = useState("");
@@ -28,12 +29,20 @@ export default function AuthPage() {
 
   const fullPhone = `+260${phoneDigits.replace(/\s/g, "")}`;
 
+  // Where to send the user after sign-in. `?next=/path` (set by pages
+  // that redirected here on 401) wins; otherwise we drop them on
+  // /matches. Guard against open-redirect by requiring the next param
+  // to be a same-origin relative path (starts with `/`, no `//`).
+  const rawNext = searchParams?.get("next") || "";
+  const safeNext =
+    rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/matches";
+
   // Redirect if already authenticated
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
-      router.replace("/matches");
+      router.replace(safeNext);
     }
-  }, [authLoading, isAuthenticated, router]);
+  }, [authLoading, isAuthenticated, router, safeNext]);
 
   // Resend countdown
   useEffect(() => {
@@ -85,7 +94,7 @@ export default function AuthPage() {
         const tokens = await auth.verifyOTP(fullPhone, code);
         login(tokens.access_token, tokens.user_id);
         setStep("success");
-        setTimeout(() => router.push("/matches"), 1400);
+        setTimeout(() => router.push(safeNext), 1400);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Invalid OTP");
         setLoading(false);

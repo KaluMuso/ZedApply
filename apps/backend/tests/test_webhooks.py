@@ -226,20 +226,33 @@ def test_dpo_webhook_tier_mapping_unknown_amount_logs_warning(
     assert sub_spy.update_calls[0]["matches_limit"] == 50
 
 
-# ── 4. Subscription/pay rejects lenco_* methods ──────────────────────────
+# ── 4. Subscription/pay now accepts lenco method (Lenco-frontend slice) ──
 
 
-def test_subscription_pay_rejects_lenco_method(client, auth_headers, fake_supabase):
-    """The live Lenco initiation path was reverted; payment_method values
-    starting with 'lenco_' must be rejected with 422."""
+def test_subscription_pay_accepts_lenco_method(client, auth_headers, fake_supabase):
+    """Lenco initiation was re-enabled when the signed webhook handler
+    shipped. The /pay route should now create a pending payment row with
+    provider='lenco' and return 200 even when LENCO_API_KEY isn't set
+    (the service degrades gracefully and the row stays pending until
+    manual intervention)."""
+    from tests.conftest import FakeSupabaseQuery
+    fake_supabase.set_table(
+        "subscriptions",
+        FakeSupabaseQuery(data=[{"id": "sub-1"}]),
+    )
+    fake_supabase.set_table(
+        "payments",
+        FakeSupabaseQuery(data=[{"id": "pay-lenco-1"}]),
+    )
     resp = client.post(
         "/api/v1/subscription/pay",
         headers=auth_headers,
         json={
             "tier": "starter",
-            "payment_method": "lenco_mtn",
+            "payment_method": "lenco",
             "phone": "+260971234567",
         },
     )
-    assert resp.status_code == 422
-    assert "lenco" in resp.json()["detail"].lower()
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["transaction_id"] == "pay-lenco-1"

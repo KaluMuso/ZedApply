@@ -46,13 +46,6 @@ async def initiate_payment(
     user_id: str = Depends(get_current_user_id),
     supabase=Depends(get_supabase),
 ):
-    # TODO: Lenco support removed pending /webhooks/lenco handler — see audit slice 2D-1c
-    if body.payment_method.startswith("lenco"):
-        raise HTTPException(
-            status_code=422,
-            detail="Lenco payments are not currently supported. Please choose mtn, airtel, or card.",
-        )
-
     tier_value = body.tier.value if hasattr(body.tier, "value") else body.tier
     if tier_value not in TIER_PRICES or tier_value == "free":
         raise HTTPException(
@@ -75,17 +68,24 @@ async def initiate_payment(
 
     subscription_id = sub_result.data["id"]
 
-    # Create payment record
+    # Branch on payment method. Lenco goes via app/services/lenco.py and
+    # the /webhooks/lenco signed-callback handler. DPO Pay handles mtn /
+    # airtel / card via the existing token-create + browser-redirect flow.
+    is_lenco = body.payment_method.lower().startswith("lenco")
+    provider = "lenco" if is_lenco else "dpo_pay"
+    method_label = "lenco" if is_lenco else f"{body.payment_method}_money"
+
+    # Create payment record (status=pending) BEFORE calling the provider.
+    # We use the row id as the company_ref so the webhook can look it up.
     payment_result = supabase.table("payments").insert({
         "user_id": user_id,
         "subscription_id": subscription_id,
         "amount": amount_ngwee,
         "currency": "ZMW",
-        "payment_method": f"{body.payment_method}_money",
-        "provider": "dpo_pay",
+        "payment_method": method_label,
+        "provider": provider,
         "status": "pending",
     }).execute()
-
     if not payment_result.data:
         raise HTTPException(status_code=500, detail="Failed to create payment record")
 
@@ -96,6 +96,37 @@ async def initiate_payment(
         "professional": "Professional",
         "super_standard": "Super Standard",
     }.get(tier_value, "Plan")
+
+    if is_lenco:
+        from app.services.lenco import create_lenco_payment
+        try:
+            lenco_result = await create_lenco_payment(
+                amount_zmw=amount_zmw,
+                phone=body.phone,
+                description=f"Zed CV {tier_name} Plan - 1 Month",
+                payment_ref=payment_id,
+            )
+            supabase.table("payments").update({
+                "provider_ref": lenco_result["transaction_id"],
+            }).eq("id", payment_id).execute()
+
+            logging.info(
+                "Lenco payment initiated: user=%s tier=%s amount=K%s tx=%s",
+                user_id, tier_value, amount_zmw, lenco_result["transaction_id"],
+            )
+            return PaymentInitiateResponse(
+                message=(
+                    f"Payment of K{int(amount_zmw)} initiated via Lenco. "
+                    "Check your phone for the mobile money prompt."
+                ),
+                transaction_id=payment_id,
+            )
+        except ValueError as e:
+            logging.warning("Lenco payment failed: %s", e)
+            return PaymentInitiateResponse(
+                message=f"Payment of K{int(amount_zmw)} recorded. {str(e)}",
+                transaction_id=payment_id,
+            )
 
     from app.services.dpo_pay import create_payment_token
     try:
