@@ -9,6 +9,22 @@
   --font-body: "Inter", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
+  /* Mobile tab bar offset. Used by sticky-bottom CTAs (e.g. the Apply
+     button in JobDetailBody) so they sit above the mobile tab bar
+     instead of being hidden behind it. Zero on desktop; matches the
+     bar's height + iOS safe area on mobile. Keep in sync with the
+     height value in components/MobileTabBar.tsx (currently 80px). */
+  --mobile-tabbar-offset: 0px;
+}
+
+@media (max-width: 767px) {
+  :root {
+    --mobile-tabbar-offset: calc(80px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+:root {
+
   /* Brand — green */
   --green-900: #052e1c;
   --green-800: #0a3f26;

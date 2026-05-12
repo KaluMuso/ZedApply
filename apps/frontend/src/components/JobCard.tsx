@@ -7,53 +7,100 @@ interface JobCardProps {
   title: string;
   company: string | null;
   location: string | null;
-  qualityScore: number;
+  /**
+   * Listing-quality heuristic (0–100). Reflects how *complete* the listing
+   * is (has company, apply link, salary, etc.) — NOT a personalised match
+   * for the viewer. We no longer surface this on public cards because
+   * users universally misread it as a personal match score.
+   */
+  qualityScore?: number;
   skills: string[];
   closingDate: string | null;
+  postedAt?: string | null;
+  salaryMin?: number | null;
+  salaryMax?: number | null;
+  source?: string | null;
+  /**
+   * Personalised match score (0–100) from match_jobs_for_user. Only set
+   * when rendering inside an authenticated, CV-backed context like /matches.
+   * Renders a clearly-labelled "Match" pill so users know it's about them.
+   */
+  matchScore?: number;
   matchedSkills?: string[];
   onClick?: () => void;
 }
 
-function ScoreBadge({ score }: { score: number }) {
-  let bg: string, color: string, label: string, dotColor: string;
-  if (score >= 85) {
+function MatchPill({ score }: { score: number }) {
+  let bg: string, color: string, dot: string;
+  if (score >= 75) {
     bg = "var(--green-100)";
     color = "var(--green-700)";
-    dotColor = "var(--green-500)";
-    label = "Top";
-  } else if (score >= 70) {
+    dot = "var(--green-500)";
+  } else if (score >= 50) {
     bg = "var(--copper-100)";
     color = "var(--copper-600)";
-    dotColor = "var(--copper-500)";
-    label = "Good";
+    dot = "var(--copper-500)";
   } else {
-    bg = "#ffedd5";
-    color = "var(--orange-600)";
-    dotColor = "var(--orange-500)";
-    label = "Fair";
+    bg = "rgba(0,0,0,0.04)";
+    color = "var(--ink-2)";
+    dot = "var(--muted)";
   }
-
   return (
     <span
       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold font-mono"
       style={{ background: bg, color }}
+      title="Match score based on your CV and skills"
     >
       <span
         className="w-1.5 h-1.5 rounded-full"
-        style={{ background: dotColor }}
+        style={{ background: dot }}
       />
-      {Math.round(score)}% {label}
+      {Math.round(score)}% match
     </span>
   );
+}
+
+function formatRelativeTime(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return null;
+  const diffMs = Date.now() - then;
+  if (diffMs < 0) return null;
+  const day = 24 * 60 * 60 * 1000;
+  if (diffMs < day) return "Posted today";
+  if (diffMs < 2 * day) return "Posted yesterday";
+  const days = Math.floor(diffMs / day);
+  if (days < 7) return `Posted ${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return `Posted ${weeks}w ago`;
+  const months = Math.floor(days / 30);
+  return `Posted ${months}mo ago`;
+}
+
+function formatSalary(min?: number | null, max?: number | null): string | null {
+  // Salaries are stored as ngwee (ZMW × 100). Display as ZMW kilo for
+  // readability — most Zambian salaries are in the 3k–50k range.
+  if (!min && !max) return null;
+  const fmt = (ngwee: number) => {
+    const kwacha = ngwee / 100;
+    if (kwacha >= 1000) return `K${(kwacha / 1000).toFixed(kwacha % 1000 === 0 ? 0 : 1)}k`;
+    return `K${kwacha.toFixed(0)}`;
+  };
+  if (min && max && min !== max) return `${fmt(min)}–${fmt(max)}`;
+  return fmt(min ?? max ?? 0);
 }
 
 export function JobCard({
   title,
   company,
   location,
-  qualityScore,
   skills,
   closingDate,
+  postedAt,
+  salaryMin,
+  salaryMax,
+  source,
+  matchScore,
   matchedSkills = [],
   onClick,
 }: JobCardProps) {
@@ -64,6 +111,13 @@ export function JobCard({
         (new Date(closingDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
       )
     : null;
+
+  const postedLabel = formatRelativeTime(postedAt);
+  const salaryLabel = formatSalary(salaryMin, salaryMax);
+  const sourceLabel =
+    source && source !== "manual" && source !== "partner"
+      ? `via ${source}`
+      : null;
 
   return (
     <button
@@ -92,7 +146,7 @@ export function JobCard({
             </p>
           </div>
         </div>
-        <ScoreBadge score={qualityScore} />
+        {typeof matchScore === "number" && <MatchPill score={matchScore} />}
       </div>
 
       {skills.length > 0 && (
@@ -118,8 +172,25 @@ export function JobCard({
         </div>
       )}
 
-      {/* Metadata row */}
-      <div className="mt-3 flex items-center gap-4 text-xs" style={{ color: "var(--muted)" }}>
+      {/* Metadata row — posted, salary, closing, source. Replaces the
+          old misleading "quality_score%" badge. */}
+      <div
+        className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs"
+        style={{ color: "var(--muted)" }}
+      >
+        {postedLabel && (
+          <span className="flex items-center gap-1">
+            <Icon name="clock" size={12} /> {postedLabel}
+          </span>
+        )}
+        {salaryLabel && (
+          <span
+            className="flex items-center gap-1 font-mono"
+            style={{ color: "var(--ink-2)" }}
+          >
+            {salaryLabel}/mo
+          </span>
+        )}
         {closesIn !== null && (
           <span
             className="flex items-center gap-1"
@@ -133,8 +204,11 @@ export function JobCard({
               ? "Closed"
               : closesIn === 1
               ? "Closes tomorrow"
-              : `${closesIn} days left`}
+              : `Closes in ${closesIn}d`}
           </span>
+        )}
+        {sourceLabel && (
+          <span className="ml-auto text-[10px] opacity-60">{sourceLabel}</span>
         )}
       </div>
     </button>

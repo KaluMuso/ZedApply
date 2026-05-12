@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { jobs as jobsApi, type Job } from "@/lib/api";
 import { JobCard } from "@/components/JobCard";
+import { JobDetailBody } from "@/components/JobDetailBody";
 import { Icon } from "@/components/ui/Icon";
 import { Counter } from "@/components/ui/Counter";
+import { Pagination } from "@/components/ui/Pagination";
 
 const ZAMBIAN_LOCATIONS = [
   "All Locations",
@@ -25,24 +28,80 @@ const SORT_OPTIONS = [
   { value: "closing", label: "Closing Soon" },
 ];
 
+// Curated chip-row of skills most commonly tagged on Zambian listings.
+// Picking from existing data rather than fetching a /skills/top endpoint
+// keeps this slice contained — chips that resolve to nothing simply
+// short-circuit on the backend (already handled in jobs.list filter
+// logic). When we have analytics on which chips actually filter to
+// usable results, replace this with a data-driven list. The backend
+// `skills_aliases` table also covers fuzzy matches like "reactjs" →
+// "react", so a single chip catches several spellings.
+const POPULAR_SKILLS = [
+  "accounting",
+  "sales",
+  "marketing",
+  "administration",
+  "finance",
+  "human resources",
+  "procurement",
+  "logistics",
+  "driving",
+  "teaching",
+  "nursing",
+  "engineering",
+  "it",
+  "construction",
+  "agriculture",
+  "mining",
+  "ngo",
+  "customer service",
+  "project management",
+  "data analysis",
+];
+
 export default function JobsPage() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const [jobsList, setJobsList] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  // searchInput = what the user types; searchQuery = debounced version that
+  // actually hits the API. This avoids spamming the backend on every keystroke.
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [location, setLocation] = useState("");
-  const [sort, setSort] = useState("relevance");
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [sort, setSort] = useState<"relevance" | "recent" | "closing">("recent");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [drawerLoading, setDrawerLoading] = useState(false);
+
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const lastTriggerRef = useRef<HTMLElement | null>(null);
+
+  // Debounce searchInput → searchQuery (300ms). Page reset to 1 when the
+  // committed query changes so the user doesn't get a confusing "page 5 of
+  // 1" state after filtering down.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearchQuery(searchInput);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   const fetchJobs = useCallback(async () => {
     setLoading(true);
     try {
       const res = await jobsApi.list({
         page,
-        search: search || undefined,
+        search: searchQuery || undefined,
         location: location || undefined,
+        sort,
+        skills: selectedSkills.length > 0 ? selectedSkills : undefined,
       });
       setJobsList(res.jobs);
       setTotalPages(res.pages);
@@ -52,16 +111,112 @@ export default function JobsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, location]);
+  }, [page, searchQuery, location, sort, selectedSkills]);
 
   useEffect(() => {
     fetchJobs();
   }, [fetchJobs]);
 
+  // ── Drawer URL sync ──
+  // ?j=<id> drives the drawer so back-button closes it and links to
+  // /jobs?j=X are shareable. Deep linking via the standalone /jobs/[id]
+  // route remains available for SEO and external sharing.
+  const activeJobId = searchParams?.get("j") ?? null;
+
+  useEffect(() => {
+    if (!activeJobId) {
+      setSelectedJob(null);
+      return;
+    }
+    // If the job is already in the loaded list, use it; otherwise fetch.
+    const inList = jobsList.find((j) => j.id === activeJobId);
+    if (inList) {
+      setSelectedJob(inList);
+      return;
+    }
+    let cancelled = false;
+    setDrawerLoading(true);
+    jobsApi
+      .get(activeJobId)
+      .then((j) => {
+        if (!cancelled) setSelectedJob(j);
+      })
+      .catch(() => {
+        if (!cancelled) setSelectedJob(null);
+      })
+      .finally(() => {
+        if (!cancelled) setDrawerLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeJobId, jobsList]);
+
+  const openJob = (job: Job, trigger: HTMLElement | null) => {
+    lastTriggerRef.current = trigger;
+    const sp = new URLSearchParams(searchParams?.toString() ?? "");
+    sp.set("j", job.id);
+    router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
+  };
+
+  const closeJob = useCallback(() => {
+    const sp = new URLSearchParams(searchParams?.toString() ?? "");
+    sp.delete("j");
+    const next = sp.toString();
+    router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
+    // Return focus to the card that opened the drawer (a11y best practice).
+    requestAnimationFrame(() => {
+      lastTriggerRef.current?.focus();
+    });
+  }, [pathname, router, searchParams]);
+
+  // ESC closes the drawer.
+  useEffect(() => {
+    if (!selectedJob) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeJob();
+    };
+    window.addEventListener("keydown", onKey);
+    // Move focus inside the drawer when it opens.
+    requestAnimationFrame(() => {
+      drawerRef.current?.focus();
+    });
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedJob, closeJob]);
+
+  // Lock body scroll while drawer is open.
+  useEffect(() => {
+    if (!selectedJob) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [selectedJob]);
+
+  // Submitting the form is a no-op shortcut to flush the debounce — useful
+  // if the user hits Enter while still typing. We just commit the input
+  // immediately rather than waiting 300ms.
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    setSearchQuery(searchInput);
     setPage(1);
-    fetchJobs();
+  };
+
+  const resetFilters = () => {
+    setSearchInput("");
+    setSearchQuery("");
+    setLocation("");
+    setSort("recent");
+    setSelectedSkills([]);
+    setPage(1);
+  };
+
+  const toggleSkill = (skill: string) => {
+    setSelectedSkills((prev) =>
+      prev.includes(skill) ? prev.filter((s) => s !== skill) : [...prev, skill]
+    );
+    setPage(1);
   };
 
   return (
@@ -102,11 +257,12 @@ export default function JobsPage() {
           />
           <input
             type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search jobs, skills, companies..."
             className="field pl-10"
             style={{ height: 44 }}
+            aria-label="Search jobs"
           />
         </div>
 
@@ -118,6 +274,7 @@ export default function JobsPage() {
           }}
           className="field"
           style={{ width: "auto", minWidth: 160 }}
+          aria-label="Filter by location"
         >
           {ZAMBIAN_LOCATIONS.map((loc) => (
             <option key={loc} value={loc === "All Locations" ? "" : loc}>
@@ -128,9 +285,13 @@ export default function JobsPage() {
 
         <select
           value={sort}
-          onChange={(e) => setSort(e.target.value)}
+          onChange={(e) => {
+            setSort(e.target.value as "relevance" | "recent" | "closing");
+            setPage(1);
+          }}
           className="field"
           style={{ width: "auto", minWidth: 140 }}
+          aria-label="Sort jobs"
         >
           {SORT_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -143,6 +304,52 @@ export default function JobsPage() {
           <Icon name="search" size={16} /> Search
         </button>
       </form>
+
+      {/* Skills chip row — single-click filter by common Zambian job
+          areas. Selected chips are echoed back to the backend's
+          `?skills=csv` filter (skill_aliases handles fuzzy spellings).
+          A horizontal scroll on mobile keeps the row inline rather
+          than wrapping into a wall of chips on narrow viewports. */}
+      <div
+        className="mb-6 flex gap-1.5 overflow-x-auto scroll-thin pb-1"
+        style={{ scrollbarWidth: "thin" }}
+        aria-label="Filter by skill"
+      >
+        {selectedSkills.length > 0 && (
+          <button
+            onClick={() => {
+              setSelectedSkills([]);
+              setPage(1);
+            }}
+            className="tag tag-mono shrink-0"
+            style={{
+              cursor: "pointer",
+              borderColor: "var(--copper-500)",
+              color: "var(--copper-600)",
+            }}
+            type="button"
+            aria-label="Clear all skill filters"
+          >
+            <Icon name="x" size={10} /> Clear ({selectedSkills.length})
+          </button>
+        )}
+        {POPULAR_SKILLS.map((skill) => {
+          const active = selectedSkills.includes(skill);
+          return (
+            <button
+              key={skill}
+              onClick={() => toggleSkill(skill)}
+              className={`tag tag-mono shrink-0 ${active ? "tag-green" : ""}`}
+              style={{ cursor: "pointer", textTransform: "capitalize" }}
+              type="button"
+              aria-pressed={active}
+            >
+              {active && <Icon name="check" size={10} />}
+              {skill}
+            </button>
+          );
+        })}
+      </div>
 
       {/* Results */}
       {loading ? (
@@ -166,21 +373,25 @@ export default function JobsPage() {
             className="font-display text-2xl mb-2"
             style={{ letterSpacing: "-0.01em" }}
           >
-            No jobs found
+            {searchQuery || location
+              ? "No jobs match your filters"
+              : "No jobs are open right now"}
           </h3>
-          <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
-            Try a different search or location filter.
+          <p className="text-sm mb-5 max-w-md mx-auto" style={{ color: "var(--muted)" }}>
+            {searchQuery || location
+              ? "Try a broader search or remove a filter. New listings arrive throughout the week."
+              : "Check back soon — new roles are scraped daily across Zambia."}
           </p>
-          <button
-            onClick={() => {
-              setSearch("");
-              setLocation("");
-              setPage(1);
-            }}
-            className="btn btn-ghost btn-sm"
-          >
-            Reset filters
-          </button>
+          <div className="flex gap-3 justify-center">
+            {(searchQuery || location) && (
+              <button onClick={resetFilters} className="btn btn-ghost btn-sm">
+                Reset filters
+              </button>
+            )}
+            <a href="/signin" className="btn btn-primary btn-sm">
+              Get matches on WhatsApp
+            </a>
+          </div>
         </div>
       ) : (
         <>
@@ -191,60 +402,33 @@ export default function JobsPage() {
                 title={job.title}
                 company={job.company}
                 location={job.location}
-                qualityScore={job.quality_score}
                 skills={job.skills}
                 closingDate={job.closing_date}
-                onClick={() => setSelectedJob(job)}
+                postedAt={job.posted_at}
+                salaryMin={job.salary_min}
+                salaryMax={job.salary_max}
+                source={job.source}
+                onClick={() =>
+                  // For keyboard a11y: stash the currently-focused element
+                  // (which IS the card the user just activated via Enter/
+                  // Space) so we can restore focus when the drawer closes.
+                  // Mouse users won't notice; keyboard users will.
+                  openJob(
+                    job,
+                    (document.activeElement as HTMLElement | null) ?? null
+                  )
+                }
               />
             ))}
           </div>
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex justify-center items-center gap-2 mt-10">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                className="btn btn-ghost btn-sm"
-              >
-                <Icon name="arrowLeft" size={14} /> Previous
-              </button>
-              <div className="flex gap-1">
-                {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
-                  const pageNum = i + 1;
-                  return (
-                    <button
-                      key={pageNum}
-                      onClick={() => setPage(pageNum)}
-                      className="btn btn-sm"
-                      style={{
-                        width: 36,
-                        padding: 0,
-                        background:
-                          page === pageNum
-                            ? "var(--green-700)"
-                            : "transparent",
-                        color:
-                          page === pageNum ? "#faf7f2" : "var(--ink-2)",
-                        borderColor:
-                          page === pageNum
-                            ? "var(--green-700)"
-                            : "var(--line)",
-                      }}
-                    >
-                      {pageNum}
-                    </button>
-                  );
-                })}
-              </div>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-                className="btn btn-ghost btn-sm"
-              >
-                Next <Icon name="arrowRight" size={14} />
-              </button>
-            </div>
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              onChange={setPage}
+            />
           )}
         </>
       )}
@@ -254,11 +438,20 @@ export default function JobsPage() {
         <>
           <div
             className="fixed inset-0 z-40"
-            style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }}
-            onClick={() => setSelectedJob(null)}
+            style={{
+              background: "rgba(0,0,0,0.4)",
+              backdropFilter: "blur(4px)",
+            }}
+            onClick={closeJob}
+            aria-hidden="true"
           />
           <div
-            className="fixed top-0 right-0 bottom-0 z-50 w-full max-w-[560px] overflow-y-auto scroll-thin"
+            ref={drawerRef}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="job-drawer-title"
+            className="fixed top-0 right-0 bottom-0 z-50 w-full max-w-[640px] overflow-y-auto scroll-thin focus:outline-none"
             style={{
               background: "var(--surface)",
               borderLeft: "1px solid var(--line)",
@@ -266,74 +459,32 @@ export default function JobsPage() {
               animation: "slideRight 300ms ease both",
             }}
           >
-            <div className="p-6 md:p-8">
-              <button
-                onClick={() => setSelectedJob(null)}
-                className="btn btn-ghost btn-sm mb-6"
-              >
-                <Icon name="x" size={16} /> Close
-              </button>
+            {/* sr-only title for screen readers (visible h1 is in body) */}
+            <h2 id="job-drawer-title" className="sr-only">
+              {selectedJob.title}
+            </h2>
 
-              <div className="eyebrow mb-3">Job Details</div>
-              <h2
-                className="font-display text-3xl mb-2"
-                style={{ letterSpacing: "-0.01em" }}
-              >
-                {selectedJob.title}
-              </h2>
-              <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>
-                {selectedJob.company || "Company not listed"} &middot;{" "}
-                {selectedJob.location || "Location not specified"}
-              </p>
-
-              {/* Skills */}
-              {selectedJob.skills.length > 0 && (
-                <div className="mb-6">
-                  <div className="eyebrow mb-3">Required Skills</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {selectedJob.skills.map((s) => (
-                      <span key={s} className="tag tag-mono">
-                        {s}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Description */}
-              {selectedJob.description && (
-                <div className="mb-6">
-                  <div className="eyebrow mb-3">Description</div>
-                  <p
-                    className="text-sm leading-relaxed"
+            {drawerLoading ? (
+              <div className="p-8">
+                <div className="skeleton h-10 w-3/4 mb-4" />
+                <div className="skeleton h-5 w-1/2 mb-6" />
+                <div className="skeleton h-32 w-full" />
+              </div>
+            ) : (
+              <>
+                <JobDetailBody job={selectedJob} onClose={closeJob} />
+                {/* Shareable permalink */}
+                <div className="px-6 md:px-8 pb-8 -mt-2">
+                  <a
+                    href={`/jobs/${selectedJob.id}`}
+                    className="text-xs underline opacity-70 hover:opacity-100"
                     style={{ color: "var(--ink-2)" }}
                   >
-                    {selectedJob.description}
-                  </p>
+                    Open as standalone page (shareable)
+                  </a>
                 </div>
-              )}
-
-              {selectedJob.closing_date && (
-                <div className="mb-8">
-                  <div className="eyebrow mb-2">Closing Date</div>
-                  <p className="text-sm font-mono" style={{ color: "var(--ink-2)" }}>
-                    {new Date(selectedJob.closing_date).toLocaleDateString(
-                      "en-ZM",
-                      { day: "numeric", month: "long", year: "numeric" }
-                    )}
-                  </p>
-                </div>
-              )}
-
-              <div className="flex gap-3">
-                <button className="btn btn-primary flex-1">
-                  Apply Now <Icon name="external" size={14} />
-                </button>
-                <button className="btn btn-ghost">
-                  <Icon name="bookmark" size={16} />
-                </button>
-              </div>
-            </div>
+              </>
+            )}
           </div>
         </>
       )}

@@ -458,9 +458,16 @@ export interface Job {
   company: string | null;
   location: string | null;
   closing_date: string | null;
+  posted_at?: string | null;
   quality_score: number;
   skills: string[];
   description: string | null;
+  salary_min?: number | null;
+  salary_max?: number | null;
+  source?: string | null;
+  source_url?: string | null;
+  apply_url?: string | null;
+  apply_email?: string | null;
 }
 
 export interface JobListResponse {
@@ -471,11 +478,21 @@ export interface JobListResponse {
 }
 
 export const jobs = {
-  list: (params?: { page?: number; search?: string; location?: string }) => {
+  list: (params?: {
+    page?: number;
+    search?: string;
+    location?: string;
+    sort?: "relevance" | "recent" | "closing";
+    skills?: string[];
+    source?: string[];
+  }) => {
     const query = new URLSearchParams();
     if (params?.page) query.set("page", String(params.page));
     if (params?.search) query.set("search", params.search);
     if (params?.location) query.set("location", params.location);
+    if (params?.sort) query.set("sort", params.sort);
+    if (params?.skills?.length) query.set("skills", params.skills.join(","));
+    if (params?.source?.length) query.set("source", params.source.join(","));
     const token = getToken();
     return apiFetch<JobListResponse>(`/jobs?${query}`, { token });
   },
@@ -501,6 +518,11 @@ export interface MatchData {
     company: string | null;
     location: string | null;
     closing_date: string | null;
+    // Backend's Job pydantic model includes these — frontend type was
+    // truncated, leaving the /matches Apply button dead. Restored here.
+    apply_url?: string | null;
+    apply_email?: string | null;
+    source_url?: string | null;
   };
 }
 

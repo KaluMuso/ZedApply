@@ -2,7 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { matches as matchesApi, type MatchData } from "@/lib/api";
+import {
+  matches as matchesApi,
+  subscription as subscriptionApi,
+  type MatchData,
+  type Subscription,
+} from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { MatchScore } from "@/components/MatchScore";
 import { SkillBadge } from "@/components/SkillBadge";
@@ -12,6 +17,34 @@ import { Counter } from "@/components/ui/Counter";
 import Link from "next/link";
 import { InterviewPrepModal } from "./_components/InterviewPrepModal";
 
+/**
+ * Build the most useful URL for "Apply" — employer page if present, mailto
+ * fallback, then source listing. Returns null if literally nothing exists,
+ * so we can disable the button instead of opening a dead link.
+ */
+function buildApplyHref(job: MatchData["job"]): string | null {
+  if (job.apply_url && /^https?:\/\//i.test(job.apply_url)) return job.apply_url;
+  if (job.apply_email) {
+    const subject = encodeURIComponent(`Application: ${job.title}`);
+    const body = encodeURIComponent(
+      `Hello${job.company ? ` ${job.company}` : ""},\n\nI'd like to apply for the ${job.title} role I saw on ZedApply.\n\n— Sent from zedapply.com`
+    );
+    return `mailto:${job.apply_email}?subject=${subject}&body=${body}`;
+  }
+  if (job.source_url && /^https?:\/\//i.test(job.source_url)) return job.source_url;
+  return null;
+}
+
+// Human-friendly tier label. Free → "Free", super_standard → "Super",
+// etc. Falls back to the raw key if we don't recognize it so we don't
+// hide unknown tiers entirely.
+const TIER_LABELS: Record<string, string> = {
+  free: "Free",
+  starter: "Starter",
+  professional: "Professional",
+  super_standard: "Super",
+};
+
 export default function MatchesPage() {
   const router = useRouter();
   const { token, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -19,6 +52,7 @@ export default function MatchesPage() {
     matches: MatchData[];
     remaining_quota: number;
   } | null>(null);
+  const [sub, setSub] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [scoreFilter, setScoreFilter] = useState(0);
@@ -31,10 +65,18 @@ export default function MatchesPage() {
       router.push("/auth");
       return;
     }
-    matchesApi
-      .get(token)
-      .then((d) => setData(d))
-      .catch(() => setData(null))
+    // Parallel fetch: matches AND the user's subscription so we can show
+    // their actual quota instead of a hard-coded "25". Either failing is
+    // non-fatal — the UI degrades to "remaining only" if subscription
+    // doesn't load.
+    Promise.allSettled([
+      matchesApi.get(token),
+      subscriptionApi.get(token),
+    ])
+      .then(([matchesRes, subRes]) => {
+        if (matchesRes.status === "fulfilled") setData(matchesRes.value);
+        if (subRes.status === "fulfilled") setSub(subRes.value);
+      })
       .finally(() => setLoading(false));
   }, [token, isAuthenticated, authLoading, router]);
 
@@ -64,9 +106,14 @@ export default function MatchesPage() {
     filtered = [...filtered].sort((a, b) => b.score - a.score);
   }
 
-  const totalMatches = 25; // max for tier
-  const used = totalMatches - data.remaining_quota;
-  const usagePct = (used / totalMatches) * 100;
+  // Real quota from /subscription (sub.matches_limit). Falls back to the
+  // sum used+remaining if subscription failed to load — gives a coherent
+  // bar even in the degraded case. The historical hard-coded "25" was
+  // wrong for every tier except Starter.
+  const matchesUsed = sub?.matches_used ?? Math.max(0, 25 - data.remaining_quota);
+  const matchesLimit = (sub?.matches_limit ?? (matchesUsed + data.remaining_quota)) || 25;
+  const usagePct = matchesLimit > 0 ? Math.min(100, (matchesUsed / matchesLimit) * 100) : 0;
+  const tierLabel = TIER_LABELS[sub?.tier ?? ""] ?? (sub?.tier ?? "Starter");
 
   return (
     <div className="max-w-[1280px] mx-auto px-6 py-8 md:py-12">
@@ -110,13 +157,13 @@ export default function MatchesPage() {
             <div>
               <div className="eyebrow">This month</div>
               <div className="mt-2 font-display text-4xl leading-none">
-                {used}
+                {matchesUsed}
                 <span
                   className="text-2xl"
                   style={{ color: "var(--muted)" }}
                 >
                   {" "}
-                  / {totalMatches}
+                  / {matchesLimit}
                 </span>
               </div>
               <div
@@ -127,7 +174,7 @@ export default function MatchesPage() {
               </div>
             </div>
             <span className="tag tag-copper">
-              <Icon name="zap" size={11} /> Starter
+              <Icon name="zap" size={11} /> {tierLabel}
             </span>
           </div>
           <div
@@ -266,12 +313,18 @@ export default function MatchesPage() {
                       {match.job.location || "Zambia"}
                     </span>
                   </div>
-                  <h3
-                    className="font-display text-2xl md:text-3xl"
-                    style={{ letterSpacing: "-0.01em", lineHeight: 1.1 }}
+                  {/* Title links to the public /jobs/[id] page so the
+                      same URL is shareable / openable in another tab.
+                      Keeps card body click-free so the buttons on the
+                      right (Apply, Interview, Why-this-match) remain
+                      the primary affordances. */}
+                  <Link
+                    href={`/jobs/${match.job.id}`}
+                    className="font-display text-2xl md:text-3xl block hover:underline"
+                    style={{ letterSpacing: "-0.01em", lineHeight: 1.1, color: "inherit" }}
                   >
                     {match.job.title}
-                  </h3>
+                  </Link>
 
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {match.matched_skills.map((s) => (
@@ -284,9 +337,32 @@ export default function MatchesPage() {
                 </div>
 
                 <div className="match-actions flex flex-col gap-2 items-end">
-                  <button className="btn btn-primary btn-sm w-40">
-                    Apply now <Icon name="external" size={13} />
-                  </button>
+                  {/* Apply button uses the same helper as the public
+                      drawer / standalone job page. Falls back to mailto
+                      then source listing; disables when nothing is
+                      available so we never ship a dead button. */}
+                  {(() => {
+                    const href = buildApplyHref(match.job);
+                    return href ? (
+                      <a
+                        href={href}
+                        target={href.startsWith("mailto:") ? undefined : "_blank"}
+                        rel={href.startsWith("mailto:") ? undefined : "noopener noreferrer"}
+                        className="btn btn-primary btn-sm w-40"
+                      >
+                        Apply now <Icon name="external" size={13} />
+                      </a>
+                    ) : (
+                      <button
+                        className="btn btn-primary btn-sm w-40"
+                        disabled
+                        title="No application link or email on this listing"
+                        type="button"
+                      >
+                        Apply unavailable
+                      </button>
+                    );
+                  })()}
                   <button
                     onClick={() => setPrepFor(match)}
                     className="btn btn-accent btn-sm w-40"
