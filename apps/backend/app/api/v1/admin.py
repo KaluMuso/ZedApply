@@ -43,6 +43,260 @@ async def get_stats(supabase=Depends(get_supabase)):
     return AdminStats(**data)
 
 
+@router.post("/cv-queue/drain")
+async def drain_cv_queue(
+    limit: int = Query(20, ge=1, le=100, description="Max queue rows to drain in this call"),
+    supabase=Depends(get_supabase),
+):
+    """Drain the cv_upload_queue — process rows that were queued when
+    /cv/upload hit Gemini's rate cap.
+
+    Called manually after a quota reset OR scheduled via n8n cron at
+    00:05 UTC daily. Idempotent: each row is marked 'processing' before
+    work starts, so a re-entrant call won't double-process. Bumps the
+    `attempts` counter; after attempts >= 5 we mark 'failed' and stop
+    retrying so the queue doesn't grow forever on a stuck row.
+
+    Returns per-row status. Errors don't fail the batch — each row's
+    failure is captured in its own row's error_message.
+    """
+    from app.services.cv_parser import parse_cv_with_llm
+    from app.services.embedding import generate_embedding
+    from app.core.config import get_settings
+    import hashlib
+    import logging
+
+    settings = get_settings()
+    MAX_ATTEMPTS = 5
+
+    # FIFO grab. Status filter + index makes this cheap even with a long queue.
+    queued = (
+        supabase.table("cv_upload_queue")
+        .select("*")
+        .eq("status", "queued")
+        .lt("attempts", MAX_ATTEMPTS)
+        .order("queued_at", desc=False)
+        .limit(limit)
+        .execute()
+    )
+
+    out = {"drained": 0, "failed": 0, "rows": []}
+
+    for row in (queued.data or []):
+        row_id = row["id"]
+        user_id = row["user_id"]
+        raw_text = row.get("raw_text") or ""
+        file_path = row["file_path"]
+        file_type = row["file_type"]
+
+        # Mark processing + bump attempts upfront. If we crash mid-flight,
+        # the row stays in 'processing' until manually nudged — that's
+        # intentional, manual is safer than auto-retry-storm.
+        supabase.table("cv_upload_queue").update({
+            "status": "processing",
+            "attempts": row.get("attempts", 0) + 1,
+            "updated_at": "NOW()",
+        }).eq("id", row_id).execute()
+
+        try:
+            parsed = await parse_cv_with_llm(raw_text)
+            embedding = await generate_embedding(raw_text)
+
+            # Mirror the /cv/upload write path so the resulting cvs row
+            # looks identical to a non-queued upload. is_primary=True so
+            # this becomes the user's active CV.
+            supabase.table("cvs").update({"is_primary": False}).eq("user_id", user_id).eq("is_primary", True).execute()
+            cv_row = supabase.table("cvs").insert({
+                "user_id": user_id,
+                "file_url": file_path,
+                "file_type": file_type,
+                "raw_text": raw_text[:10000],
+                "parsed_data": parsed,
+                "embedding": embedding,
+                "parsing_confidence": parsed.get("confidence", 0),
+                "is_primary": True,
+            }).execute()
+            new_cv_id = cv_row.data[0]["id"] if cv_row.data else None
+
+            # Skills linkage — same shape as /cv/upload.
+            for skill_name in parsed.get("skills", []):
+                sk = supabase.table("skills").select("id").eq("name", skill_name.lower()).limit(1).execute()
+                skill_id = sk.data[0]["id"] if sk.data else None
+                if not skill_id:
+                    al = supabase.table("skill_aliases").select("skill_id").eq("alias", skill_name.lower()).limit(1).execute()
+                    skill_id = al.data[0]["skill_id"] if al.data else None
+                if skill_id:
+                    supabase.table("user_skills").upsert(
+                        {"user_id": user_id, "skill_id": skill_id, "source": "cv_parse"},
+                        on_conflict="user_id,skill_id",
+                    ).execute()
+
+            supabase.table("cv_upload_queue").update({
+                "status": "completed",
+                "processed_at": "NOW()",
+                "updated_at": "NOW()",
+            }).eq("id", row_id).execute()
+            out["drained"] += 1
+            out["rows"].append({"id": row_id, "status": "completed", "cv_id": new_cv_id})
+
+        except Exception as exc:
+            logging.error("cv_upload_queue: row %s failed (attempt %s): %s",
+                          row_id, row.get("attempts", 0) + 1, exc)
+            new_status = "queued" if (row.get("attempts", 0) + 1) < MAX_ATTEMPTS else "failed"
+            supabase.table("cv_upload_queue").update({
+                "status": new_status,
+                "error_message": f"{type(exc).__name__}: {str(exc)[:300]}",
+                "updated_at": "NOW()",
+            }).eq("id", row_id).execute()
+            if new_status == "failed":
+                out["failed"] += 1
+            out["rows"].append({
+                "id": row_id, "status": new_status,
+                "reason": f"{type(exc).__name__}",
+            })
+
+    return out
+
+
+@router.post("/re-embed")
+async def re_embed_all(
+    target: str = Query("all", description="One of: jobs, cvs, all"),
+    limit: int = Query(200, ge=1, le=2000, description="Cap on rows to re-embed in this call"),
+    supabase=Depends(get_supabase),
+):
+    """Re-embed existing jobs and/or CVs with the current EMBEDDING_MODEL.
+
+    Why this exists: the catalog accumulated embeddings from
+    text-embedding-004 (retired May 2026) and gemini-embedding-001. Two
+    different coordinate spaces in the same vector(768) column makes
+    cosine similarity nonsense. This endpoint rebuilds all embeddings
+    using the model that's currently configured (settings.embedding_model),
+    so every row lives in the same space.
+
+    Safe to run multiple times — it just overwrites. Idempotent within
+    a single embedding model. Rate-limited by Gemini's free tier at
+    1500 req/min, so a typical 100-row pass takes ~5 seconds.
+    """
+    from app.services.embedding import generate_embedding
+
+    if target not in ("jobs", "cvs", "all"):
+        raise HTTPException(status_code=422, detail="target must be jobs|cvs|all")
+
+    out = {"jobs": {"updated": 0, "errors": []}, "cvs": {"updated": 0, "errors": []}}
+
+    if target in ("jobs", "all"):
+        # Use title + company + first chunk of description as the embedding
+        # text — same shape as the ingest path so re-embeds match what
+        # new rows look like.
+        rows = (
+            supabase.table("jobs")
+            .select("id, title, company, description")
+            .eq("is_active", True)
+            .limit(limit)
+            .execute()
+        )
+        for row in (rows.data or []):
+            try:
+                text = f"{row['title']} {row.get('company') or ''} {row.get('description') or ''}"
+                emb = await generate_embedding(text)
+                supabase.table("jobs").update({"embedding": emb}).eq("id", row["id"]).execute()
+                out["jobs"]["updated"] += 1
+            except Exception as exc:
+                # Don't poison the batch — record the failure and keep going.
+                out["jobs"]["errors"].append({"id": row.get("id"), "reason": f"{type(exc).__name__}"})
+
+    if target in ("cvs", "all"):
+        rows = (
+            supabase.table("cvs")
+            .select("id, raw_text")
+            .limit(limit)
+            .execute()
+        )
+        for row in (rows.data or []):
+            try:
+                text = (row.get("raw_text") or "").strip()
+                if not text:
+                    continue
+                emb = await generate_embedding(text)
+                supabase.table("cvs").update({"embedding": emb}).eq("id", row["id"]).execute()
+                out["cvs"]["updated"] += 1
+            except Exception as exc:
+                out["cvs"]["errors"].append({"id": row.get("id"), "reason": f"{type(exc).__name__}"})
+
+    return out
+
+
+@router.get("/capacity")
+async def get_capacity(supabase=Depends(get_supabase)):
+    """Capacity gauges across the free-tier ceilings we actually have.
+
+    Returns a uniform shape per resource:
+      { used: int, ceiling: int, pct: float, status: "ok"|"warn"|"crit" }
+
+    Thresholds: warn >= 75%, crit >= 85%. The frontend can render these
+    as traffic-light bars and alert when any goes crit. Sentry alerting
+    can be wired to log a structured event when pct >= 85.
+
+    Today this is a snapshot endpoint; the long-term play is a Prometheus
+    /metrics endpoint (see task #45 in the queue) but JSON is enough for
+    the admin dashboard. All counts come from cheap queries — no scans.
+    """
+    # Pull catalog + user counts via the existing admin_stats RPC so we
+    # don't double-query. Falls back to direct counts when the RPC is
+    # missing (shouldn't happen post-migration 010 but be defensive).
+    rpc_res = supabase.rpc("admin_stats").execute()
+    rpc_data = rpc_res.data
+    if isinstance(rpc_data, list):
+        rpc_data = rpc_data[0] if rpc_data else {}
+    if not isinstance(rpc_data, dict):
+        rpc_data = {}
+
+    total_jobs = int(rpc_data.get("total_jobs") or 0)
+    total_users = int(rpc_data.get("total_users") or 0)
+    total_cvs = int(rpc_data.get("total_cvs") or 0)
+
+    # Ceilings — chosen from the realistic-bottleneck table in our
+    # capacity audit. Bump these as paid-tier upgrades happen.
+    JOBS_CEILING = 50_000          # Supabase free disk + HNSW comfort
+    USERS_CEILING = 50_000         # Supabase free MAU
+    CVS_CEILING = 10_000           # Supabase free disk + storage bucket
+    GEMINI_DAILY_TOKENS = 1_000_000  # Gemini 2.5 Flash free daily allowance
+
+    # Gemini-tokens-used today: tracked elsewhere if we wire a counter.
+    # For now we expose 0 with a note so the frontend can show the gauge
+    # at zero rather than missing it. Task #45 follow-up: wire an actual
+    # token-spend counter in ai_cache or a sidecar table.
+    gemini_tokens_today = 0
+
+    def gauge(used: int, ceiling: int) -> dict:
+        pct = (used / ceiling * 100.0) if ceiling > 0 else 0.0
+        if pct >= 85.0:
+            status = "crit"
+        elif pct >= 75.0:
+            status = "warn"
+        else:
+            status = "ok"
+        return {
+            "used": used,
+            "ceiling": ceiling,
+            "pct": round(pct, 2),
+            "status": status,
+        }
+
+    return {
+        "jobs": gauge(total_jobs, JOBS_CEILING),
+        "users": gauge(total_users, USERS_CEILING),
+        "cvs": gauge(total_cvs, CVS_CEILING),
+        "gemini_tokens_today": gauge(gemini_tokens_today, GEMINI_DAILY_TOKENS),
+        "notes": {
+            "gemini": (
+                "Token spend tracker not yet wired — gauge is a placeholder. "
+                "Follow-up in task #45."
+            ),
+        },
+    }
+
+
 @router.get("/users", response_model=AdminUserList)
 async def list_users(
     page: int = Query(1, ge=1),

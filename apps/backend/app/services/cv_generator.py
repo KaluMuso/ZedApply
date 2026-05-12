@@ -12,6 +12,7 @@ import logging
 from functools import lru_cache
 
 from openai import OpenAI, AuthenticationError, RateLimitError, APIError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from app.core.config import get_settings
 
@@ -130,13 +131,61 @@ async def analyze_cv(cv_text: str) -> dict:
     return await asyncio.to_thread(_call)
 
 
+# Patterns the LLM produces when it refuses, errors, or echoes the prompt
+# back instead of generating a real CV. Treated as validation failures so
+# the user gets a clear error rather than a degenerate "CV" stored in
+# cv_generations. Match is case-insensitive on the lowercased content.
+_REFUSAL_OR_ECHO_MARKERS = (
+    "i cannot help",
+    "i can't help",
+    "i'm unable to",
+    "i am unable to",
+    "i cannot generate",
+    "as an ai language model",
+    "--- candidate cv ---",      # echo of our system prompt's marker
+    "--- target job description ---",
+)
+
+
+class GeneratedCV(BaseModel):
+    """Validation for /cv/generate LLM output.
+
+    Pinpoints the LLM-failure modes we've actually seen in prod:
+    - empty / one-line responses (model gave up, hit max_tokens early)
+    - the model refusing the task ("I cannot help with that...")
+    - prompt-injection echo where the model dumps our system prompt back
+    - silently truncated output that's plausibly a CV but only 2 sentences
+    Anything that passes here is at least a viable rough draft worth
+    storing in cv_generations.
+    """
+
+    content: str = Field(..., min_length=200, max_length=12000)
+    word_count: int = Field(..., ge=50, le=2000)
+
+    @field_validator("content", mode="after")
+    @classmethod
+    def _no_refusal_or_echo(cls, v: str) -> str:
+        lowered = v.lower()
+        for marker in _REFUSAL_OR_ECHO_MARKERS:
+            if marker in lowered:
+                raise ValueError(
+                    f"Generated CV contains suspicious marker: {marker!r}. "
+                    "The model may have refused the task or echoed the prompt."
+                )
+        return v
+
+
 async def generate_cv(
     cv_text: str,
     job_title: str,
     company: str | None = None,
     job_description: str | None = None,
 ) -> dict:
-    """Produce a tailored CV draft for the target role."""
+    """Produce a tailored CV draft for the target role.
+
+    Output is validated through GeneratedCV — failures (too short, refusal,
+    prompt-echo) raise ValueError which the upload route maps to 503/422.
+    """
     settings = get_settings()
     client = _client()
 
@@ -160,7 +209,22 @@ async def generate_cv(
             content = (response.choices[0].message.content or "").strip()
             if not content:
                 raise ValueError("Empty response from CV generator")
-            return {"content": content, "word_count": len(content.split())}
+
+            raw_word_count = len(content.split())
+            try:
+                validated = GeneratedCV(content=content, word_count=raw_word_count)
+            except ValidationError as ve:
+                logger.error(
+                    "Generated CV failed validation: errors=%s preview=%r",
+                    ve.errors(), content[:200],
+                )
+                # Surface a user-facing message; the raw error stays in logs.
+                raise ValueError(
+                    "We couldn't produce a usable CV for this role. "
+                    "Try a more specific job title or upload a fuller CV."
+                )
+
+            return {"content": validated.content, "word_count": validated.word_count}
         except AuthenticationError:
             logger.error("OpenRouter API key invalid for CV generation")
             raise ValueError("CV generation is not configured. Please contact support.")

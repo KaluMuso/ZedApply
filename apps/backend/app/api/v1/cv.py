@@ -110,6 +110,82 @@ def _cache_put(supabase, cache_key: str, cache_type: str, input_hash: str, resul
         pass
 
 
+def _queue_for_later(
+    *,
+    supabase,
+    user_id: str,
+    content_type: str,
+    file_type: str,
+    file_bytes: bytes,
+    file_filename: str | None,
+    raw_text: str,
+    reason: str,
+    detail: str,
+):
+    """Graceful-degrade path for /cv/upload.
+
+    Uploads the file to storage so the user's bytes aren't lost, inserts
+    a row into cv_upload_queue, and returns a 202 with a friendly message.
+    The drain endpoint (POST /admin/cv-queue/drain) processes the queue
+    once Gemini quota resets (typically the next UTC day).
+
+    Logs but never raises — the whole point is that this path absorbs the
+    error gracefully. Failures here fall through to a 503 in the caller.
+    """
+    import logging
+    storage_path = f"cvs/{user_id}/{_safe_filename(file_filename or '')}"
+    try:
+        supabase.storage.from_("documents").upload(
+            storage_path, file_bytes, {"content-type": content_type}
+        )
+    except Exception as e:
+        logging.error("cv_upload_queue: storage upload failed for %s: %s", user_id, e)
+        # Fall through — better to error than silently lose the upload.
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "AI service is busy and the fallback queue couldn't accept "
+                "your upload either. Please try again in a few hours."
+            ),
+        )
+
+    queue_row = supabase.table("cv_upload_queue").insert({
+        "user_id": user_id,
+        "file_path": storage_path,
+        "file_type": file_type,
+        "raw_text": raw_text[:10000],
+        "status": "queued",
+        "reason": reason,
+    }).execute()
+    if not queue_row.data:
+        logging.error("cv_upload_queue: insert failed for user %s", user_id)
+        raise HTTPException(
+            status_code=503,
+            detail="Could not queue your CV right now. Please try again later.",
+        )
+
+    logging.info(
+        "cv_upload_queue: queued cv for user=%s reason=%s detail=%s",
+        user_id, reason, detail[:120],
+    )
+    # 202 Accepted is the right status code for "received but not yet
+    # processed". Frontend reads `queued: True` to swap the success
+    # toast for a "we'll process this shortly" message.
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=202,
+        content={
+            "queued": True,
+            "queue_id": queue_row.data[0]["id"],
+            "message": (
+                "AI service is at capacity right now. We've saved your CV "
+                "and will process it within a few hours. You'll see your "
+                "matches as soon as it's done."
+            ),
+        },
+    )
+
+
 @router.post("/upload")
 @limiter.limit("5/minute")
 async def upload_cv(request: Request, file: UploadFile = File(...), user_id: str = Depends(get_current_user_id), supabase=Depends(get_supabase)):
@@ -139,11 +215,24 @@ async def upload_cv(request: Request, file: UploadFile = File(...), user_id: str
     parse_cache_key = f"cv_parse:{settings.llm_model}:{text_hash}"
     embed_cache_key = f"embedding:{settings.embedding_model}:{settings.embedding_dimensions}:{text_hash}"
 
+    # Try parse + embed normally. On rate-limit-shaped failures (Gemini
+    # daily token cap exhausted), queue the upload via the cv_upload_queue
+    # table instead of 503-ing. The user gets a 202 with an ETA message
+    # and we drain the queue after midnight UTC when caps reset.
+    # We also pre-upload the file to storage so the queued row references
+    # something durable — file_bytes isn't kept anywhere otherwise.
     parsed = _cache_get(supabase, parse_cache_key)
     if parsed is None:
         try:
             parsed = await parse_cv_with_llm(raw_text)
         except ValueError as e:
+            msg = str(e).lower()
+            if "busy" in msg or "rate" in msg or "temporarily" in msg:
+                return _queue_for_later(
+                    supabase=supabase, user_id=user_id, content_type=content_type,
+                    file_type=file_type, file_bytes=file_bytes, file_filename=file.filename,
+                    raw_text=raw_text, reason="gemini_rate_limit_parse", detail=str(e),
+                )
             raise HTTPException(status_code=503, detail=str(e))
         _cache_put(supabase, parse_cache_key, "cv_parse", text_hash, parsed, settings.llm_model)
 
@@ -152,6 +241,13 @@ async def upload_cv(request: Request, file: UploadFile = File(...), user_id: str
         try:
             embedding = await generate_embedding(raw_text)
         except ValueError as e:
+            msg = str(e).lower()
+            if "busy" in msg or "rate" in msg or "temporarily" in msg:
+                return _queue_for_later(
+                    supabase=supabase, user_id=user_id, content_type=content_type,
+                    file_type=file_type, file_bytes=file_bytes, file_filename=file.filename,
+                    raw_text=raw_text, reason="gemini_rate_limit_embed", detail=str(e),
+                )
             raise HTTPException(status_code=503, detail=str(e))
         _cache_put(supabase, embed_cache_key, "embedding", text_hash, embedding, settings.embedding_model)
 

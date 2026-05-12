@@ -235,10 +235,9 @@ def test_subscription_pay_accepts_lenco_method(client, auth_headers, fake_supaba
     provider='lenco' and return 200 even when LENCO_API_KEY isn't set
     (the service degrades gracefully and the row stays pending until
     manual intervention)."""
-    from tests.conftest import FakeSupabaseQuery
     fake_supabase.set_table(
         "subscriptions",
-        FakeSupabaseQuery(data=[{"id": "sub-1"}]),
+        _UpdateSpyQuery(data=[{"id": "sub-1"}]),
     )
     fake_supabase.set_table(
         "payments",

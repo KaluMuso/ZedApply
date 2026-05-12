@@ -13,6 +13,11 @@ pydantic-settings==2.3.4
 email-validator==2.2.0
 python-dotenv==1.0.1
 slowapi==0.1.9
+# Redis-backed shared storage for slowapi. Optional at runtime — the
+# limiter falls back to in-memory when REDIS_URL is unset. Required as
+# an installed dep so the import path works on prod where REDIS_URL is
+# expected to be set.
+redis>=5.0.0
 resend>=2.0.0
 defusedxml>=0.7.1
 sentry-sdk[fastapi]>=2.0.0
