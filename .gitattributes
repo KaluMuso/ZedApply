@@ -1,0 +1,65 @@
+# Force LF line endings repo-wide so a Windows checkout doesn't show
+# every file as modified after a Linux-side write (the 177-file
+# "phantom diff" trap we hit during early development). With this in
+# place + a renormalize commit, Git treats the working tree as LF
+# regardless of the developer's OS.
+#
+# After committing this file the first time, run from the repo root:
+#   git add --renormalize .
+#   git commit -m "Normalize line endings"
+#
+# Without that step existing CRLF files won't auto-convert.
+
+# Default: every text file uses LF in the index and the working tree.
+* text=auto eol=lf
+
+# Source and config files: explicit text + LF (belt-and-braces for
+# globs the auto-detector might miss).
+*.py        text eol=lf
+*.ts        text eol=lf
+*.tsx       text eol=lf
+*.js        text eol=lf
+*.jsx       text eol=lf
+*.json      text eol=lf
+*.md        text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.toml      text eol=lf
+*.sql       text eol=lf
+*.css       text eol=lf
+*.html      text eol=lf
+*.sh        text eol=lf
+.env*       text eol=lf
+Dockerfile  text eol=lf
+
+# Windows-side scripts keep CRLF since they're often run by cmd.exe
+# which is picky about line endings.
+*.bat       text eol=crlf
+*.ps1       text eol=crlf
+
+# Binary asset extensions. -text disables both diffing and line-ending
+# conversion. Keep this list close to what's actually checked in.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.webp      binary
+*.pdf       binary
+*.zip       binary
+*.tar       binary
+*.gz        binary
+*.woff      binary
+*.woff2     binary
+*.ttf       binary
+*.otf       binary
+*.eot       binary
+*.mp4       binary
+*.mp3       binary
+*.wav       binary
+
+# Lockfiles: text but ignore diffs in PRs since they're machine-generated
+# and noisy. Still tracked, still merged via Git's text rules.
+package-lock.json   text eol=lf -diff
+yarn.lock           text eol=lf -diff
+poetry.lock         text eol=lf -diff
