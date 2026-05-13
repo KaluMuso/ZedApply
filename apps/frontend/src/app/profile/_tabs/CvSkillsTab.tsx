@@ -41,10 +41,30 @@ export function CvSkillsTab({
       setUploadMsg("");
       try {
         const result = await cvApi.upload(token, file);
-        setUploadMsg(`CV uploaded! ${result.skills_extracted.length} skills extracted.`);
+        // Defensive — older backend builds occasionally return without
+        // `skills_extracted`, which used to crash here with
+        // "Cannot read properties of undefined (reading 'length')".
+        const skillsCount = result?.skills_extracted?.length ?? 0;
+        if (result?.queued) {
+          setUploadMsg(
+            "CV queued — we'll process it as soon as AI capacity is back."
+          );
+        } else {
+          setUploadMsg(`CV uploaded! ${skillsCount} skills extracted.`);
+        }
         onUploaded();
       } catch (err) {
-        setUploadMsg(err instanceof Error ? err.message : "Upload failed");
+        // Distinguish network errors (CORS-masked 500s, offline) from
+        // app-level errors so users know to retry vs. fix input.
+        let msg: string;
+        if (err instanceof TypeError && /fetch/i.test(err.message)) {
+          msg = "Couldn't reach the server. Please check your connection and try again.";
+        } else if (err instanceof Error) {
+          msg = err.message;
+        } else {
+          msg = "Upload failed";
+        }
+        setUploadMsg(msg);
       } finally {
         setUploading(false);
       }
@@ -68,7 +88,7 @@ export function CvSkillsTab({
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium truncate">CV uploaded</div>
               <div className="text-xs" style={{ color: "var(--muted)" }}>
-                {profileData.skills.length} skills extracted
+                {(profileData.skills ?? []).length} skills extracted
               </div>
             </div>
             <button onClick={() => fileRef.current?.click()} className="btn btn-ghost btn-sm">
@@ -77,6 +97,24 @@ export function CvSkillsTab({
           </div>
         )}
 
+        {/* Hidden file input — always rendered so the Replace button above
+            can trigger it, even when the dropzone below isn't shown. */}
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleUpload(file);
+          }}
+          className="hidden"
+        />
+
+        {/* Dropzone is only shown when no CV is uploaded yet. With a CV in
+            place, the "Replace" button above is the canonical affordance —
+            showing both was confusing (users wondered if their upload
+            actually succeeded). */}
+        {!profileData.cv_uploaded && (
         <div
           onDragOver={(e) => {
             e.preventDefault();
@@ -101,16 +139,6 @@ export function CvSkillsTab({
             if (e.key === "Enter") fileRef.current?.click();
           }}
         >
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleUpload(file);
-            }}
-            className="hidden"
-          />
           {uploading ? (
             <div className="flex items-center justify-center gap-2">
               <span
@@ -141,6 +169,19 @@ export function CvSkillsTab({
             </>
           )}
         </div>
+        )}
+
+        {uploading && profileData.cv_uploaded && (
+          <div className="flex items-center justify-center gap-2 mt-4">
+            <span
+              className="spinner"
+              style={{ borderTopColor: "var(--green-500)", borderColor: "var(--line-2)" }}
+            />
+            <span className="text-sm font-medium" style={{ color: "var(--green-700)" }}>
+              Replacing your CV…
+            </span>
+          </div>
+        )}
 
         {uploadMsg && (
           <p
@@ -159,13 +200,13 @@ export function CvSkillsTab({
 
       <div className="card p-6">
         <div className="eyebrow mb-4">Extracted skills</div>
-        {profileData.skills.length === 0 ? (
+        {(profileData.skills ?? []).length === 0 ? (
           <p className="text-sm" style={{ color: "var(--muted)" }}>
             Upload your CV to automatically extract skills.
           </p>
         ) : (
           <div className="flex flex-wrap gap-2">
-            {profileData.skills.map((skill) => (
+            {(profileData.skills ?? []).map((skill) => (
               <SkillBadge key={skill} skill={skill} matched />
             ))}
           </div>

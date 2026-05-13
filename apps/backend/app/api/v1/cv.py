@@ -141,8 +141,13 @@ def _queue_for_later(
     import logging
     storage_path = f"cvs/{user_id}/{_safe_filename(file_filename or '')}"
     try:
+        # upsert='true' so a re-queue for the same filename doesn't 400
+        # with Duplicate — same root cause as the 2026-05-13 /cv/upload
+        # outage, see the comment on the corresponding upload call below.
         supabase.storage.from_("documents").upload(
-            storage_path, file_bytes, {"content-type": content_type}
+            storage_path,
+            file_bytes,
+            {"content-type": content_type, "upsert": "true"},
         )
     except Exception as e:
         logging.error("cv_upload_queue: storage upload failed for %s: %s", user_id, e)
@@ -260,7 +265,17 @@ async def upload_cv(request: Request, file: UploadFile = File(...), user_id: str
         _cache_put(supabase, embed_cache_key, "embedding", text_hash, embedding, settings.embedding_model)
 
     storage_path = f"cvs/{user_id}/{_safe_filename(file.filename or '')}"
-    supabase.storage.from_("documents").upload(storage_path, file_bytes, {"content-type": content_type})
+    # upsert='true' makes the upload overwrite an existing object at the same
+    # path instead of raising StorageException(Duplicate). Without it, a user
+    # replacing their CV with the same filename gets a 400 from storage that
+    # bubbles up as an uvicorn 500 with text/plain body — which bypasses CORS
+    # middleware and surfaces in the browser as a misleading CORS error.
+    # See the 2026-05-13 outage on /cv/upload.
+    supabase.storage.from_("documents").upload(
+        storage_path,
+        file_bytes,
+        {"content-type": content_type, "upsert": "true"},
+    )
 
     existing_cvs = supabase.table("cvs").select("id", count="exact").eq("user_id", user_id).limit(1).execute()
     is_first_upload = (existing_cvs.count or 0) == 0

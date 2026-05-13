@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { profile as profileApi, ApiError, type UserProfile } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -21,6 +21,26 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "preferences", label: "Preferences" },
 ];
 
+// Mapping from URL `?tab=` slug (kebab-case, user-facing) to internal Tab key.
+// The navbar links to /profile?tab=cv-generator etc.; without this map the page
+// silently fell back to the default tab and the URL became cosmetic only.
+const TAB_FROM_SLUG: Record<string, Tab> = {
+  "cv": "cv",
+  "cv-skills": "cv",
+  "cv-analysis": "analysis",
+  "analysis": "analysis",
+  "cv-generator": "generator",
+  "generator": "generator",
+  "preferences": "preferences",
+};
+
+const SLUG_FROM_TAB: Record<Tab, string> = {
+  cv: "cv-skills",
+  analysis: "cv-analysis",
+  generator: "cv-generator",
+  preferences: "preferences",
+};
+
 const TIER_LABELS: Record<string, string> = {
   free: "Free",
   starter: "Starter (K125/mo)",
@@ -30,10 +50,36 @@ const TIER_LABELS: Record<string, string> = {
 
 export default function ProfilePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { token, isAuthenticated, isLoading: authLoading, logout } = useAuth();
   const [profileData, setProfileData] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<Tab>("cv");
+
+  // Initialize the tab from the `?tab=` URL slug so dropdown links like
+  // /profile?tab=cv-generator actually open the right tab. Falls back to "cv"
+  // for unknown / missing slugs.
+  const tabSlug = searchParams.get("tab") ?? "cv";
+  const initialTab: Tab = TAB_FROM_SLUG[tabSlug] ?? "cv";
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
+
+  // Keep state in sync when the URL changes (e.g. user navigates from nav
+  // dropdown to a different tab via Link). Without this, the second click
+  // is a no-op because the page is already mounted.
+  useEffect(() => {
+    const slug = searchParams.get("tab") ?? "cv";
+    const tab = TAB_FROM_SLUG[slug];
+    if (tab && tab !== activeTab) setActiveTab(tab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  // When the user clicks a tab, push the slug to the URL so the state is
+  // shareable and back-button-able. router.replace (not push) so the tab
+  // history doesn't pollute back navigation.
+  const onTabChange = (tab: Tab) => {
+    setActiveTab(tab);
+    const slug = SLUG_FROM_TAB[tab];
+    router.replace(`/profile?tab=${slug}`, { scroll: false });
+  };
 
   useEffect(() => {
     if (authLoading) return;
@@ -80,11 +126,16 @@ export default function ProfilePage() {
     );
   }
 
+  // Defensive .length reads — backend has occasionally returned profile
+  // payloads missing `skills` entirely, which crashed the page with
+  // "Cannot read properties of undefined (reading 'length')". Treat absent
+  // skills as empty so the page renders gracefully.
+  const skillsList = profileData.skills ?? [];
   const fields = [
     !!profileData.full_name,
     !!profileData.phone,
     profileData.cv_uploaded,
-    profileData.skills.length > 0,
+    skillsList.length > 0,
   ];
   const completeness = Math.round(
     (fields.filter(Boolean).length / fields.length) * 100
