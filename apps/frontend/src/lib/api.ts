@@ -397,9 +397,13 @@ export const admin = {
 
 // ── CV ──
 export interface CVUploadResult {
-  id: string;
-  skills_extracted: string[];
+  id?: string;
+  skills_extracted?: string[];
   message: string;
+  // Set by the backend (HTTP 202) when AI capacity is exhausted and the
+  // upload was stored in the queue instead of processed inline.
+  queued?: boolean;
+  queue_id?: string;
 }
 
 export interface CVAnalysis {
