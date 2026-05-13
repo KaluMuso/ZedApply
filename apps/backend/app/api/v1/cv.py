@@ -49,6 +49,29 @@ class CVGenerateResponse(BaseModel):
     company: Optional[str] = None
 
 
+class CVGenerationSummary(BaseModel):
+    """One row in the user's generation history."""
+    id: str
+    job_title: str
+    company: Optional[str] = None
+    word_count: int = 0
+    created_at: Optional[str] = None
+
+
+class CVGenerationsListResponse(BaseModel):
+    generations: list[CVGenerationSummary]
+
+
+class CVGenerationDetail(BaseModel):
+    """Full payload for re-loading a past generation into the editor."""
+    id: str
+    job_title: str
+    company: Optional[str] = None
+    content: str
+    word_count: int = 0
+    created_at: Optional[str] = None
+
+
 _FILENAME_SAFE_RE = re.compile(r"[^A-Za-z0-9._-]")
 
 
@@ -460,4 +483,65 @@ async def generate(
         word_count=result["word_count"],
         job_title=job_title,
         company=company,
+    )
+
+
+# History endpoints. The redesigned /profile?tab=cv-generator UI keeps a
+# history panel so users can re-open and re-export past generations without
+# re-running the LLM (saves OpenRouter spend). RLS on cv_generations already
+# scopes rows to auth.uid(), but we also filter by user_id for clarity.
+@router.get("/generations", response_model=CVGenerationsListResponse)
+async def list_generations(
+    user_id: str = Depends(get_current_user_id),
+    supabase=Depends(get_supabase),
+    limit: int = 50,
+):
+    limit = max(1, min(limit, 100))
+    res = (
+        supabase.table("cv_generations")
+        .select("id, job_title, company, word_count, created_at")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    rows = res.data or []
+    return CVGenerationsListResponse(
+        generations=[
+            CVGenerationSummary(
+                id=str(r["id"]),
+                job_title=r.get("job_title") or "",
+                company=r.get("company"),
+                word_count=r.get("word_count") or 0,
+                created_at=r.get("created_at"),
+            )
+            for r in rows
+        ]
+    )
+
+
+@router.get("/generations/{generation_id}", response_model=CVGenerationDetail)
+async def get_generation(
+    generation_id: str,
+    user_id: str = Depends(get_current_user_id),
+    supabase=Depends(get_supabase),
+):
+    res = (
+        supabase.table("cv_generations")
+        .select("id, job_title, company, content, word_count, created_at")
+        .eq("id", generation_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Generation not found")
+    r = res.data[0]
+    return CVGenerationDetail(
+        id=str(r["id"]),
+        job_title=r.get("job_title") or "",
+        company=r.get("company"),
+        content=r.get("content") or "",
+        word_count=r.get("word_count") or 0,
+        created_at=r.get("created_at"),
     )

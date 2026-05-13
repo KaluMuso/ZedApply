@@ -261,6 +261,32 @@ components:
         job_title: { type: string }
         company: { type: string }
 
+    CVGenerationSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        job_title: { type: string }
+        company: { type: string }
+        word_count: { type: integer }
+        created_at: { type: string, format: date-time }
+
+    CVGenerationsList:
+      type: object
+      properties:
+        generations:
+          type: array
+          items: { $ref: '#/components/schemas/CVGenerationSummary' }
+
+    CVGenerationDetail:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        job_title: { type: string }
+        company: { type: string }
+        content: { type: string }
+        word_count: { type: integer }
+        created_at: { type: string, format: date-time }
+
     AdminMatchRow:
       type: object
       properties:
@@ -783,6 +809,33 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/CVGenerateResponse' }
         '403': { description: Tier not sufficient }
+
+  /cv/generations:
+    get:
+      operationId: listCVGenerations
+      tags: [CV]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 50, minimum: 1, maximum: 100 } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CVGenerationsList' }
+
+  /cv/generations/{generation_id}:
+    get:
+      operationId: getCVGeneration
+      tags: [CV]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: generation_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CVGenerationDetail' }
+        '404': { description: Generation not found }
 
   /jobs:
     get:

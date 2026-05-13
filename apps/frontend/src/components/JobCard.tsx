@@ -1,9 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import { Icon } from "@/components/ui/Icon";
 import { Avatar } from "@/components/ui/Avatar";
 
 interface JobCardProps {
+  /**
+   * Job UUID. Optional for backwards compatibility, but required to render
+   * the "View full details" link (without it, the card is click-only).
+   */
+  id?: string;
   title: string;
   company: string | null;
   location: string | null;
@@ -91,6 +97,7 @@ function formatSalary(min?: number | null, max?: number | null): string | null {
 }
 
 export function JobCard({
+  id,
   title,
   company,
   location,
@@ -119,11 +126,28 @@ export function JobCard({
       ? `via ${source}`
       : null;
 
+  // role="button" + tabIndex pattern instead of a real <button>: HTML
+  // forbids nesting a <Link> (which renders <a>) inside <button>, and we
+  // need the inner "View full details" link to be a real anchor for
+  // middle-click / cmd-click / right-click-copy-url to work. Keyboard
+  // a11y is preserved: Enter/Space on the card fires onClick when focus
+  // is on the card itself (not on the inner link).
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onClick?.();
+    }
+  };
+
   return (
-    <button
+    <div
       onClick={onClick}
+      onKeyDown={handleKeyDown}
+      role="button"
+      tabIndex={0}
       className="card card-hover w-full text-left p-5 sm:p-6"
-      type="button"
+      style={{ cursor: "pointer" }}
     >
       <div className="flex justify-between items-start gap-3">
         <div className="flex items-center gap-3 min-w-0">
@@ -211,6 +235,25 @@ export function JobCard({
           <span className="ml-auto text-[10px] opacity-60">{sourceLabel}</span>
         )}
       </div>
-    </button>
+
+      {id && (
+        <div
+          className="mt-4 pt-3 flex items-center justify-end"
+          style={{ borderTop: "1px solid var(--line)" }}
+        >
+          <Link
+            href={`/jobs/${id}`}
+            onClick={(e) => e.stopPropagation()}
+            // Same stop pattern for keyboard: don't let Enter on the link
+            // bubble up and re-trigger the card's drawer-open handler.
+            onKeyDown={(e) => e.stopPropagation()}
+            className="text-sm font-medium inline-flex items-center gap-1 hover:underline"
+            style={{ color: "var(--copper-500)" }}
+          >
+            View full details <Icon name="arrowRight" size={13} />
+          </Link>
+        </div>
+      )}
+    </div>
   );
 }

@@ -193,6 +193,72 @@ async def bootstrap_waha_session_endpoint(
     return {"ok": True, "session": session}
 
 
+@router.post("/jobs/backfill-html-strip")
+async def backfill_jobs_html_strip(
+    limit: int = Query(500, ge=1, le=2000, description="Max rows to scan per call"),
+    dry_run: bool = Query(False, description="If true, count rows that would change but don't write"),
+    supabase=Depends(get_supabase),
+):
+    """One-shot backfill: sanitize HTML in existing jobs.description rows.
+
+    The 2026-05-13 slice added `_strip_html` to ingest_jobs and create_job
+    so all NEW rows land as plain text. Existing rows from before that
+    deploy still contain raw HTML (Quill markup, `<p>` tags, etc.) which
+    renders as visible markup on the /jobs/[id] standalone page because
+    whitespace-pre-wrap doesn't parse HTML.
+
+    This endpoint scans up to `limit` rows where description still
+    contains `<` or `>` and rewrites them through the same sanitizer.
+    Idempotent: a row whose cleaned text equals the original is skipped.
+
+    Returns counts so the operator knows how many rows were touched and
+    whether another pass is needed.
+    """
+    from app.api.v1.jobs import _strip_html
+
+    # Fetch jobs whose description still looks HTML-ish. The `like` filter
+    # cuts the scan to actually-affected rows; we still cap with `limit`
+    # so a runaway scan can't drown a Supabase free-tier instance.
+    res = (
+        supabase.table("jobs")
+        .select("id, description")
+        .like("description", "%<%")
+        .limit(limit)
+        .execute()
+    )
+    rows = res.data or []
+    scanned = len(rows)
+    changed = 0
+    skipped = 0
+    errors: list[dict] = []
+
+    for row in rows:
+        original = row.get("description") or ""
+        cleaned = _strip_html(original)
+        if cleaned == original:
+            skipped += 1
+            continue
+        if dry_run:
+            changed += 1
+            continue
+        try:
+            supabase.table("jobs").update({"description": cleaned}).eq("id", row["id"]).execute()
+            changed += 1
+        except Exception as exc:
+            errors.append({"id": row["id"], "reason": f"{type(exc).__name__}: {exc}"[:200]})
+
+    return {
+        "scanned": scanned,
+        "changed": changed,
+        "skipped_no_change": skipped,
+        "errors": errors[:20],
+        "dry_run": dry_run,
+        # Hint for the operator: if scanned == limit, there might be more
+        # rows to clean — run again until scanned < limit.
+        "more_likely": scanned == limit,
+    }
+
+
 @router.post("/re-embed")
 async def re_embed_all(
     target: str = Query("all", description="One of: jobs, cvs, all"),

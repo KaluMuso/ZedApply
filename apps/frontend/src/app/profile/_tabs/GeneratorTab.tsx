@@ -1,9 +1,35 @@
 "use client";
 
 import { useState } from "react";
-import { cv as cvApi, type CVGenerateResult, type UserProfile } from "@/lib/api";
-import { Icon } from "@/components/ui/Icon";
+import { cv as cvApi, type UserProfile } from "@/lib/api";
+import { InputStep, type InputStepValues } from "./generator/InputStep";
+import { PreviewStep, type TemplateKey } from "./generator/PreviewStep";
+import { EditStep } from "./generator/EditStep";
+import { HistoryPanel } from "./generator/HistoryPanel";
+import { parseGeneratedCv, type ParsedCV } from "./generator/parseCv";
 
+import "./generator/print.css";
+
+type Step = "input" | "preview" | "edit";
+
+type GenerationMeta = {
+  jobTitle: string;
+  company: string;
+  wordCount: number;
+};
+
+/**
+ * Multi-step CV generator: input → preview → edit → export.
+ *
+ * State is held here so navigation between steps preserves edits and the
+ * Download PDF action always uses the latest parsed CV. The original LLM
+ * output is kept in `originalParsed` so the editor's Reset can roll back
+ * without an extra LLM call.
+ *
+ * History items are fetched by HistoryPanel; clicking one re-loads it into
+ * the preview state via `loadFromHistory` so a user can re-export old CVs
+ * (saves OpenRouter spend on re-runs).
+ */
 export function GeneratorTab({
   token,
   profileData,
@@ -11,34 +37,52 @@ export function GeneratorTab({
   token: string;
   profileData: UserProfile;
 }) {
-  const [jobTitle, setJobTitle] = useState("");
-  const [company, setCompany] = useState("");
-  const [jobDescription, setJobDescription] = useState("");
-  const [result, setResult] = useState<CVGenerateResult | null>(null);
+  const tier = profileData.subscription_tier;
+  const tierAllowed = tier === "starter" || tier === "professional" || tier === "super_standard";
+
+  const [step, setStep] = useState<Step>("input");
+  const [inputs, setInputs] = useState<InputStepValues>({
+    jobTitle: "",
+    company: "",
+    jobDescription: "",
+  });
+  const [parsed, setParsed] = useState<ParsedCV | null>(null);
+  const [originalParsed, setOriginalParsed] = useState<ParsedCV | null>(null);
+  const [meta, setMeta] = useState<GenerationMeta | null>(null);
+  const [template, setTemplate] = useState<TemplateKey>("ats");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [historyRefresh, setHistoryRefresh] = useState(0);
 
-  const tier = profileData.subscription_tier;
-  const tierAllowed = tier === "starter" || tier === "professional";
+  const startOver = () => {
+    setStep("input");
+    setParsed(null);
+    setOriginalParsed(null);
+    setMeta(null);
+    setError(null);
+  };
 
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!jobTitle.trim()) {
-      setError("Job title is required.");
-      return;
-    }
+  const handleGenerate = async (values: InputStepValues) => {
+    setInputs(values);
     setLoading(true);
     setError(null);
-    setResult(null);
-    setCopied(false);
     try {
       const r = await cvApi.generate(token, {
-        job_title: jobTitle.trim(),
-        company: company.trim() || undefined,
-        job_description: jobDescription.trim() || undefined,
+        job_title: values.jobTitle,
+        company: values.company || undefined,
+        job_description: values.jobDescription || undefined,
       });
-      setResult(r);
+      const p = parseGeneratedCv(r.content);
+      setParsed(p);
+      setOriginalParsed(p);
+      setMeta({
+        jobTitle: r.job_title,
+        company: r.company ?? "",
+        wordCount: r.word_count,
+      });
+      setStep("preview");
+      // Bump history so the new generation appears at the top of the panel.
+      setHistoryRefresh((n) => n + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Generation failed");
     } finally {
@@ -46,14 +90,26 @@ export function GeneratorTab({
     }
   };
 
-  const onCopy = async () => {
-    if (!result) return;
+  const handleLoadFromHistory = async (id: string) => {
+    setError(null);
     try {
-      await navigator.clipboard.writeText(result.content);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setError("Could not copy to clipboard.");
+      const detail = await cvApi.getGeneration(token, id);
+      const p = parseGeneratedCv(detail.content);
+      setParsed(p);
+      setOriginalParsed(p);
+      setMeta({
+        jobTitle: detail.job_title,
+        company: detail.company ?? "",
+        wordCount: detail.word_count,
+      });
+      setInputs({
+        jobTitle: detail.job_title,
+        company: detail.company ?? "",
+        jobDescription: "",
+      });
+      setStep("preview");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load that generation");
     }
   };
 
@@ -68,114 +124,50 @@ export function GeneratorTab({
     );
   }
 
-  return (
-    <div className="space-y-6">
-      <div className="card p-6">
-        <div className="eyebrow mb-1">Tailored CV generator</div>
-        <p className="text-sm mb-5" style={{ color: "var(--muted)" }}>
-          Rewrite your CV for a specific role.{" "}
-          {tierAllowed
-            ? "Available on your current plan."
-            : "Requires the Starter or Professional plan."}
-        </p>
+  const showHistory = step === "input";
 
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium block mb-1" style={{ color: "var(--ink-2)" }}>
-                Job title <span style={{ color: "var(--danger)" }}>*</span>
-              </label>
-              <input
-                value={jobTitle}
-                onChange={(e) => setJobTitle(e.target.value)}
-                placeholder="e.g. Senior Accountant"
-                className="w-full h-10 px-3 rounded-md text-sm"
-                style={{
-                  border: "1px solid var(--line-2)",
-                  background: "var(--surface)",
-                  color: "var(--ink)",
-                }}
-                required
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium block mb-1" style={{ color: "var(--ink-2)" }}>
-                Company
-              </label>
-              <input
-                value={company}
-                onChange={(e) => setCompany(e.target.value)}
-                placeholder="e.g. ZANACO"
-                className="w-full h-10 px-3 rounded-md text-sm"
-                style={{
-                  border: "1px solid var(--line-2)",
-                  background: "var(--surface)",
-                  color: "var(--ink)",
-                }}
-              />
-            </div>
-          </div>
-          <div>
-            <label className="text-xs font-medium block mb-1" style={{ color: "var(--ink-2)" }}>
-              Job description (optional)
-            </label>
-            <textarea
-              value={jobDescription}
-              onChange={(e) => setJobDescription(e.target.value)}
-              placeholder="Paste the JD if you have it. Improves tailoring."
-              rows={5}
-              className="w-full p-3 rounded-md text-sm"
-              style={{
-                border: "1px solid var(--line-2)",
-                background: "var(--surface)",
-                color: "var(--ink)",
-              }}
-            />
-          </div>
-          <div className="flex justify-end">
-            <button type="submit" disabled={loading} className="btn btn-primary btn-sm">
-              {loading ? (
-                <span className="spinner" />
-              ) : (
-                <>
-                  Generate <Icon name="arrowRight" size={14} />
-                </>
-              )}
-            </button>
-          </div>
-          {error && (
-            <p className="text-sm" style={{ color: "var(--danger)" }}>
-              {error}
-            </p>
-          )}
-        </form>
+  return (
+    <div className={`grid grid-cols-1 ${showHistory ? "lg:grid-cols-[1fr_280px]" : ""} gap-6`}>
+      <div className="space-y-6 min-w-0">
+        {step === "input" && (
+          <InputStep
+            initial={inputs}
+            tierAllowed={tierAllowed}
+            loading={loading}
+            error={error}
+            onSubmit={handleGenerate}
+          />
+        )}
+
+        {step === "preview" && parsed && meta && (
+          <PreviewStep
+            parsed={parsed}
+            template={template}
+            setTemplate={setTemplate}
+            meta={meta}
+            onBack={() => setStep("input")}
+            onEdit={() => setStep("edit")}
+            onStartOver={startOver}
+          />
+        )}
+
+        {step === "edit" && parsed && originalParsed && (
+          <EditStep
+            parsed={parsed}
+            onChange={setParsed}
+            onDone={() => setStep("preview")}
+            onReset={() => setParsed(originalParsed)}
+          />
+        )}
       </div>
 
-      {result && (
-        <div className="card p-6">
-          <div className="flex items-center justify-between gap-4 mb-4">
-            <div>
-              <div className="eyebrow">Generated CV</div>
-              <p className="text-xs" style={{ color: "var(--muted)" }}>
-                {result.word_count} words · {result.job_title}
-                {result.company && ` · ${result.company}`}
-              </p>
-            </div>
-            <button onClick={onCopy} className="btn btn-ghost btn-sm">
-              {copied ? "Copied!" : "Copy"}
-            </button>
-          </div>
-          <pre
-            className="text-sm whitespace-pre-wrap leading-relaxed p-4 rounded-md"
-            style={{
-              background: "var(--bg-2)",
-              border: "1px solid var(--line)",
-              color: "var(--ink)",
-              fontFamily: "inherit",
-            }}
-          >
-            {result.content}
-          </pre>
+      {showHistory && (
+        <div className="space-y-6">
+          <HistoryPanel
+            token={token}
+            refreshKey={historyRefresh}
+            onLoad={handleLoadFromHistory}
+          />
         </div>
       )}
     </div>

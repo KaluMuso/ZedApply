@@ -424,6 +424,18 @@ export interface CVGenerateResult {
   company: string | null;
 }
 
+export interface CVGenerationSummary {
+  id: string;
+  job_title: string;
+  company: string | null;
+  word_count: number;
+  created_at: string | null;
+}
+
+export interface CVGenerationDetail extends CVGenerationSummary {
+  content: string;
+}
+
 export const cv = {
   upload: async (token: string, file: File): Promise<CVUploadResult> => {
     const formData = new FormData();
@@ -453,6 +465,10 @@ export const cv = {
       token,
       body: JSON.stringify(data),
     }),
+  listGenerations: (token: string) =>
+    apiFetch<{ generations: CVGenerationSummary[] }>("/cv/generations", { token }),
+  getGeneration: (token: string, id: string) =>
+    apiFetch<CVGenerationDetail>(`/cv/generations/${encodeURIComponent(id)}`, { token }),
 };
 
 // ── Jobs ──

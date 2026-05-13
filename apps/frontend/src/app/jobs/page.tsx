@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import Link from "next/link";
 import { jobs as jobsApi, type Job } from "@/lib/api";
 import { JobCard } from "@/components/JobCard";
 import { JobDetailBody } from "@/components/JobDetailBody";
@@ -399,6 +400,7 @@ export default function JobsPage() {
             {jobsList.map((job) => (
               <JobCard
                 key={job.id}
+                id={job.id}
                 title={job.title}
                 company={job.company}
                 location={job.location}
@@ -473,15 +475,15 @@ export default function JobsPage() {
             ) : (
               <>
                 <JobDetailBody job={selectedJob} onClose={closeJob} />
-                {/* Shareable permalink */}
+                {/* Shareable permalink — styled as a ghost button so it
+                    reads as a real action, not legalese small-print. */}
                 <div className="px-6 md:px-8 pb-8 -mt-2">
-                  <a
+                  <Link
                     href={`/jobs/${selectedJob.id}`}
-                    className="text-xs underline opacity-70 hover:opacity-100"
-                    style={{ color: "var(--ink-2)" }}
+                    className="btn btn-ghost btn-sm"
                   >
-                    Open as standalone page (shareable)
-                  </a>
+                    <Icon name="external" size={14} /> Open as standalone page
+                  </Link>
                 </div>
               </>
             )}

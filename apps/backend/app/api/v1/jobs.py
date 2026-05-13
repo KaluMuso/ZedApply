@@ -1,6 +1,8 @@
 """Job listing routes."""
 import hashlib
+import html as _html
 import logging
+import re as _re
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from app.core.config import Settings, get_settings
 from app.core.deps import get_supabase, require_admin
@@ -18,6 +20,50 @@ from app.services.embedding import generate_embedding
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
+
+
+_HTML_TAG_RE = _re.compile(r"<[^>]+>")
+_BR_RE = _re.compile(r"<\s*br\s*/?\s*>", _re.IGNORECASE)
+_LI_OPEN_RE = _re.compile(r"<\s*li\b[^>]*>", _re.IGNORECASE)
+_BLOCK_CLOSE_RE = _re.compile(
+    # <li> opener already injects "\n• "; closing </li> shouldn't add another
+    # newline or adjacent bullets render with a blank line between them.
+    r"</\s*(p|div|h[1-6]|ul|ol|tr|table)\s*>", _re.IGNORECASE
+)
+
+
+def _strip_html(text: str | None) -> str:
+    """Sanitize scraper-supplied HTML into plain text.
+
+    Why this lives in the backend rather than in each n8n workflow: the
+    sanitiser then covers every scraper automatically, including any future
+    ones we add, and we don't have to keep two regexes in sync. Applied to
+    each row's description before fingerprinting so two listings that differ
+    only in HTML markup (one with <p>, one without) collapse to the same
+    dedup key, and so the cleaned text is what /jobs/[id] renders (it uses
+    whitespace-pre-wrap, which would otherwise print raw <p> tags).
+
+    Block-level tags are converted to newlines before stripping so the
+    rendered description keeps its paragraph and bullet structure. Inline
+    tags (<b>, <em>, <a>) just disappear.
+    """
+    if not text:
+        return ""
+    s = _BR_RE.sub("\n", text)
+    s = _LI_OPEN_RE.sub("\n• ", s)
+    # Double-newline on block close so paragraph-style HTML
+    # (<p>A</p><p>B</p>) renders as "A\n\nB" — a blank line between
+    # paragraphs reads much better under whitespace-pre-wrap. Three+
+    # newlines get collapsed to two below.
+    s = _BLOCK_CLOSE_RE.sub("\n\n", s)
+    s = _HTML_TAG_RE.sub("", s)
+    # html.unescape covers &amp; &nbsp; &#39; &quot; — common in scraper output.
+    s = _html.unescape(s)
+    # Collapse horizontal whitespace per line; preserve newlines so
+    # whitespace-pre-wrap keeps the visual structure.
+    s = _re.sub(r"[ \t ]+", " ", s)
+    s = _re.sub(r"\n{3,}", "\n\n", s)
+    return s.strip()
 
 
 def _fingerprint(title: str, company: str | None, description: str) -> str:
@@ -220,6 +266,9 @@ async def get_job(job_id: str, supabase=Depends(get_supabase)):
 @router.post("", response_model=Job, status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
 async def create_job(request: Request, body: JobCreate, current_user: dict = Depends(require_admin), supabase=Depends(get_supabase)):
+    # Same HTML strip as the ingest path — keeps manual admin creates and
+    # scraper-fed rows on the same plain-text contract.
+    body.description = _strip_html(body.description)
     fp = _fingerprint(body.title, body.company, body.description)
     existing = supabase.table("job_fingerprints").select("job_id").eq("fingerprint", fp).execute()
     if existing.data:
@@ -300,6 +349,13 @@ async def ingest_jobs(
                         idx, job.title,
                     )
                     continue
+
+            # Strip HTML BEFORE fingerprinting so identical jobs that
+            # differ only in markup (one scraper emits <p>, another doesn't)
+            # collapse to the same dedup key. The mutated description is
+            # what gets embedded, fingerprinted, AND stored — keeps all
+            # three in sync.
+            job.description = _strip_html(job.description)
 
             fp = _fingerprint(job.title, job.company, job.description)
             existing = (
