@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { subscription } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Icon } from "@/components/ui/Icon";
@@ -120,6 +121,7 @@ const comparisonFeatures: ComparisonFeature[] = [
 type PaymentMethod = "mtn" | "airtel" | "card" | "lenco";
 
 export default function PricingPage() {
+  const router = useRouter();
   const { token, isAuthenticated } = useAuth();
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("mtn");
@@ -130,7 +132,9 @@ export default function PricingPage() {
 
   const handlePay = async (tier: string) => {
     if (!isAuthenticated || !token) {
-      window.location.href = "/auth";
+      // Client-side navigation preserves SPA state and avoids the
+      // full-page-reload flash that `window.location.href` would cause.
+      router.push("/auth?next=/pricing");
       return;
     }
     if (tier === "free") return;
