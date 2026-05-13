@@ -73,6 +73,9 @@ class FakeSupabaseQuery:
     def ilike(self, *a):
         return self
 
+    def like(self, *a):
+        return self
+
     def or_(self, *a):
         return self
 

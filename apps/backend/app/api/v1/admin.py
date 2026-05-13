@@ -214,14 +214,16 @@ async def backfill_jobs_html_strip(
     Returns counts so the operator knows how many rows were touched and
     whether another pass is needed.
     """
-    from app.api.v1.jobs import _strip_html
+    from app.api.v1.jobs import _strip_html, _fingerprint
 
     # Fetch jobs whose description still looks HTML-ish. The `like` filter
     # cuts the scan to actually-affected rows; we still cap with `limit`
     # so a runaway scan can't drown a Supabase free-tier instance.
+    # title + company are required to recompute the dedup fingerprint —
+    # see the comment by the update below.
     res = (
         supabase.table("jobs")
-        .select("id, description")
+        .select("id, title, company, description")
         .like("description", "%<%")
         .limit(limit)
         .execute()
@@ -243,6 +245,17 @@ async def backfill_jobs_html_strip(
             continue
         try:
             supabase.table("jobs").update({"description": cleaned}).eq("id", row["id"]).execute()
+            # CRITICAL: also rewrite the dedup fingerprint. The fingerprint
+            # stored in `job_fingerprints` was hashed over the ORIGINAL HTML
+            # description; once we clean the description, the next scraper
+            # ingest will compute a clean-text fingerprint, miss the stale
+            # one, and insert a duplicate row for every cleaned job. Skip
+            # this update and the next n8n run effectively duplicates the
+            # entire backfilled set.
+            new_fp = _fingerprint(row["title"], row.get("company"), cleaned)
+            supabase.table("job_fingerprints").update(
+                {"fingerprint": new_fp}
+            ).eq("job_id", row["id"]).execute()
             changed += 1
         except Exception as exc:
             errors.append({"id": row["id"], "reason": f"{type(exc).__name__}: {exc}"[:200]})
