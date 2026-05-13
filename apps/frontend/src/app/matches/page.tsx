@@ -214,13 +214,19 @@ export default function MatchesPage() {
             style={{ color: "var(--muted)" }}
           >
             <span>Resets next month</span>
-            <Link
-              href="/pricing"
-              className="font-medium"
-              style={{ color: "var(--green-700)" }}
-            >
-              Upgrade for K125/mo &rarr;
-            </Link>
+            {/* Hide the upgrade link for users who are already on the top
+                paid tiers — showing "Upgrade for K125/mo" to a Super
+                Standard user (K500/mo, unlimited matches) is both wrong
+                and corrosive to trust. */}
+            {sub?.tier !== "professional" && sub?.tier !== "super_standard" && (
+              <Link
+                href="/pricing"
+                className="font-medium"
+                style={{ color: "var(--green-700)" }}
+              >
+                Upgrade for K125/mo &rarr;
+              </Link>
+            )}
           </div>
         </div>
       </div>
@@ -512,8 +518,13 @@ export default function MatchesPage() {
         />
       )}
 
-      {/* Upgrade CTA */}
-      {data.matches.length > 0 && (
+      {/* Upgrade CTA — promotes tailored CVs (a Professional+ feature).
+          Hide for users who already have it. Professional and Super
+          Standard both include tailored CV generation, so the "Pro tip"
+          is only relevant for free + starter tiers. */}
+      {data.matches.length > 0 &&
+        sub?.tier !== "professional" &&
+        sub?.tier !== "super_standard" && (
         <div
           className="upgrade-cta mt-12 p-8 rounded-xl grid gap-6 items-center"
           style={{
