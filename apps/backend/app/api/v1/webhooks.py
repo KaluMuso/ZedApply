@@ -77,6 +77,28 @@ async def _handle_channel_message(payload: dict, supabase, settings) -> dict:
             skills_required=extracted.skills_required,
             source=JobSource.scraper,
             source_url=source_url,
+            # task #60: pass the new structured fields through. Pydantic
+            # enum coercion handles string → EmploymentType / WorkArrangement
+            # if the extractor returns a known value; an unknown value is
+            # rejected here and the whole row falls into the ValidationError
+            # branch below (safer than silently ingesting bad enum values).
+            employment_type=extracted.employment_type,
+            work_arrangement=extracted.work_arrangement,
+            hybrid_days_per_week=extracted.hybrid_days_per_week,
+            benefits=extracted.benefits,
+            application_instructions=extracted.application_instructions,
+            reporting_structure=extracted.reporting_structure,
+            manages_others=extracted.manages_others,
+            interview_process=extracted.interview_process,
+            tools_tech_stack=extracted.tools_tech_stack,
+            success_metrics=extracted.success_metrics,
+            company_description=extracted.company_description,
+            reference_number=extracted.reference_number,
+            currency=extracted.currency,
+            pay_frequency=extracted.pay_frequency,
+            bonus_structure=extracted.bonus_structure,
+            equity_offered=extracted.equity_offered,
+            salary_text=extracted.salary_text,
         )
     except ValidationError as ve:
         logger.warning(

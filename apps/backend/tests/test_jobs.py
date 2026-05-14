@@ -1,5 +1,8 @@
 """Smoke tests for job listing routes."""
 from unittest.mock import AsyncMock, patch
+
+import pytest
+
 from tests.conftest import FakeSupabaseQuery
 
 
@@ -364,3 +367,288 @@ class TestJobIngest:
         )
         assert resp.json()["skipped"] == 1
         mock_embed.assert_not_called()
+
+
+# ─── task #60: richer job schema ──────────────────────────────────────
+
+
+class TestSalaryParseToNgwee:
+    """`_parse_salary_to_ngwee` is the ingest fallback that runs when a
+    scraper emits free-text salary like 'K15,000 - K20,000' instead of
+    integer min/max. Tests pin the parsing behaviour so future changes to
+    the regex don't silently break existing ingests."""
+
+    @pytest.mark.parametrize(
+        "raw, expected_min_ngwee, expected_max_ngwee",
+        [
+            # Single value: both ends set to the same number.
+            ("K15,000", 1_500_000, 1_500_000),
+            ("K 15,000", 1_500_000, 1_500_000),
+            ("ZMW 15000", 1_500_000, 1_500_000),
+            # Range: min/max distinct, order-tolerant.
+            ("K15,000 - K20,000", 1_500_000, 2_000_000),
+            ("K20,000 to K15,000", 1_500_000, 2_000_000),
+            ("ZMW 15000-20000/month", 1_500_000, 2_000_000),
+            # k suffix.
+            ("15k-20k", 1_500_000, 2_000_000),
+            ("K15k", 1_500_000, 1_500_000),
+            # m suffix (executive salaries).
+            ("K3.5m", 350_000_000, 350_000_000),
+        ],
+    )
+    def test_parses_known_zmw_shapes(self, raw, expected_min_ngwee, expected_max_ngwee):
+        from app.schemas.jobs import _parse_salary_to_ngwee
+        mn, mx = _parse_salary_to_ngwee(raw)
+        assert mn == expected_min_ngwee
+        assert mx == expected_max_ngwee
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "negotiable",
+            "Salary: negotiable based on experience",
+            "depends on experience",
+            "TBD",
+            "to be discussed",
+            "competitive package",
+            "",
+            None,
+            "   ",
+        ],
+    )
+    def test_returns_none_for_placeholder_text(self, raw):
+        """'negotiable' and friends must not accidentally extract a
+        partial number from the surrounding text."""
+        from app.schemas.jobs import _parse_salary_to_ngwee
+        assert _parse_salary_to_ngwee(raw) == (None, None)
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "USD 5000-7000",     # no ZMW marker
+            "$5000 per month",
+            "£3000",
+            "Naira 500,000",
+        ],
+    )
+    def test_returns_none_for_non_zmw_currency(self, raw):
+        """Non-ZMW values are intentionally not converted. The currency
+        column carries the unit instead; this helper sticks to ngwee."""
+        from app.schemas.jobs import _parse_salary_to_ngwee
+        assert _parse_salary_to_ngwee(raw) == (None, None)
+
+    def test_ignores_year_shaped_numbers(self):
+        """Salary '2026' is almost certainly a year, not K2,026/month."""
+        from app.schemas.jobs import _parse_salary_to_ngwee
+        # Year-looking number should be filtered out; only the real
+        # salary survives.
+        assert _parse_salary_to_ngwee("K15,000 (posted 2026)") == (1_500_000, 1_500_000)
+
+    def test_ignores_implausibly_small_amounts(self):
+        """K200 is well below Zambian minimum monthly wage; treat as noise."""
+        from app.schemas.jobs import _parse_salary_to_ngwee
+        # Should pull the K15k and ignore the page-number '5'.
+        assert _parse_salary_to_ngwee("page 5 — K15,000") == (1_500_000, 1_500_000)
+
+
+class TestOrdinalDateParsing:
+    """The WhatsApp channel often writes deadlines as '20th May 2026'.
+    The tolerant date parser must strip the ordinal suffix before
+    strptime, since Python's directives don't understand st/nd/rd/th."""
+
+    def test_parses_ordinal_day(self):
+        from app.schemas.jobs import _tolerant_parse_date
+        from datetime import date
+        assert _tolerant_parse_date("20th May 2026") == date(2026, 5, 20)
+
+    def test_parses_first_third_second(self):
+        from app.schemas.jobs import _tolerant_parse_date
+        from datetime import date
+        assert _tolerant_parse_date("1st June 2026") == date(2026, 6, 1)
+        assert _tolerant_parse_date("3rd July 2026") == date(2026, 7, 3)
+        assert _tolerant_parse_date("2nd August 2026") == date(2026, 8, 2)
+
+    def test_iso_still_takes_precedence(self):
+        """The ordinal strip should never get in the way of canonical ISO."""
+        from app.schemas.jobs import _tolerant_parse_date
+        from datetime import date
+        assert _tolerant_parse_date("2026-05-20") == date(2026, 5, 20)
+
+    def test_returns_none_on_truly_unparseable(self):
+        from app.schemas.jobs import _tolerant_parse_date
+        assert _tolerant_parse_date("sometime in May") is None
+
+
+class TestJobIngestRicherFields:
+    """Task #60 added optional structured fields to JobCreate. Ingest must
+    accept them when present AND keep working when absent."""
+
+    BASE_JOB = {
+        "title": "Senior Backend Engineer",
+        "company": "Airtel Zambia",
+        "location": "Lusaka",
+        "description": "We're hiring a senior backend engineer to lead the payments platform team.",
+        "source": "scraper",
+    }
+
+    @patch("app.api.v1.jobs.generate_embedding", new_callable=AsyncMock)
+    def test_ingest_accepts_all_new_fields(
+        self, mock_embed, client, fake_supabase
+    ):
+        """A scraper row carrying every new structured field still ingests."""
+        mock_embed.return_value = [0.1] * 768
+        fake_supabase.set_table("job_fingerprints", FakeSupabaseQuery(data=[]))
+        fake_supabase.set_table(
+            "jobs", FakeSupabaseQuery(data=[{"id": "job-rich-1"}])
+        )
+
+        full = {
+            **self.BASE_JOB,
+            "employment_type": "full_time",
+            "work_arrangement": "hybrid",
+            "hybrid_days_per_week": 3,
+            "benefits": ["medical aid", "13th cheque", "phone allowance"],
+            "application_instructions": "Email CV + cover letter to careers@example.com",
+            "reporting_structure": "Reports to the Head of Engineering",
+            "manages_others": 4,
+            "interview_process": "1. Phone screen 2. Tech test 3. Onsite panel",
+            "tools_tech_stack": ["python", "postgres", "aws"],
+            "success_metrics": "Reduce payment-flow p99 latency by 30%",
+            "company_description": "Zambia's largest mobile money operator",
+            "reference_number": "ENG-2026-042",
+            "currency": "ZMW",
+            "pay_frequency": "monthly",
+            "bonus_structure": "Quarterly performance bonus up to 15%",
+            "equity_offered": False,
+        }
+
+        resp = client.post(
+            "/api/v1/jobs/ingest",
+            json={"api_key": "test-ingest-key", "jobs": [full]},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["ingested"] == 1
+        assert resp.json()["errors"] == []
+
+    @patch("app.api.v1.jobs.generate_embedding", new_callable=AsyncMock)
+    def test_ingest_still_works_with_no_new_fields(
+        self, mock_embed, client, fake_supabase
+    ):
+        """Backwards-compat: a pre-#60 scraper payload (just the original
+        fields) must ingest without 422 or insert errors."""
+        mock_embed.return_value = [0.1] * 768
+        fake_supabase.set_table("job_fingerprints", FakeSupabaseQuery(data=[]))
+        fake_supabase.set_table(
+            "jobs", FakeSupabaseQuery(data=[{"id": "job-legacy-1"}])
+        )
+
+        resp = client.post(
+            "/api/v1/jobs/ingest",
+            json={"api_key": "test-ingest-key", "jobs": [self.BASE_JOB]},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["ingested"] == 1
+
+    def test_ingest_rejects_invalid_employment_type(self, client, fake_supabase):
+        """Unknown enum value must 422 the whole batch — Pydantic's
+        EmploymentType validator catches it before any side effects."""
+        bad = {**self.BASE_JOB, "employment_type": "totally-made-up"}
+        resp = client.post(
+            "/api/v1/jobs/ingest",
+            json={"api_key": "test-ingest-key", "jobs": [bad]},
+        )
+        assert resp.status_code == 422
+
+    def test_ingest_rejects_invalid_work_arrangement(self, client, fake_supabase):
+        bad = {**self.BASE_JOB, "work_arrangement": "in-the-cloud-somewhere"}
+        resp = client.post(
+            "/api/v1/jobs/ingest",
+            json={"api_key": "test-ingest-key", "jobs": [bad]},
+        )
+        assert resp.status_code == 422
+
+    def test_ingest_rejects_invalid_pay_frequency(self, client, fake_supabase):
+        bad = {**self.BASE_JOB, "pay_frequency": "fortnightly"}
+        resp = client.post(
+            "/api/v1/jobs/ingest",
+            json={"api_key": "test-ingest-key", "jobs": [bad]},
+        )
+        assert resp.status_code == 422
+
+    def test_ingest_rejects_hybrid_days_out_of_range(self, client, fake_supabase):
+        bad = {**self.BASE_JOB, "hybrid_days_per_week": 7}
+        resp = client.post(
+            "/api/v1/jobs/ingest",
+            json={"api_key": "test-ingest-key", "jobs": [bad]},
+        )
+        assert resp.status_code == 422
+
+    @patch("app.api.v1.jobs.generate_embedding", new_callable=AsyncMock)
+    def test_ingest_uses_salary_text_when_ints_missing(
+        self, mock_embed, client, fake_supabase
+    ):
+        """salary_text fallback path: scraper sends a free-form salary
+        string with no min/max ints; ingest derives them. The salary_text
+        field itself is dropped before insert (DB has no column)."""
+        mock_embed.return_value = [0.1] * 768
+        fake_supabase.set_table("job_fingerprints", FakeSupabaseQuery(data=[]))
+        captured_inserts: list[dict] = []
+
+        class CapturingTable:
+            def __init__(self):
+                pass
+            def select(self, *_a, **_k):
+                return FakeSupabaseQuery(data=[])
+            def insert(self, payload):
+                captured_inserts.append(payload)
+                return FakeSupabaseQuery(data=[{"id": "captured-1"}])
+
+        fake_supabase.set_table("jobs", CapturingTable())
+
+        payload = {**self.BASE_JOB, "salary_text": "K15,000 - K20,000"}
+        resp = client.post(
+            "/api/v1/jobs/ingest",
+            json={"api_key": "test-ingest-key", "jobs": [payload]},
+        )
+        assert resp.status_code == 200
+        # The ingest should have populated min/max from salary_text AND
+        # dropped salary_text from the insert payload.
+        assert len(captured_inserts) == 1
+        inserted = captured_inserts[0]
+        assert inserted["salary_min"] == 1_500_000
+        assert inserted["salary_max"] == 2_000_000
+        assert "salary_text" not in inserted
+
+    @patch("app.api.v1.jobs.generate_embedding", new_callable=AsyncMock)
+    def test_ingest_does_not_override_existing_salary_ints(
+        self, mock_embed, client, fake_supabase
+    ):
+        """When the scraper already provides salary_min/max ints, the
+        salary_text helper must NOT override them — that data is more
+        reliable than free-form text parsing."""
+        mock_embed.return_value = [0.1] * 768
+        fake_supabase.set_table("job_fingerprints", FakeSupabaseQuery(data=[]))
+        captured_inserts: list[dict] = []
+
+        class CapturingTable:
+            def select(self, *_a, **_k):
+                return FakeSupabaseQuery(data=[])
+            def insert(self, payload):
+                captured_inserts.append(payload)
+                return FakeSupabaseQuery(data=[{"id": "captured-2"}])
+
+        fake_supabase.set_table("jobs", CapturingTable())
+
+        payload = {
+            **self.BASE_JOB,
+            "salary_min": 999,  # bogus value just to prove it survives
+            "salary_max": 9999,
+            "salary_text": "K15,000 - K20,000",
+        }
+        resp = client.post(
+            "/api/v1/jobs/ingest",
+            json={"api_key": "test-ingest-key", "jobs": [payload]},
+        )
+        assert resp.status_code == 200
+        assert captured_inserts[0]["salary_min"] == 999
+        assert captured_inserts[0]["salary_max"] == 9999

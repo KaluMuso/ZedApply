@@ -587,6 +587,22 @@ export const cv = {
 };
 
 // ── Jobs ──
+
+// Mirrors apps/backend/app/schemas/jobs.py::EmploymentType / WorkArrangement.
+// Keep this in sync — they're the canonical wire-shape strings used by
+// the filter query params and stored in jobs.employment_type / jobs.work_arrangement.
+export type EmploymentType =
+  | "full_time"
+  | "part_time"
+  | "contract"
+  | "freelance"
+  | "internship"
+  | "temporary";
+
+export type WorkArrangement = "remote" | "hybrid" | "on_site";
+
+export type PayFrequency = "monthly" | "annual" | "hourly" | "daily";
+
 export interface Job {
   id: string;
   title: string;
@@ -603,6 +619,26 @@ export interface Job {
   source_url?: string | null;
   apply_url?: string | null;
   apply_email?: string | null;
+
+  // ── task #60: richer job ad shape ───────────────────────────────────
+  // All optional + nullable so legacy rows (pre-migration 016) still
+  // satisfy the type. Frontend renders fields only when truthy / non-empty.
+  employment_type?: EmploymentType | null;
+  work_arrangement?: WorkArrangement | null;
+  hybrid_days_per_week?: number | null;
+  benefits?: string[] | null;
+  application_instructions?: string | null;
+  reporting_structure?: string | null;
+  manages_others?: number | null;
+  interview_process?: string | null;
+  tools_tech_stack?: string[] | null;
+  success_metrics?: string | null;
+  company_description?: string | null;
+  reference_number?: string | null;
+  currency?: string | null;
+  pay_frequency?: PayFrequency | null;
+  bonus_structure?: string | null;
+  equity_offered?: boolean | null;
 }
 
 export interface JobListResponse {
@@ -620,6 +656,8 @@ export const jobs = {
     sort?: "relevance" | "recent" | "closing";
     skills?: string[];
     source?: string[];
+    employment_type?: EmploymentType[];
+    work_arrangement?: WorkArrangement[];
   }) => {
     const query = new URLSearchParams();
     if (params?.page) query.set("page", String(params.page));
@@ -628,6 +666,10 @@ export const jobs = {
     if (params?.sort) query.set("sort", params.sort);
     if (params?.skills?.length) query.set("skills", params.skills.join(","));
     if (params?.source?.length) query.set("source", params.source.join(","));
+    if (params?.employment_type?.length)
+      query.set("employment_type", params.employment_type.join(","));
+    if (params?.work_arrangement?.length)
+      query.set("work_arrangement", params.work_arrangement.join(","));
     const token = getToken();
     return apiFetch<JobListResponse>(`/jobs?${query}`, { token });
   },

@@ -14,6 +14,7 @@ from app.schemas.jobs import (
     JobIngestRequest,
     JobIngestResponse,
     JobIngestErrorItem,
+    _parse_salary_to_ngwee,
 )
 from app.services.embedding import generate_embedding
 
@@ -133,6 +134,21 @@ async def list_jobs(
         None,
         description="Comma-separated source values (manual,scraper,ocr,partner).",
     ),
+    employment_type: str | None = Query(
+        None,
+        description=(
+            "Comma-separated employment types. ANY semantics. "
+            "Accepted: full_time, part_time, contract, freelance, "
+            "internship, temporary."
+        ),
+    ),
+    work_arrangement: str | None = Query(
+        None,
+        description=(
+            "Comma-separated work arrangements. ANY semantics. "
+            "Accepted: remote, hybrid, on_site."
+        ),
+    ),
     supabase=Depends(get_supabase),
 ):
     sort_mode = sort if sort in _ALLOWED_SORT else "recent"
@@ -202,6 +218,19 @@ async def list_jobs(
         sources = [s.strip() for s in source.split(",") if s.strip()]
         if sources:
             query = query.in_("source", sources)
+    # task #60: filter on the new structural dimensions. ANY-semantics
+    # via .in_() so users can request e.g. employment_type=full_time,contract
+    # without losing the listings that only set one. Unknown values are
+    # passed through — they simply match zero rows and surface as empty
+    # state, which is the same UX as an unknown skill chip.
+    if employment_type:
+        ets = [s.strip() for s in employment_type.split(",") if s.strip()]
+        if ets:
+            query = query.in_("employment_type", ets)
+    if work_arrangement:
+        was = [s.strip() for s in work_arrangement.split(",") if s.strip()]
+        if was:
+            query = query.in_("work_arrangement", was)
     if job_id_filter is not None:
         query = query.in_("id", job_id_filter)
 
@@ -285,6 +314,15 @@ async def create_job(request: Request, body: JobCreate, current_user: dict = Dep
     # Same HTML strip as the ingest path — keeps manual admin creates and
     # scraper-fed rows on the same plain-text contract.
     body.description = _strip_html(body.description)
+
+    # task #60: same salary-text fallback as the ingest path so admins who
+    # paste "K15,000 - K20,000" don't need to convert it by hand.
+    if body.salary_min is None and body.salary_max is None and body.salary_text:
+        parsed_min, parsed_max = _parse_salary_to_ngwee(body.salary_text)
+        if parsed_min is not None or parsed_max is not None:
+            body.salary_min = parsed_min
+            body.salary_max = parsed_max
+
     fp = _fingerprint(body.title, body.company, body.description)
     existing = supabase.table("job_fingerprints").select("job_id").eq("fingerprint", fp).execute()
     if existing.data:
@@ -296,6 +334,8 @@ async def create_job(request: Request, body: JobCreate, current_user: dict = Dep
         raise HTTPException(status_code=503, detail=str(e))
     job_data = body.model_dump(exclude_none=True, mode="json")
     skills_required = job_data.pop("skills_required", [])
+    # salary_text is input-only (see ingest path comment).
+    job_data.pop("salary_text", None)
     job_data["embedding"] = embedding
     result = supabase.table("jobs").insert(job_data).execute()
     if not result.data:
@@ -356,6 +396,22 @@ async def _ingest_one_job(
         # in sync.
         job.description = _strip_html(job.description)
 
+        # task #60: salary text → ngwee fallback. Only fires when the
+        # scraper left both ints null AND supplied a salary_text string.
+        # Helper returns (None, None) on unparseable / non-ZMW input so
+        # bad text falls through to "no salary listed". The salary_text
+        # field itself is dropped from the insert payload below — DB has
+        # no column for it.
+        if (
+            job.salary_min is None
+            and job.salary_max is None
+            and job.salary_text
+        ):
+            parsed_min, parsed_max = _parse_salary_to_ngwee(job.salary_text)
+            if parsed_min is not None or parsed_max is not None:
+                job.salary_min = parsed_min
+                job.salary_max = parsed_max
+
         fp = _fingerprint(job.title, job.company, job.description)
         existing = (
             supabase.table("job_fingerprints")
@@ -375,6 +431,12 @@ async def _ingest_one_job(
 
         job_data = job.model_dump(exclude_none=True, mode="json")
         skills_required = job_data.pop("skills_required", [])
+        # salary_text is input-only — used by the parser above but never
+        # stored. Same goes for the empty-list fields where the model
+        # defaulted to [] and exclude_none didn't strip them: leave the
+        # explicit empty lists in place so a row with no benefits still
+        # stores benefits=[] (matches the JSONB DEFAULT in migration 016).
+        job_data.pop("salary_text", None)
         job_data["embedding"] = embedding
 
         result = supabase.table("jobs").insert(job_data).execute()
