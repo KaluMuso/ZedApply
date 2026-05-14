@@ -398,13 +398,29 @@ export default function MatchesPage() {
                       </button>
                     );
                   })()}
-                  <button
-                    onClick={() => setPrepFor(match)}
-                    className="btn btn-accent btn-sm w-40"
-                    title="Generate interview prep notes for this role"
-                  >
-                    Interview Call <Icon name="zap" size={13} />
-                  </button>
+                  {/* Interview Prep is Super Standard only (backend enforced
+                      in interview_prep.py). Mirror that gate here so users
+                      below SS see a clear upgrade affordance instead of
+                      clicking a button that just 403s. Backend enforcement
+                      remains the source of truth. */}
+                  {sub?.tier === "super_standard" ? (
+                    <button
+                      onClick={() => setPrepFor(match)}
+                      className="btn btn-accent btn-sm w-40"
+                      title="Generate interview prep notes for this role"
+                    >
+                      Interview Call <Icon name="zap" size={13} />
+                    </button>
+                  ) : (
+                    <Link
+                      href="/pricing"
+                      className="btn btn-ghost btn-sm w-40"
+                      title="Interview Prep is a Super Standard feature"
+                      style={{ opacity: 0.85 }}
+                    >
+                      Unlock prep <Icon name="zap" size={13} />
+                    </Link>
+                  )}
                   <button
                     onClick={() =>
                       setExpanded(expanded === match.id ? null : match.id)

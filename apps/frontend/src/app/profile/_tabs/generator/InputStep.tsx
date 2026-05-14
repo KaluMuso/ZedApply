@@ -54,7 +54,7 @@ export function InputStep({
         Rewrite your CV for a specific role.{" "}
         {tierAllowed
           ? "We'll draft a one-page version using your uploaded CV as the source."
-          : "Requires the Starter or Professional plan."}
+          : "Available on Starter, Professional, and Super Standard plans."}
       </p>
 
       <form onSubmit={handleSubmit} className="space-y-4">

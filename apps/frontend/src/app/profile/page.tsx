@@ -250,12 +250,43 @@ export default function ProfilePage() {
             <div className="font-display text-2xl mb-1">
               {TIER_LABELS[profileData.subscription_tier] || profileData.subscription_tier}
             </div>
-            <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
-              Upgrade to unlock tailored CVs and more matches.
-            </p>
-            <Link href="/pricing" className="btn btn-accent w-full btn-sm">
-              Upgrade <Icon name="arrowRight" size={14} />
-            </Link>
+            {/* Tier-aware sidebar — Professional and Super Standard users
+                already have tailored CVs + generous match quotas. Showing
+                "Upgrade to unlock tailored CVs" to them is misleading and
+                erodes trust in the product. Top tiers see a "Manage plan"
+                affordance instead; paid-but-not-top tiers see a tier-specific
+                upsell; free sees the original upsell. Backend enforcement
+                of paid features is unchanged — this is UI tier-gating only. */}
+            {profileData.subscription_tier === "super_standard" ? (
+              <>
+                <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
+                  You're on the top tier — unlimited matches, tailored CVs,
+                  and priority support. Thanks for backing Zed CV.
+                </p>
+                <Link href="/pricing" className="btn btn-ghost w-full btn-sm">
+                  Manage plan <Icon name="arrowRight" size={14} />
+                </Link>
+              </>
+            ) : profileData.subscription_tier === "professional" ? (
+              <>
+                <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
+                  Tailored CVs and 125 matches/month included. Move to Super
+                  Standard for unlimited matches and daily WhatsApp digests.
+                </p>
+                <Link href="/pricing" className="btn btn-accent w-full btn-sm">
+                  Upgrade <Icon name="arrowRight" size={14} />
+                </Link>
+              </>
+            ) : (
+              <>
+                <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
+                  Upgrade to unlock tailored CVs and more matches.
+                </p>
+                <Link href="/pricing" className="btn btn-accent w-full btn-sm">
+                  Upgrade <Icon name="arrowRight" size={14} />
+                </Link>
+              </>
+            )}
           </div>
 
           <div className="card p-6">
