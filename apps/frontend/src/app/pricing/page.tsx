@@ -1,10 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { subscription } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Icon } from "@/components/ui/Icon";
+
+// Tier rank for context-aware pricing CTAs. Higher number = more inclusive
+// tier. A user on super_standard (3) seeing professional (2) or starter (1)
+// should NOT see "Upgrade to …" — that's the bug task #54 is closing.
+const TIER_RANK: Record<string, number> = {
+  free: 0,
+  starter: 1,
+  professional: 2,
+  super_standard: 3,
+};
 
 interface Plan {
   name: string;
@@ -130,6 +140,37 @@ export default function PricingPage() {
   const [payMsg, setPayMsg] = useState("");
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
+  // Fetch the user's current tier so we can render context-aware CTAs
+  // ("Current plan", "Downgrade", "Upgrade to …") instead of a generic
+  // "Upgrade to X" on every card. Non-fatal if it fails — falls back to
+  // "free" which is the safest default (shows all upgrades as available).
+  const [currentTier, setCurrentTier] = useState<string>("free");
+  useEffect(() => {
+    if (!token) {
+      setCurrentTier("free");
+      return;
+    }
+    subscription
+      .get(token)
+      .then((sub) => setCurrentTier(sub?.tier ?? "free"))
+      .catch(() => setCurrentTier("free"));
+  }, [token]);
+
+  // Compute the action a plan card should offer relative to the user's
+  // current tier: "current" (same tier), "downgrade" (lower), "upgrade"
+  // (higher), or "signup" (not logged in / free). Single source of truth
+  // for both the button label and the click handler.
+  const planAction = (
+    planTier: string,
+  ): "current" | "downgrade" | "upgrade" | "signup" => {
+    if (!isAuthenticated) return planTier === "free" ? "signup" : "upgrade";
+    const cur = TIER_RANK[currentTier] ?? 0;
+    const target = TIER_RANK[planTier] ?? 0;
+    if (cur === target) return "current";
+    if (target < cur) return "downgrade";
+    return "upgrade";
+  };
+
   const handlePay = async (tier: string) => {
     if (!isAuthenticated || !token) {
       // Client-side navigation preserves SPA state and avoids the
@@ -138,6 +179,9 @@ export default function PricingPage() {
       return;
     }
     if (tier === "free") return;
+    // No-op for the user's current tier — clicking "Current plan" should
+    // do nothing (the button is also visually disabled below).
+    if (planAction(tier) === "current") return;
     setSelectedPlan(tier);
   };
 
@@ -243,18 +287,41 @@ export default function PricingPage() {
               ))}
             </ul>
 
-            <button
-              onClick={() => handlePay(plan.tier)}
-              className={`w-full ${
-                plan.highlight
-                  ? "btn btn-accent btn-lg"
-                  : "btn btn-ghost btn-lg"
-              }`}
-            >
-              {plan.tier === "free"
+            {/* Context-aware CTA based on the user's current tier vs this
+                plan's tier. A Super Standard user no longer sees "Upgrade
+                to Starter" on the Starter card — they see "Current plan"
+                on Super (disabled) and "Downgrade" on Starter/Professional
+                (ghost). Free + unauthenticated users keep the original
+                "Get Started" / "Upgrade to X" flow. */}
+            {(() => {
+              const action = planAction(plan.tier);
+              const isCurrent = action === "current";
+              const isDowngrade = action === "downgrade";
+              const label = isCurrent
+                ? "Current plan"
+                : isDowngrade
+                ? `Downgrade to ${plan.name}`
+                : plan.tier === "free"
                 ? "Get Started"
-                : `Upgrade to ${plan.name}`}
-            </button>
+                : `Upgrade to ${plan.name}`;
+              return (
+                <button
+                  onClick={() => handlePay(plan.tier)}
+                  disabled={isCurrent}
+                  aria-disabled={isCurrent}
+                  className={`w-full ${
+                    isCurrent
+                      ? "btn btn-ghost btn-lg"
+                      : plan.highlight
+                      ? "btn btn-accent btn-lg"
+                      : "btn btn-ghost btn-lg"
+                  }`}
+                  style={isCurrent ? { opacity: 0.7, cursor: "not-allowed" } : undefined}
+                >
+                  {isCurrent && <Icon name="check" size={14} />} {label}
+                </button>
+              );
+            })()}
           </div>
         ))}
       </div>
