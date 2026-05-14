@@ -266,6 +266,37 @@ async def list_jobs(
     return JobList(jobs=jobs, total=total, page=page, per_page=per_page, pages=pages)
 
 
+@router.get("/sitemap")
+async def list_jobs_for_sitemap(supabase=Depends(get_supabase)):
+    """ID-only export of active jobs for /sitemap.xml.
+
+    Public, auth-free, and deliberately narrow: only `id` + a `lastmod`
+    timestamp. Used by the Next.js dynamic sitemap route — calling the
+    full /jobs list endpoint instead would force 1000+ paginated requests
+    to enumerate 50k jobs. Cap matches sitemap.org's 50,000-entry
+    per-file limit. NOTE: this MUST be declared before the
+    `/{job_id}` route below so FastAPI doesn't capture `/sitemap` as an
+    id path parameter.
+    """
+    rows = (
+        supabase.table("jobs")
+        .select("id, updated_at, posted_at")
+        .eq("is_active", True)
+        .order("posted_at", desc=True)
+        .limit(50000)
+        .execute()
+    )
+    return {
+        "ids": [
+            {
+                "id": r["id"],
+                "lastmod": r.get("updated_at") or r.get("posted_at"),
+            }
+            for r in (rows.data or [])
+        ]
+    }
+
+
 @router.get("/{job_id}", response_model=Job)
 async def get_job(job_id: str, supabase=Depends(get_supabase)):
     result = supabase.table("jobs").select("*, job_skills(skills(name))").eq("id", job_id).single().execute()
