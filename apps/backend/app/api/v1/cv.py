@@ -10,8 +10,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
 from app.core.deps import get_supabase, get_current_user, get_current_user_id, is_superadmin
 from app.core.config import get_settings
 from app.core.rate_limit import limiter
+from app.schemas.cv_sections import CVSections
 from app.services.cv_parser import extract_text_from_file, parse_cv_with_llm
-from app.services.cv_generator import analyze_cv, generate_cv
+from app.services.cv_generator import analyze_cv, generate_cv_structured
 from app.services.embedding import generate_embedding
 from app.services.email import send_welcome_email
 
@@ -43,10 +44,14 @@ class CVGenerateBody(BaseModel):
 
 class CVGenerateResponse(BaseModel):
     cv_generation_id: str
-    content: str
+    content: str  # rendered plain text — kept for legacy clients / clipboard copy
     word_count: int
     job_title: str
     company: Optional[str] = None
+    # Structured shape (task #59). Frontend templates consume this directly
+    # to skip a free-text reparse. Optional in the response type because
+    # the field is null on legacy cv_generations rows read from history.
+    sections: Optional[CVSections] = None
 
 
 class CVGenerationSummary(BaseModel):
@@ -70,6 +75,10 @@ class CVGenerationDetail(BaseModel):
     content: str
     word_count: int = 0
     created_at: Optional[str] = None
+    # Structured shape (task #59). Null on rows created before structured
+    # generation shipped — frontend falls back to parseCv.ts on the
+    # `content` text for those.
+    sections: Optional[CVSections] = None
 
 
 _FILENAME_SAFE_RE = re.compile(r"[^A-Za-z0-9._-]")
@@ -457,7 +466,7 @@ async def generate(
         job_description = job_description or job.get("description")
 
     try:
-        result = await generate_cv(
+        result = await generate_cv_structured(
             cv_text=cv["raw_text"],
             job_title=job_title,
             company=company,
@@ -466,6 +475,15 @@ async def generate(
     except ValueError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
+    # Store the structured shape alongside the rendered text in
+    # cv_generations.metadata so a /generations/{id} re-open can return it
+    # without re-running the LLM. The text content stays in the existing
+    # `content` column for backwards compat (history list, clipboard copy).
+    structured_sections: CVSections = result["sections"]
+    metadata: dict = {"sections": structured_sections.model_dump(mode="json")}
+    if body.job_id:
+        metadata["job_id"] = body.job_id
+
     insert_res = supabase.table("cv_generations").insert({
         "user_id": user_id,
         "cv_id": cv["id"],
@@ -473,7 +491,7 @@ async def generate(
         "company": company,
         "content": result["content"],
         "word_count": result["word_count"],
-        "metadata": {"job_id": body.job_id} if body.job_id else {},
+        "metadata": metadata,
     }).execute()
 
     gen_id = insert_res.data[0]["id"] if insert_res.data else "unknown"
@@ -483,6 +501,7 @@ async def generate(
         word_count=result["word_count"],
         job_title=job_title,
         company=company,
+        sections=structured_sections,
     )
 
 
@@ -528,7 +547,7 @@ async def get_generation(
 ):
     res = (
         supabase.table("cv_generations")
-        .select("id, job_title, company, content, word_count, created_at")
+        .select("id, job_title, company, content, word_count, created_at, metadata")
         .eq("id", generation_id)
         .eq("user_id", user_id)
         .limit(1)
@@ -537,6 +556,23 @@ async def get_generation(
     if not res.data:
         raise HTTPException(status_code=404, detail="Generation not found")
     r = res.data[0]
+
+    # Pre-task-#59 rows have no "sections" key in metadata; frontend falls
+    # back to parseCv.ts on the content text for those. Malformed metadata
+    # is logged and treated as null rather than 500-ing this endpoint.
+    sections: Optional[CVSections] = None
+    raw_meta = r.get("metadata") or {}
+    if isinstance(raw_meta, dict) and raw_meta.get("sections"):
+        try:
+            sections = CVSections.model_validate(raw_meta["sections"])
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(
+                "cv_generations row %s has malformed sections metadata: %s",
+                r["id"], e,
+            )
+            sections = None
+
     return CVGenerationDetail(
         id=str(r["id"]),
         job_title=r.get("job_title") or "",
@@ -544,4 +580,5 @@ async def get_generation(
         content=r.get("content") or "",
         word_count=r.get("word_count") or 0,
         created_at=r.get("created_at"),
+        sections=sections,
     )

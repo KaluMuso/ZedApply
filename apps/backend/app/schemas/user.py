@@ -1,6 +1,9 @@
 from pydantic import BaseModel, Field, EmailStr
 from typing import Optional, Literal
 
+from app.schemas.cv_sections import CVSections
+
+
 class UserProfile(BaseModel):
     id: str
     phone: str
@@ -12,6 +15,11 @@ class UserProfile(BaseModel):
     cv_uploaded: bool = False
     subscription_tier: str = "free"
     role: str = "user"
+    # Structured CV body extracted by the parser (task #59). Null for
+    # users who haven't uploaded a CV yet, or whose upload pre-dates
+    # the structured-parser change (legacy parsed_data without the
+    # "sections" key). Frontend treats null as "show empty state".
+    cv_sections: Optional[CVSections] = None
 
 class UserProfileUpdate(BaseModel):
     full_name: Optional[str] = Field(None, max_length=255)
