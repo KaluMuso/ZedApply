@@ -8,7 +8,7 @@ import json
 import base64
 import asyncio
 import logging
-from typing import Any
+from typing import Any, Optional
 from functools import lru_cache
 
 from openai import OpenAI, AuthenticationError, RateLimitError, APIError
@@ -17,6 +17,7 @@ from PyPDF2 import PdfReader
 from docx import Document
 
 from app.core.config import get_settings
+from app.schemas.cv_sections import CVSections
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,24 @@ class CVParseResult(BaseModel):
     experience_summary: str = Field("", max_length=2000)
     education: list[str] = Field(default_factory=list)
     confidence: float = Field(0.0, ge=0.0, le=1.0)
+    # Richer structured shape (task #59). Optional so legacy LLM responses
+    # without this key still validate cleanly. The flat fields above are
+    # kept for backwards compat with existing parsed_data rows and code
+    # that reads them directly (matching, /profile summary, etc.).
+    sections: Optional[CVSections] = None
+
+    @field_validator("sections", mode="before")
+    @classmethod
+    def _coerce_sections(cls, v: Any) -> Any:
+        """Tolerate the LLM emitting {} for sections — treat as None.
+
+        Pydantic will accept None or a dict-shaped object; an empty dict
+        is technically valid (all section lists default empty) but it's
+        wasteful storage, so we normalize to None.
+        """
+        if v is None or v == {} or v == "":
+            return None
+        return v
 
     @field_validator("skills", "education", mode="before")
     @classmethod
@@ -107,7 +126,7 @@ class CVParseResult(BaseModel):
 CV_PARSE_SYSTEM_PROMPT = """You are a CV/resume parser for the Zambian job market.
 Extract structured information from CV text and return ONLY valid JSON.
 
-Required fields:
+Top-level fields (always emit):
 - full_name (string)
 - email (string or null)
 - phone (string or null, format as +260XXXXXXXXX if Zambian)
@@ -118,9 +137,26 @@ Required fields:
 - education (array of strings, highest qualification first)
 - confidence (float 0-1, how confident you are in the extraction)
 
+Plus a richer "sections" object (omit any sub-section the CV doesn't have — do NOT invent entries):
+- sections.header: {linkedin_url, portfolio_url, github_url} (all optional, full URLs only)
+- sections.professional_summary: {text} (1-3 sentences elevator pitch)
+- sections.work_experience: array of {title, company, location, start_date, end_date or null for current, achievements: [string]} (max 15 roles, max 20 achievements per role, achievements are impact statements not duties)
+- sections.education: array of {degree, institution, location, start_date, end_date, gpa, thesis} (max 10)
+- sections.certifications: array of {name, issuer, year, expiry} (max 25)
+- sections.languages: array of {name, proficiency: "native"|"fluent"|"conversational"|"basic"} (max 10)
+- sections.projects: array of {name, role, technologies: [string], outcome} (max 15)
+- sections.achievements: array of {title, year} (max 20)
+- sections.publications: array of {title, venue, year, url} (max 20)
+- sections.memberships: array of {organisation, role, year_started, year_ended} (max 15)
+- sections.volunteer_work: array of {organisation, role, start_date, end_date, description} (max 10)
+- sections.references: array of {name, title, organisation, phone, email} (max 6)
+
+Date format: prefer "YYYY-MM" when month is known, "YYYY" when only the year is, empty string when neither. Use null for end_date on current roles.
+
 Zambia-specific rules:
 - Recognize Zambian universities: UNZA, CBU, Mulungushi, Cavendish, ZCAS, DMI
 - Recognize Zambian cities: Lusaka, Kitwe, Ndola, Livingstone, Kabwe, Chipata, Solwezi, Kasama
+- Recognize Zambian professional bodies in memberships: EIZ, ZICA, LAZ, ZIM, HPCZ, ZIHRM, ZIPS
 - Normalize phone numbers to +260 format
 - Map local qualifications: Grade 12 = High School, Diploma, Advanced Diploma, Bachelor's, Master's, PhD"""
 
@@ -165,7 +201,10 @@ async def parse_cv_with_llm(raw_text: str) -> dict[str, Any]:
         try:
             response = client.chat.completions.create(
                 model=settings.llm_model,
-                max_tokens=1024,
+                # 4096 to accommodate the structured "sections" object —
+                # 12 nested arrays can easily exceed the old 1024 cap and
+                # we were truncating mid-JSON for richer CVs (task #59).
+                max_tokens=4096,
                 messages=[
                     {"role": "system", "content": CV_PARSE_SYSTEM_PROMPT},
                     {

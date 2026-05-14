@@ -1,6 +1,11 @@
 """User profile routes."""
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import ValidationError
+
 from app.core.deps import get_supabase, get_current_user_id
+from app.schemas.cv_sections import CVSections
 from app.schemas.user import (
     UserProfile,
     UserProfileUpdate,
@@ -13,7 +18,29 @@ from app.schemas.user import (
     UserSkillsList,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/profile", tags=["Profile"])
+
+
+def _extract_cv_sections(parsed_data) -> CVSections | None:
+    """Pull the structured "sections" object out of cvs.parsed_data.
+
+    Legacy parsed_data rows (pre-task #59) don't have this key. Reads
+    null. If the key exists but doesn't validate, we log + return None
+    rather than 500 the /profile call — graceful degradation matters
+    here because /profile is on the hot path for every page that
+    requires auth.
+    """
+    if not parsed_data or not isinstance(parsed_data, dict):
+        return None
+    raw = parsed_data.get("sections")
+    if not raw:
+        return None
+    try:
+        return CVSections.model_validate(raw)
+    except ValidationError as e:
+        logger.warning("Discarding malformed cv_sections from parsed_data: %s", e.errors()[:3])
+        return None
 
 
 def _build_profile(user_id: str, supabase) -> UserProfile:
@@ -31,15 +58,22 @@ def _build_profile(user_id: str, supabase) -> UserProfile:
     )
     skills = [s["skills"]["name"] for s in (skills_result.data or []) if s.get("skills")]
 
+    # Pull id AND parsed_data so we can also extract structured sections in
+    # a single query — avoids a second round-trip on the hot /profile path.
     cv_result = (
         supabase.table("cvs")
-        .select("id")
+        .select("id, parsed_data")
         .eq("user_id", user_id)
         .eq("is_primary", True)
         .limit(1)
         .execute()
     )
     cv_uploaded = bool(cv_result.data)
+    cv_sections = (
+        _extract_cv_sections(cv_result.data[0].get("parsed_data"))
+        if cv_result.data
+        else None
+    )
 
     return UserProfile(
         id=user["id"],
@@ -52,6 +86,7 @@ def _build_profile(user_id: str, supabase) -> UserProfile:
         cv_uploaded=cv_uploaded,
         subscription_tier=user.get("subscription_tier", "free"),
         role=user.get("role", "user"),
+        cv_sections=cv_sections,
     )
 
 

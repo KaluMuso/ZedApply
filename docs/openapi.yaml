@@ -62,6 +62,44 @@ components:
         subscription_tier: { type: string, enum: [free, starter, professional, super_standard] }
         role: { type: string, enum: [user, superadmin] }
         created_at: { type: string, format: date-time }
+        cv_sections:
+          oneOf:
+            - { $ref: '#/components/schemas/CVSections' }
+            - { type: 'null' }
+          description: |
+            Structured CV body extracted by the parser (task #59). Null for
+            users who haven't uploaded a CV or whose upload pre-dates the
+            structured-parser change. Canon shape is app/schemas/cv_sections.py.
+
+    CVSections:
+      type: object
+      description: |
+        Structured CV body. All sections optional; missing sections render
+        as empty. Field-level shape lives in app/schemas/cv_sections.py;
+        this schema documents the top-level keys only.
+      properties:
+        header:
+          type: object
+          nullable: true
+          properties:
+            linkedin_url: { type: string, format: uri, nullable: true }
+            portfolio_url: { type: string, format: uri, nullable: true }
+            github_url: { type: string, format: uri, nullable: true }
+        professional_summary:
+          type: object
+          nullable: true
+          properties:
+            text: { type: string, maxLength: 1000 }
+        work_experience: { type: array, items: { type: object, additionalProperties: true } }
+        education: { type: array, items: { type: object, additionalProperties: true } }
+        certifications: { type: array, items: { type: object, additionalProperties: true } }
+        languages: { type: array, items: { type: object, additionalProperties: true } }
+        projects: { type: array, items: { type: object, additionalProperties: true } }
+        achievements: { type: array, items: { type: object, additionalProperties: true } }
+        publications: { type: array, items: { type: object, additionalProperties: true } }
+        memberships: { type: array, items: { type: object, additionalProperties: true } }
+        volunteer_work: { type: array, items: { type: object, additionalProperties: true } }
+        references: { type: array, items: { type: object, additionalProperties: true } }
 
     UserProfileUpdate:
       type: object
@@ -260,6 +298,14 @@ components:
         word_count: { type: integer }
         job_title: { type: string }
         company: { type: string }
+        sections:
+          oneOf:
+            - { $ref: '#/components/schemas/CVSections' }
+            - { type: 'null' }
+          description: |
+            Structured tailored CV (task #59). Templates consume this
+            directly instead of re-parsing `content`. Null on legacy
+            generations created before structured generation shipped.
 
     CVGenerationSummary:
       type: object
@@ -286,6 +332,14 @@ components:
         content: { type: string }
         word_count: { type: integer }
         created_at: { type: string, format: date-time }
+        sections:
+          oneOf:
+            - { $ref: '#/components/schemas/CVSections' }
+            - { type: 'null' }
+          description: |
+            Structured CV body re-loaded from cv_generations.metadata. Null
+            on pre-task-#59 rows; frontend falls back to parsing `content`
+            in that case.
 
     AdminMatchRow:
       type: object
