@@ -260,7 +260,7 @@ export default function ProfilePage() {
             {profileData.subscription_tier === "super_standard" ? (
               <>
                 <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
-                  You're on the top tier — unlimited matches, tailored CVs,
+                  You&apos;re on the top tier — unlimited matches, tailored CVs,
                   and priority support. Thanks for backing Zed CV.
                 </p>
                 <Link href="/pricing" className="btn btn-ghost w-full btn-sm">
