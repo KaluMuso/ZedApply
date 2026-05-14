@@ -3,7 +3,12 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { jobs as jobsApi, type Job } from "@/lib/api";
+import {
+  jobs as jobsApi,
+  type Job,
+  type EmploymentType,
+  type WorkArrangement,
+} from "@/lib/api";
 import { JobCard } from "@/components/JobCard";
 import { JobDetailBody } from "@/components/JobDetailBody";
 import { Icon } from "@/components/ui/Icon";
@@ -27,6 +32,27 @@ const SORT_OPTIONS = [
   { value: "relevance", label: "Relevance" },
   { value: "recent", label: "Most Recent" },
   { value: "closing", label: "Closing Soon" },
+];
+
+// task #60: new structural filters. Mirrors the EmploymentType /
+// WorkArrangement enums on the backend (apps/backend/app/schemas/jobs.py).
+// "All" maps to the empty string which the API client drops from the
+// query string entirely.
+const EMPLOYMENT_TYPE_OPTIONS: { value: "" | EmploymentType; label: string }[] = [
+  { value: "", label: "Any type" },
+  { value: "full_time", label: "Full time" },
+  { value: "part_time", label: "Part time" },
+  { value: "contract", label: "Contract" },
+  { value: "freelance", label: "Freelance" },
+  { value: "internship", label: "Internship" },
+  { value: "temporary", label: "Temporary" },
+];
+
+const WORK_ARRANGEMENT_OPTIONS: { value: "" | WorkArrangement; label: string }[] = [
+  { value: "", label: "Any setup" },
+  { value: "remote", label: "Remote" },
+  { value: "hybrid", label: "Hybrid" },
+  { value: "on_site", label: "On-site" },
 ];
 
 // Curated chip-row of skills most commonly tagged on Zambian listings.
@@ -74,6 +100,11 @@ export default function JobsPage() {
   const [location, setLocation] = useState("");
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [sort, setSort] = useState<"relevance" | "recent" | "closing">("recent");
+  // task #60: structural filters. Both default to "" (no filter); the
+  // API client drops empty values from the query string entirely so the
+  // /jobs response is unchanged for users who don't engage with them.
+  const [employmentType, setEmploymentType] = useState<"" | EmploymentType>("");
+  const [workArrangement, setWorkArrangement] = useState<"" | WorkArrangement>("");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -103,6 +134,8 @@ export default function JobsPage() {
         location: location || undefined,
         sort,
         skills: selectedSkills.length > 0 ? selectedSkills : undefined,
+        employment_type: employmentType ? [employmentType] : undefined,
+        work_arrangement: workArrangement ? [workArrangement] : undefined,
       });
       setJobsList(res.jobs);
       setTotalPages(res.pages);
@@ -112,7 +145,7 @@ export default function JobsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, searchQuery, location, sort, selectedSkills]);
+  }, [page, searchQuery, location, sort, selectedSkills, employmentType, workArrangement]);
 
   useEffect(() => {
     fetchJobs();
@@ -210,6 +243,8 @@ export default function JobsPage() {
     setLocation("");
     setSort("recent");
     setSelectedSkills([]);
+    setEmploymentType("");
+    setWorkArrangement("");
     setPage(1);
   };
 
@@ -301,6 +336,42 @@ export default function JobsPage() {
           ))}
         </select>
 
+        {/* task #60: employment type + work arrangement filters. Empty
+            string = no filter; the API client drops empty values. */}
+        <select
+          value={employmentType}
+          onChange={(e) => {
+            setEmploymentType(e.target.value as "" | EmploymentType);
+            setPage(1);
+          }}
+          className="field"
+          style={{ width: "auto", minWidth: 140 }}
+          aria-label="Filter by employment type"
+        >
+          {EMPLOYMENT_TYPE_OPTIONS.map((opt) => (
+            <option key={opt.value || "any-type"} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={workArrangement}
+          onChange={(e) => {
+            setWorkArrangement(e.target.value as "" | WorkArrangement);
+            setPage(1);
+          }}
+          className="field"
+          style={{ width: "auto", minWidth: 140 }}
+          aria-label="Filter by work arrangement"
+        >
+          {WORK_ARRANGEMENT_OPTIONS.map((opt) => (
+            <option key={opt.value || "any-setup"} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+
         <button type="submit" className="btn btn-primary">
           <Icon name="search" size={16} /> Search
         </button>
@@ -374,17 +445,17 @@ export default function JobsPage() {
             className="font-display text-2xl mb-2"
             style={{ letterSpacing: "-0.01em" }}
           >
-            {searchQuery || location
+            {searchQuery || location || employmentType || workArrangement
               ? "No jobs match your filters"
               : "No jobs are open right now"}
           </h3>
           <p className="text-sm mb-5 max-w-md mx-auto" style={{ color: "var(--muted)" }}>
-            {searchQuery || location
+            {searchQuery || location || employmentType || workArrangement
               ? "Try a broader search or remove a filter. New listings arrive throughout the week."
               : "Check back soon — new roles are scraped daily across Zambia."}
           </p>
           <div className="flex gap-3 justify-center">
-            {(searchQuery || location) && (
+            {(searchQuery || location || employmentType || workArrangement) && (
               <button onClick={resetFilters} className="btn btn-ghost btn-sm">
                 Reset filters
               </button>

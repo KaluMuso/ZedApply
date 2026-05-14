@@ -1,8 +1,36 @@
 "use client";
 
+import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Avatar } from "@/components/ui/Avatar";
 import type { Job } from "@/lib/api";
+
+// ── task #60: small formatters for structured field display ───────────
+// Convert wire-format enum strings ("full_time", "on_site") into the
+// human label we render in tags ("Full time", "On-site"). Falls back to
+// the raw value if we don't recognise it so a future enum value still
+// renders something, just less polished.
+const EMPLOYMENT_TYPE_LABEL: Record<string, string> = {
+  full_time: "Full time",
+  part_time: "Part time",
+  contract: "Contract",
+  freelance: "Freelance",
+  internship: "Internship",
+  temporary: "Temporary",
+};
+
+const WORK_ARRANGEMENT_LABEL: Record<string, string> = {
+  remote: "Remote",
+  hybrid: "Hybrid",
+  on_site: "On-site",
+};
+
+const PAY_FREQUENCY_LABEL: Record<string, string> = {
+  monthly: "/mo",
+  annual: "/yr",
+  hourly: "/hr",
+  daily: "/day",
+};
 
 // Client-side defensive HTML strip for job descriptions. The backend
 // _strip_html runs at ingest and the admin backfill cleaned most rows,
@@ -126,6 +154,26 @@ export function JobDetailBody({
       )
     : null;
 
+  // task #60: "More about this role" collapses the long-form structured
+  // fields (reporting structure, manages_others, interview process,
+  // success metrics, bonus structure, equity) so the apply CTA stays
+  // within reach on first paint. Collapsed by default.
+  const [moreOpen, setMoreOpen] = useState(false);
+  const benefits = job.benefits ?? [];
+  const tools = job.tools_tech_stack ?? [];
+  const hasMoreSection = Boolean(
+    job.reporting_structure ||
+      job.manages_others != null ||
+      job.interview_process ||
+      job.success_metrics ||
+      job.bonus_structure ||
+      job.equity_offered != null
+  );
+  const payFreqSuffix =
+    job.pay_frequency && PAY_FREQUENCY_LABEL[job.pay_frequency]
+      ? PAY_FREQUENCY_LABEL[job.pay_frequency]
+      : "/mo";
+
   return (
     <div className="p-6 md:p-8">
       {onClose && (
@@ -141,7 +189,7 @@ export function JobDetailBody({
 
       <div className="eyebrow mb-3">Job Details</div>
 
-      <div className="flex items-start gap-4 mb-6">
+      <div className="flex items-start gap-4 mb-4">
         <Avatar name={job.company || "ZC"} size={48} />
         <div className="min-w-0 flex-1">
           <h1
@@ -156,6 +204,33 @@ export function JobDetailBody({
           </p>
         </div>
       </div>
+
+      {/* task #60: employment shape tags. Rendered as small inline tags
+          near the title so the role's structure (remote / contract /
+          etc.) is visible without scrolling. Hidden when the row has
+          neither — legacy listings stay clean. */}
+      {(job.employment_type || job.work_arrangement || job.reference_number) && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-6">
+          {job.employment_type && (
+            <span className="tag tag-mono">
+              {EMPLOYMENT_TYPE_LABEL[job.employment_type] || job.employment_type}
+            </span>
+          )}
+          {job.work_arrangement && (
+            <span className="tag tag-mono">
+              {WORK_ARRANGEMENT_LABEL[job.work_arrangement] || job.work_arrangement}
+              {job.work_arrangement === "hybrid" && job.hybrid_days_per_week && (
+                <> &middot; {job.hybrid_days_per_week}d/wk</>
+              )}
+            </span>
+          )}
+          {job.reference_number && (
+            <span className="tag tag-mono" style={{ opacity: 0.7 }}>
+              Ref: {job.reference_number}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Metadata strip */}
       <div
@@ -172,7 +247,11 @@ export function JobDetailBody({
             className="flex items-center gap-1 font-mono"
             style={{ color: "var(--ink-2)" }}
           >
-            {salary}/mo
+            {salary}
+            {payFreqSuffix}
+            {job.currency && job.currency !== "ZMW" && (
+              <span style={{ opacity: 0.7 }}> {job.currency}</span>
+            )}
           </span>
         )}
         {closesIn !== null && (
@@ -212,6 +291,54 @@ export function JobDetailBody({
         </div>
       )}
 
+      {/* task #60: tools / tech stack — rendered as a parallel chip row
+          beneath Required Skills. Skills are abstract competencies
+          ("project management"); tools are concrete named technologies
+          ("postgres", "salesforce"). Worth surfacing both. */}
+      {tools.length > 0 && (
+        <div className="mb-6">
+          <div className="eyebrow mb-3">Tools & tech</div>
+          <div className="flex flex-wrap gap-1.5">
+            {tools.map((t) => (
+              <span key={t} className="tag tag-mono">
+                {t}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* task #60: benefits — bullet list under its own eyebrow. Often
+          the single biggest decision factor for a candidate. */}
+      {benefits.length > 0 && (
+        <div className="mb-6">
+          <div className="eyebrow mb-3">Benefits</div>
+          <ul className="text-sm space-y-1" style={{ color: "var(--ink-2)" }}>
+            {benefits.map((b, i) => (
+              <li key={i} className="flex gap-2">
+                <span style={{ color: "var(--green-700)" }}>•</span>
+                <span>{b}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* task #60: company description, surfaced before the role
+          description because candidates often want to know who they'd
+          be working for before reading the JD itself. */}
+      {job.company_description && (
+        <div className="mb-6">
+          <div className="eyebrow mb-3">About the company</div>
+          <p
+            className="text-sm leading-relaxed whitespace-pre-wrap"
+            style={{ color: "var(--ink-2)" }}
+          >
+            {job.company_description}
+          </p>
+        </div>
+      )}
+
       {/* Description — defensively stripped on the client in case a legacy
           row still carries HTML (the backend strip+backfill should have
           handled it, but stale rows + future scraper sources are real). */}
@@ -219,7 +346,7 @@ export function JobDetailBody({
         const cleaned = stripDescriptionHtml(job.description);
         if (!cleaned) return null;
         return (
-          <div className="mb-8">
+          <div className="mb-6">
             <div className="eyebrow mb-3">Description</div>
             <p
               className="text-sm leading-relaxed whitespace-pre-wrap"
@@ -230,6 +357,82 @@ export function JobDetailBody({
           </div>
         );
       })()}
+
+      {/* task #60: application instructions — separate from Description
+          because they're action-oriented; the candidate needs to find
+          them quickly when deciding what to do next. */}
+      {job.application_instructions && (
+        <div
+          className="mb-6 p-4 rounded-lg"
+          style={{
+            background: "var(--bg-2)",
+            border: "1px solid var(--line)",
+          }}
+        >
+          <div className="eyebrow mb-2">How to apply</div>
+          <p
+            className="text-sm leading-relaxed whitespace-pre-wrap"
+            style={{ color: "var(--ink-2)" }}
+          >
+            {job.application_instructions}
+          </p>
+        </div>
+      )}
+
+      {/* task #60: collapsed "More about this role" section. Carries the
+          interview-process / metrics / management-shape signals that
+          matter to serious candidates but would otherwise push the
+          apply CTA below the fold on mobile. */}
+      {hasMoreSection && (
+        <div className="mb-8">
+          <button
+            type="button"
+            onClick={() => setMoreOpen((v) => !v)}
+            className="flex items-center gap-2 text-sm font-medium"
+            style={{
+              color: "var(--ink-2)",
+              background: "none",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+            }}
+          >
+            <Icon
+              name={moreOpen ? "chevronDown" : "chevronRight"}
+              size={14}
+            />
+            More about this role
+          </button>
+          {moreOpen && (
+            <div className="mt-4 space-y-4">
+              {job.reporting_structure && (
+                <Field label="Reports to" value={job.reporting_structure} />
+              )}
+              {job.manages_others != null && job.manages_others > 0 && (
+                <Field
+                  label="Direct reports"
+                  value={`${job.manages_others}`}
+                />
+              )}
+              {job.interview_process && (
+                <Field label="Interview process" value={job.interview_process} />
+              )}
+              {job.success_metrics && (
+                <Field label="Success metrics" value={job.success_metrics} />
+              )}
+              {job.bonus_structure && (
+                <Field label="Bonus structure" value={job.bonus_structure} />
+              )}
+              {job.equity_offered != null && (
+                <Field
+                  label="Equity"
+                  value={job.equity_offered ? "Offered" : "Not offered"}
+                />
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Apply CTA — sticks to the bottom of the scrolling container.
           The mobile tab bar overlays the bottom 80px of the viewport,
@@ -270,6 +473,25 @@ export function JobDetailBody({
           <Icon name="bookmark" size={16} />
         </button>
       </div>
+    </div>
+  );
+}
+
+function Field({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div
+        className="text-[11px] uppercase tracking-wider mb-1"
+        style={{ color: "var(--muted)" }}
+      >
+        {label}
+      </div>
+      <p
+        className="text-sm leading-relaxed whitespace-pre-wrap"
+        style={{ color: "var(--ink-2)" }}
+      >
+        {value}
+      </p>
     </div>
   );
 }
