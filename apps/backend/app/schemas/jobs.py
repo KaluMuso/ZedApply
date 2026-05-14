@@ -1,6 +1,7 @@
+import re as _re
 from pydantic import BaseModel, Field, field_validator
 from datetime import date, datetime
-from typing import Optional, Any
+from typing import Literal, Optional, Any
 from enum import Enum
 
 class JobSource(str, Enum):
@@ -8,6 +9,31 @@ class JobSource(str, Enum):
     scraper = "scraper"
     ocr = "ocr"
     partner = "partner"
+
+
+# Job-ad structural enums (task #60).
+# Stored as text columns on public.jobs. Validation is app-layer Pydantic
+# only — per task #28, CHECK constraints in the DB are out of style here
+# because they require a migration every time we add a value.
+class EmploymentType(str, Enum):
+    full_time = "full_time"
+    part_time = "part_time"
+    contract = "contract"
+    freelance = "freelance"
+    internship = "internship"
+    temporary = "temporary"
+
+
+class WorkArrangement(str, Enum):
+    remote = "remote"
+    hybrid = "hybrid"
+    on_site = "on_site"
+
+
+# Pay frequency uses Literal rather than Enum because it's only ever
+# referenced from the schema-side (no other Python code branches on it),
+# and Literal serialises cleanly to a string column without enum wrapping.
+PayFrequency = Literal["monthly", "annual", "hourly", "daily"]
 
 
 # Date formats the scraper has been observed to emit. ISO 8601 is the
@@ -25,7 +51,17 @@ _DATE_FALLBACK_FORMATS = (
     "%Y/%m/%d",   # 2026/05/11
     "%b %d, %Y",  # May 11, 2026
     "%B %d, %Y",
+    # Spelled-out formats commonly emitted by the WhatsApp channel extractor
+    # after task #60. The ordinal suffix (st/nd/rd/th) is stripped upstream
+    # in _tolerant_parse_date so the same patterns cover "20 May 2026" and
+    # "20th May 2026" without separate entries.
+    "%d %b %Y",   # 20 May 2026 (after ordinal strip)
+    "%d %B %Y",   # 20 December 2026
 )
+
+# Matches ordinal suffixes on a day-of-month: "1st", "2nd", "3rd", "20th".
+# Stripped before strptime since Python's directives don't understand them.
+_ORDINAL_SUFFIX_RE = _re.compile(r"(\d+)(st|nd|rd|th)\b", _re.IGNORECASE)
 
 
 def _tolerant_parse_date(v: Any) -> Optional[date]:
@@ -43,13 +79,141 @@ def _tolerant_parse_date(v: Any) -> Optional[date]:
         return date.fromisoformat(s)
     except ValueError:
         pass
-    # Fallbacks
-    for fmt in _DATE_FALLBACK_FORMATS:
-        try:
-            return datetime.strptime(s, fmt).date()
-        except ValueError:
-            continue
+    # Strip ordinal suffix so "20th May 2026" can hit "%d %B %Y" below.
+    # Idempotent: rows without ordinals are unchanged.
+    s_no_ordinal = _ORDINAL_SUFFIX_RE.sub(r"\1", s)
+    # Fallbacks (try both original and ordinal-stripped variants — most
+    # formats don't care, but the spelled-out month patterns do).
+    candidates = (s, s_no_ordinal) if s_no_ordinal != s else (s,)
+    for cand in candidates:
+        for fmt in _DATE_FALLBACK_FORMATS:
+            try:
+                return datetime.strptime(cand, fmt).date()
+            except ValueError:
+                continue
     return None
+
+
+# ── Salary text parsing (task #60) ────────────────────────────────────
+# Convert free-text salary strings ("K15,000 - K20,000", "ZMW 15000/mo")
+# to a (min_ngwee, max_ngwee) tuple. Returns (None, None) when the input
+# is unparseable, ambiguous (e.g. "negotiable"), or not denominated in
+# Zambian Kwacha — for non-ZMW currencies we leave the ints null and let
+# the `currency` column carry the unit. Per AGENTS.md, all stored
+# amounts must be ngwee (1 ZMW = 100 ngwee).
+
+# K, ZMW, kwacha (case-insensitive) all indicate Zambian currency.
+_ZMW_MARKERS = _re.compile(r"(?:\bk\b|\bzmw\b|\bkwacha\b|^k(?=\d)|\bk(?=\d))", _re.IGNORECASE)
+
+# Non-ZMW currency markers — if ANY of these appears we bail with
+# (None, None) so the helper doesn't accidentally treat USD/GBP/etc. as
+# ngwee. Word boundaries (\b) around the alpha codes; `$` and `£`/`€`
+# need different treatment because they're non-word characters: \b
+# doesn't bind around them at start-of-string. The "$ followed by a
+# digit" pattern catches "$5000" and "$ 5000" specifically.
+_NON_ZMW_MARKERS = _re.compile(
+    r"\b(?:usd|eur|gbp|naira|ngn|rand|zar)\b|us\$|\$\s*\d|£|€",
+    _re.IGNORECASE,
+)
+
+# Pulls a numeric value with optional thousands separators and an
+# optional "k"/"K" suffix (15k = 15,000). Two alternatives:
+#   1) `\d{1,3}(?:[,\s]\d{3})+...` — REQUIRES at least one comma/space
+#      group, matches "15,000" / "1,500,000" properly.
+#   2) `\d+(?:\.\d+)?`             — bare digits (and decimals) without
+#      separators, matches "15000" / "3.5".
+# Alt (1) must require `+` not `*` — otherwise it ALSO matches the
+# unseparated case and the regex engine picks the shorter prefix
+# (matching "500" of "5000"), which silently filtered out real salaries.
+_AMOUNT_RE = _re.compile(
+    r"(\d{1,3}(?:[,\s]\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s*(k|m)?",
+    _re.IGNORECASE,
+)
+
+
+def _amount_to_ngwee(num_str: str, suffix: str | None) -> Optional[int]:
+    """Parse one captured group into ngwee. Handles thousands separators
+    and k/m suffixes ('15k' → 15000 ZMW, '1.5m' → 1,500,000 ZMW)."""
+    try:
+        raw = float(num_str.replace(",", "").replace(" ", ""))
+    except ValueError:
+        return None
+    if suffix:
+        s = suffix.lower()
+        if s == "k":
+            raw *= 1_000
+        elif s == "m":
+            raw *= 1_000_000
+    if raw <= 0:
+        return None
+    return int(round(raw * 100))  # ngwee = kwacha × 100
+
+
+def _parse_salary_to_ngwee(text: str | None) -> tuple[Optional[int], Optional[int]]:
+    """Best-effort parse of a free-text salary string into (min, max) ngwee.
+
+    Used as an ingest fallback when the scraper produces a string instead
+    of separate min/max ints. Returns (None, None) on:
+      - empty / null input
+      - "negotiable" / "depends on experience" / "TBD"-style text
+      - non-ZMW currency (we don't FX-convert; the caller stores the
+        unit in the `currency` column instead)
+      - any parse failure
+
+    Accepts: "K15,000", "K15,000 - K20,000", "ZMW 15000-20000/month",
+    "15k-20k", "K3.5m". Order-tolerant on min/max — if a single value is
+    given, sets BOTH to it (no implicit range expansion).
+    """
+    if not text or not isinstance(text, str):
+        return (None, None)
+    s = text.strip()
+    if not s:
+        return (None, None)
+    lower = s.lower()
+    # Common non-numeric placeholders — explicit early return so we don't
+    # accidentally pull a year out of "negotiable, posted 2026".
+    if any(
+        phrase in lower
+        for phrase in ("negotiable", "depends on experience", "tbd", "to be discussed", "competitive")
+    ):
+        return (None, None)
+    # Any non-ZMW currency marker → bail. We could try to be clever about
+    # "$5000 (≈ K100,000)" style notations but the conservative default
+    # (drop the row, let the listing surface in /jobs with no salary
+    # shown) is preferable to mis-stating compensation. The `currency`
+    # column carries the unit; this helper sticks to ngwee.
+    if _NON_ZMW_MARKERS.search(s):
+        return (None, None)
+
+    matches = _AMOUNT_RE.findall(s)
+    if not matches:
+        return (None, None)
+    # Filter out spurious matches like the year in "posted 2026" — these
+    # are typically 4-digit numbers ≥ 1900. Salary inputs lower than
+    # K500 are also implausible (lowest legal monthly wage in Zambia is
+    # ~K1500 as of 2026); drop them so a "2024" year doesn't get treated
+    # as a K2,024 salary.
+    parsed: list[int] = []
+    for num_str, suffix in matches:
+        val = _amount_to_ngwee(num_str, suffix)
+        if val is None:
+            continue
+        kwacha = val // 100
+        # 1900-2100 = year-shaped, almost never salary. >= K500 monthly
+        # floor weeds out single-digit and very small numbers (page
+        # numbers, days-per-month). The 5-digit cap upper limit isn't
+        # imposed here so executive salaries (K200k/mo) still parse.
+        if 1900 <= kwacha <= 2100:
+            continue
+        if kwacha < 500:
+            continue
+        parsed.append(val)
+
+    if not parsed:
+        return (None, None)
+    if len(parsed) == 1:
+        return (parsed[0], parsed[0])
+    return (min(parsed), max(parsed))
 
 class JobCreate(BaseModel):
     title: str = Field(..., min_length=5)
@@ -72,6 +236,37 @@ class JobCreate(BaseModel):
     # NOW() at insert if not provided.
     posted_at: Optional[date] = None
 
+    # ── task #60: richer job ad shape ─────────────────────────────────
+    # All optional so legacy scrapers and the manual /jobs POST keep
+    # working unchanged. Caps mirror cv_sections.py — bound LLM output
+    # runaway so a misbehaving extractor can't blow up the DB row.
+    employment_type: Optional[EmploymentType] = None
+    work_arrangement: Optional[WorkArrangement] = None
+    # 1-5 only meaningful when work_arrangement == hybrid; we don't
+    # cross-validate at this layer (the scraper's prompt enforces it).
+    hybrid_days_per_week: Optional[int] = Field(None, ge=1, le=5)
+    benefits: list[str] = Field(default_factory=list)
+    application_instructions: Optional[str] = Field(None, max_length=2000)
+    reporting_structure: Optional[str] = Field(None, max_length=500)
+    manages_others: Optional[int] = Field(None, ge=0, le=10000)
+    interview_process: Optional[str] = Field(None, max_length=1000)
+    tools_tech_stack: list[str] = Field(default_factory=list)
+    success_metrics: Optional[str] = Field(None, max_length=1000)
+    company_description: Optional[str] = Field(None, max_length=2000)
+    reference_number: Optional[str] = Field(None, max_length=100)
+    currency: Optional[str] = Field(None, max_length=3, min_length=3)
+    pay_frequency: Optional[PayFrequency] = None
+    bonus_structure: Optional[str] = Field(None, max_length=500)
+    equity_offered: Optional[bool] = None
+
+    # INPUT-ONLY (not stored). When the scraper emits a free-text salary
+    # string and leaves salary_min/max null, the ingest pipeline runs
+    # _parse_salary_to_ngwee on this to derive the integer fields. After
+    # ingest the field is dropped from the insert payload. Keep null when
+    # the scraper already provides integer min/max so the helper doesn't
+    # override perfectly-good data.
+    salary_text: Optional[str] = Field(None, max_length=500)
+
     # Tolerant date parsing — the scraper's AI parsing nodes have been
     # observed emitting non-ISO formats like "11/May/2026". Accept them
     # rather than 422-ing the whole batch.
@@ -79,6 +274,53 @@ class JobCreate(BaseModel):
     @classmethod
     def _parse_dates(cls, v: Any) -> Optional[date]:
         return _tolerant_parse_date(v)
+
+    @field_validator("benefits", mode="after")
+    @classmethod
+    def _cap_benefits(cls, v: list[str]) -> list[str]:
+        # Cap list length AND per-item length so a runaway LLM can't blow up
+        # a row. Trim empties/whitespace defensively.
+        out: list[str] = []
+        for item in v:
+            if not isinstance(item, str):
+                continue
+            s = item.strip()
+            if not s:
+                continue
+            out.append(s[:200])
+        return out[:20]
+
+    @field_validator("tools_tech_stack", mode="after")
+    @classmethod
+    def _cap_tools(cls, v: list[str]) -> list[str]:
+        # Same shape as benefits but with the user-specified caps (30 / 80).
+        # Lowercased + dedup'd case-insensitively for stable filter queries.
+        seen: set[str] = set()
+        out: list[str] = []
+        for item in v:
+            if not isinstance(item, str):
+                continue
+            s = item.strip()
+            if not s:
+                continue
+            key = s.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(s[:80])
+        return out[:30]
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def _normalize_currency(cls, v: Any) -> Any:
+        # Common ISO 4217: ZMW/USD/EUR/GBP. Always uppercase. Empty string
+        # → null so the column doesn't carry a bogus "" alongside ZMW rows.
+        if v is None:
+            return None
+        if isinstance(v, str):
+            s = v.strip().upper()
+            return s or None
+        return v
 
 class Job(BaseModel):
     id: str
@@ -99,6 +341,37 @@ class Job(BaseModel):
     closing_date: Optional[date] = None
     posted_at: datetime
     is_active: bool = True
+
+    # ── task #60: richer job ad shape (response) ──────────────────────
+    # All optional + null-safe so legacy rows (pre-migration 016) still
+    # serialize without error. New columns default NULL on insert.
+    employment_type: Optional[EmploymentType] = None
+    work_arrangement: Optional[WorkArrangement] = None
+    hybrid_days_per_week: Optional[int] = None
+    benefits: list[str] = Field(default_factory=list)
+    application_instructions: Optional[str] = None
+    reporting_structure: Optional[str] = None
+    manages_others: Optional[int] = None
+    interview_process: Optional[str] = None
+    tools_tech_stack: list[str] = Field(default_factory=list)
+    success_metrics: Optional[str] = None
+    company_description: Optional[str] = None
+    reference_number: Optional[str] = None
+    currency: Optional[str] = None
+    pay_frequency: Optional[PayFrequency] = None
+    bonus_structure: Optional[str] = None
+    equity_offered: Optional[bool] = None
+
+    @field_validator("benefits", "tools_tech_stack", mode="before")
+    @classmethod
+    def _coerce_list(cls, v: Any) -> list[str]:
+        """Legacy rows can have null in jsonb-backed list columns. Coerce
+        to empty list rather than 500-ing the /jobs/[id] response."""
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return [str(x) for x in v if x is not None and str(x).strip()]
+        return []
 
 class JobList(BaseModel):
     jobs: list[Job]

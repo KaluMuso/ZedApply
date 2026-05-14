@@ -65,11 +65,43 @@ class ExtractedJob(BaseModel):
     # posting. Below _MIN_EXTRACTION_CONFIDENCE we drop the extraction.
     confidence: int = Field(0, ge=0, le=100)
 
-    @field_validator("skills_required", mode="before")
+    # ── task #60: richer job ad shape ─────────────────────────────────
+    # All optional — channel posts are noisy and rarely contain ALL
+    # the structured fields. The LLM is instructed to omit (null) rather
+    # than invent. JobCreate caps these strictly; we mirror those caps
+    # here so an out-of-bounds field is rejected as part of the same
+    # validation pass, not later at the ingest boundary.
+    employment_type: Optional[str] = Field(None, max_length=32)
+    work_arrangement: Optional[str] = Field(None, max_length=32)
+    hybrid_days_per_week: Optional[int] = Field(None, ge=1, le=5)
+    benefits: list[str] = Field(default_factory=list)
+    application_instructions: Optional[str] = Field(None, max_length=2000)
+    reporting_structure: Optional[str] = Field(None, max_length=500)
+    manages_others: Optional[int] = Field(None, ge=0, le=10000)
+    interview_process: Optional[str] = Field(None, max_length=1000)
+    tools_tech_stack: list[str] = Field(default_factory=list)
+    success_metrics: Optional[str] = Field(None, max_length=1000)
+    company_description: Optional[str] = Field(None, max_length=2000)
+    reference_number: Optional[str] = Field(None, max_length=100)
+    currency: Optional[str] = Field(None, max_length=8)
+    pay_frequency: Optional[str] = Field(None, max_length=16)
+    bonus_structure: Optional[str] = Field(None, max_length=500)
+    equity_offered: Optional[bool] = None
+    # Free-text salary string the extractor can emit when it can't
+    # confidently split into ngwee. The ingest pipeline parses this via
+    # _parse_salary_to_ngwee. Never stored.
+    salary_text: Optional[str] = Field(None, max_length=500)
+
+    @field_validator("skills_required", "benefits", "tools_tech_stack", mode="before")
     @classmethod
-    def _coerce_skills(cls, v: Any) -> list[str]:
+    def _coerce_list(cls, v: Any) -> list[str]:
         """LLM sometimes returns a single comma-separated string, sometimes
-        list-of-dicts; coerce to list[str] without crashing."""
+        list-of-dicts; coerce to list[str] without crashing.
+
+        Shared across skills_required, benefits, and tools_tech_stack —
+        all three are arrays-of-short-strings on the wire and the LLM
+        has been observed flattening any of them into a comma-line.
+        """
         if v is None:
             return []
         if isinstance(v, str):
@@ -88,7 +120,14 @@ class ExtractedJob(BaseModel):
                 out.append(s.lower())
         return out
 
-    @field_validator("apply_url", "apply_email", "closing_date", "company", "location", mode="before")
+    @field_validator(
+        "apply_url", "apply_email", "closing_date", "company", "location",
+        "employment_type", "work_arrangement", "application_instructions",
+        "reporting_structure", "interview_process", "success_metrics",
+        "company_description", "reference_number", "currency",
+        "pay_frequency", "bonus_structure", "salary_text",
+        mode="before",
+    )
     @classmethod
     def _empty_to_none(cls, v: Any) -> Any:
         """LLM frequently emits "" or "N/A" instead of null; normalize so
@@ -117,6 +156,25 @@ Extract these fields and return ONLY valid JSON:
   "apply_email":      "<email if present, else null>",
   "closing_date":     "<YYYY-MM-DD if a deadline is stated, else null>",
   "skills_required":  ["short", "lowercase", "skill", "tokens"],
+
+  "employment_type":  "<one of: full_time | part_time | contract | freelance | internship | temporary; null if unclear>",
+  "work_arrangement": "<one of: remote | hybrid | on_site; null if unclear>",
+  "hybrid_days_per_week": <int 1-5 if work_arrangement=hybrid and stated, else null>,
+  "benefits":         ["short", "bullet", "items", "(max 20, each <= 200 chars)"],
+  "application_instructions": "<step-by-step apply directions; null if not given>",
+  "reporting_structure": "<who the role reports to; null if unclear>",
+  "manages_others":   <int count of direct reports, null if not a management role or unclear>,
+  "interview_process": "<steps in the hiring process; null if not described>",
+  "tools_tech_stack": ["short", "lowercase", "tool", "names", "(max 30, each <= 80 chars)"],
+  "success_metrics":  "<how success is measured; null if not stated>",
+  "company_description": "<background about the hiring company; null if absent>",
+  "reference_number": "<requisition / ref number if stated, else null>",
+  "currency":         "<3-letter ISO like ZMW, USD, GBP; null if unclear>",
+  "pay_frequency":    "<one of: monthly | annual | hourly | daily; null if unclear>",
+  "bonus_structure":  "<freeform bonus / commission description; null if absent>",
+  "equity_offered":   <true | false | null>,
+  "salary_text":      "<the raw salary string from the message if present (e.g. 'K15,000 - K20,000'), else null>",
+
   "confidence":       <0-100; how sure you are this message is a real job post>
 }
 
@@ -125,7 +183,9 @@ Rules:
   - If the message contains MULTIPLE jobs, extract the FIRST one only and set confidence in 50-70 range so the caller can decide.
   - apply_url must start with http:// or https://. Channel/chat links like https://chat.whatsapp.com/... are NOT apply URLs — set apply_url to null.
   - Phone numbers are NOT apply_email.
-  - Zambian context: ZICA, UNZA, CBU, ZRA, ZESCO, ZANACO, MTN, Airtel are legitimate entities, not noise.
+  - For ALL the new structured fields (employment_type, work_arrangement, benefits, tools_tech_stack, application_instructions, reporting_structure, manages_others, interview_process, success_metrics, company_description, reference_number, currency, pay_frequency, bonus_structure, equity_offered, salary_text): emit null/empty when the message DOES NOT explicitly state the information. DO NOT invent or guess. Better to omit than to fabricate.
+  - For salary: if the message gives a numeric salary, put the raw string in salary_text and leave it to downstream parsing. Do not attempt currency conversion or unit splits yourself.
+  - Zambian context: ZICA, UNZA, CBU, ZRA, ZESCO, ZANACO, MTN, Airtel are legitimate entities, not noise. Professional bodies (EIZ, LAZ, HPCZ) are also valid.
   - Description must be at least 20 characters or you should set confidence below 30."""
 
 
@@ -228,7 +288,10 @@ async def extract_job_from_message(
         try:
             response = client.chat.completions.create(
                 model=settings.llm_model,
-                max_tokens=1024,
+                # 2048 to accommodate the richer structured output added
+                # in task #60. 1024 occasionally truncated mid-JSON on
+                # the longer prompts.
+                max_tokens=2048,
                 messages=[
                     {"role": "system", "content": _SYSTEM_PROMPT},
                     {"role": "user", "content": f"Extract from this channel message:\n\n{text[:4000]}"},
