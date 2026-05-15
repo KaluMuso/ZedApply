@@ -853,3 +853,14 @@ export const contact = {
       body: JSON.stringify(data),
     }),
 };
+
+// ── Public stats (home-page social proof) ──
+export interface PublicStats {
+  jobs_active: number;
+  avg_skills_matched: number;
+  hours_saved_total: number;
+}
+
+export const publicStats = {
+  get: () => apiFetch<PublicStats>("/stats/public"),
+};
