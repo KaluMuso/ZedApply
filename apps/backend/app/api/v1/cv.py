@@ -395,14 +395,39 @@ async def upload_cv(request: Request, file: UploadFile = File(...), user_id: str
         raise HTTPException(status_code=500, detail="Failed to store CV")
     cv_id = result.data[0]["id"]
 
-    for skill_name in parsed.get("skills", []):
-        skill_result = supabase.table("skills").select("id").eq("name", skill_name.lower()).limit(1).execute()
-        skill_id = skill_result.data[0]["id"] if skill_result.data else None
-        if not skill_id:
-            alias = supabase.table("skill_aliases").select("skill_id").eq("alias", skill_name.lower()).limit(1).execute()
-            skill_id = alias.data[0]["skill_id"] if alias.data else None
-        if skill_id:
-            supabase.table("user_skills").upsert({"user_id": user_id, "skill_id": skill_id, "source": "cv_parse"}, on_conflict="user_id,skill_id").execute()
+    parsed_skills = parsed.get("skills", [])
+    if parsed_skills:
+        # category='auto' marks LLM-extracted skills so admins can audit and
+        # merge them with curated rows later (`WHERE category = 'auto'`).
+        # Pre-fix, parsed skills not already in the master table were
+        # silently dropped from user_skills.
+        supabase.table("skills").upsert(
+            [{"name": s, "category": "auto"} for s in parsed_skills],
+            on_conflict="name",
+            ignore_duplicates=True,
+        ).execute()
+
+        name_id_lookup = (
+            supabase.table("skills")
+            .select("id, name")
+            .in_("name", parsed_skills)
+            .execute()
+        )
+        name_to_id = {row["name"]: row["id"] for row in (name_id_lookup.data or [])}
+
+        # ignore_duplicates preserves an existing user_skills row's `source`
+        # (don't overwrite a manual entry with cv_parse).
+        user_skill_rows = [
+            {"user_id": user_id, "skill_id": name_to_id[name], "source": "cv_parse"}
+            for name in parsed_skills
+            if name in name_to_id
+        ]
+        if user_skill_rows:
+            supabase.table("user_skills").upsert(
+                user_skill_rows,
+                on_conflict="user_id,skill_id",
+                ignore_duplicates=True,
+            ).execute()
 
     profile_update = {}
     for field in ["full_name", "email", "location"]:
