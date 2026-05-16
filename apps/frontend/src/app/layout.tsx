@@ -79,11 +79,13 @@ export const metadata: Metadata = {
       "Upload your CV and let AI score you against every open role in Zambia.",
   },
   robots: { index: true, follow: true },
-  // Note: previously also set `other: { "apple-mobile-web-app-capable": "yes" }`
-  // which duplicated the tag already emitted by `appleWebApp.capable` and
-  // triggered the iOS Safari deprecation warning. The modern equivalent
-  // (`mobile-web-app-capable`) is auto-emitted by Next when appleWebApp
-  // is configured, so no `other` block is needed.
+  other: {
+    // Standards-track companion to appleWebApp.capable. Next's appleWebApp
+    // config only emits the Apple-prefixed apple-mobile-web-app-capable;
+    // Chromium DevTools warns when the deprecated Apple tag is present
+    // without this modern one.
+    "mobile-web-app-capable": "yes",
+  },
   icons: {
     icon: [
       { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
