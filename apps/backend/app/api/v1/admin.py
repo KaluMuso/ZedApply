@@ -4,7 +4,11 @@ All endpoints require role = 'superadmin'. The frontend's AdminGuard
 mirrors this check, but the API enforces it as the source of truth.
 """
 import math
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+
 from app.core.deps import get_supabase, require_admin
 from app.schemas.admin import (
     AdminStats,
@@ -25,6 +29,7 @@ from app.schemas.admin import (
 )
 from app.schemas.subscription import TIER_LIMITS
 from app.schemas.db_enums import QueueStatus
+from app.services.skill_resolver import resolve_skill_id
 
 router = APIRouter(prefix="/admin", tags=["Admin"], dependencies=[Depends(require_admin)])
 
@@ -804,3 +809,56 @@ async def update_subscription(
         current_period_end=sub.get("current_period_end"),
         created_at=sub.get("created_at"),
     )
+
+
+# ── Skill canonicalization (Phase 2 Initiative #1) ──────────────────
+# Ad-hoc admin endpoint to run the resolver against a list of raw skill
+# names — useful for testing the resolver against suspected duplicates
+# before triggering the full job_skills backfill, or for previewing what
+# canonical id a brand-new name would map to.
+#
+# This is NOT the path /cv/upload uses (that calls resolve_skill_ids
+# directly). It's a thin echo of the resolver for admin tooling.
+
+class _CanonicalizeRequest(BaseModel):
+    names: list[str] = Field(..., min_length=1, max_length=200)
+
+
+class _CanonicalizeResult(BaseModel):
+    input: str
+    skill_id: Optional[str]
+
+
+class _CanonicalizeResponse(BaseModel):
+    resolved: list[_CanonicalizeResult]
+
+
+@router.post("/skills/canonicalize", response_model=_CanonicalizeResponse)
+async def canonicalize_skills(
+    body: _CanonicalizeRequest,
+    supabase=Depends(get_supabase),
+):
+    """Resolve a batch of skill names through the production resolver.
+
+    Returns one row per input — the canonical `skills.id` it mapped to
+    (or null if the input normalized to an empty string). When the
+    resolver hits Pass 4 (auto-insert), a new row IS created in
+    `skills` and the analytics event fires — so this endpoint has
+    side effects. Use against duplicates you want to merge, not against
+    arbitrary user-typed input.
+
+    Single batch reuses one in-memory cache, so passing the same name
+    twice is one resolve call.
+    """
+    cache: dict[str, str] = {}
+    out: list[_CanonicalizeResult] = []
+    for name in body.names:
+        sid = await resolve_skill_id(
+            name,
+            supabase=supabase,
+            cache=cache,
+            source="admin_canonicalize",
+            user_id=None,
+        )
+        out.append(_CanonicalizeResult(input=name, skill_id=sid))
+    return _CanonicalizeResponse(resolved=out)

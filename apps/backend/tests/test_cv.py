@@ -89,6 +89,7 @@ class TestCVUpload:
         assert "application/zip" in resp.json()["detail"]
 
     @patch("app.api.v1.cv._sniff_mime", side_effect=_mime_for_pdf)
+    @patch("app.api.v1.cv.resolve_skill_ids", new_callable=AsyncMock)
     @patch("app.api.v1.cv.generate_embedding", new_callable=AsyncMock)
     @patch("app.api.v1.cv.parse_cv_with_llm", new_callable=AsyncMock)
     @patch("app.api.v1.cv.extract_text_from_file", new_callable=AsyncMock)
@@ -97,12 +98,17 @@ class TestCVUpload:
         mock_extract,
         mock_parse,
         mock_embed,
+        mock_resolve,
         mock_sniff,
         client,
         auth_headers,
         fake_supabase,
     ):
         """Successful upload extracts skills and returns result."""
+        # Migration 024+ routes skills through the hybrid resolver. Stub
+        # it so this test stays focused on the upload happy-path; the
+        # resolver itself is covered by test_skill_resolver.
+        mock_resolve.return_value = ["sk-python", "sk-fastapi", "sk-pg"]
         mock_extract.return_value = "John Doe\nPython Developer\n5 years experience in Python, FastAPI, PostgreSQL"
         mock_parse.return_value = {
             "full_name": "John Doe",
@@ -140,6 +146,7 @@ class TestCVUpload:
         assert "parsed_skills" in body
 
     @patch("app.api.v1.cv._sniff_mime", side_effect=_mime_for_pdf)
+    @patch("app.api.v1.cv.resolve_skill_ids", new_callable=AsyncMock)
     @patch("app.api.v1.cv.generate_embedding", new_callable=AsyncMock)
     @patch("app.api.v1.cv.parse_cv_with_llm", new_callable=AsyncMock)
     @patch("app.api.v1.cv.extract_text_from_file", new_callable=AsyncMock)
@@ -148,6 +155,7 @@ class TestCVUpload:
         mock_extract,
         mock_parse,
         mock_embed,
+        mock_resolve,
         mock_sniff,
         client,
         auth_headers,
@@ -156,6 +164,7 @@ class TestCVUpload:
         """When ai_cache has a result for this text hash, upload skips
         the Gemini call entirely. This is the cost-saving contract -
         a re-uploaded CV must not double-spend on AI calls."""
+        mock_resolve.return_value = ["sk-cached"]
         mock_extract.return_value = (
             "John Doe\nPython Developer\n5 years experience in Python, FastAPI, PostgreSQL"
         )
