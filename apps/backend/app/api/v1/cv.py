@@ -15,6 +15,7 @@ from app.services.cv_parser import extract_text_from_file, parse_cv_with_llm
 from app.services.cv_generator import analyze_cv, generate_cv_structured
 from app.services.embedding import generate_embedding
 from app.services.email import send_welcome_email
+from app.services.skill_resolver import resolve_skill_ids
 
 router = APIRouter(prefix="/cv", tags=["CV"])
 
@@ -397,34 +398,28 @@ async def upload_cv(request: Request, file: UploadFile = File(...), user_id: str
 
     parsed_skills = parsed.get("skills", [])
     if parsed_skills:
-        # category='auto' marks LLM-extracted skills so admins can audit and
-        # merge them with curated rows later (`WHERE category = 'auto'`).
-        # Pre-fix, parsed skills not already in the master table were
-        # silently dropped from user_skills.
-        supabase.table("skills").upsert(
-            [{"name": s, "category": "auto"} for s in parsed_skills],
-            on_conflict="name",
-            ignore_duplicates=True,
-        ).execute()
-
-        name_id_lookup = (
-            supabase.table("skills")
-            .select("id, name")
-            .in_("name", parsed_skills)
-            .execute()
+        # Phase 2 Initiative #1: route every LLM-extracted skill through
+        # the hybrid resolver (skill_resolver.py) instead of a raw
+        # name-keyed upsert. The resolver canonicalizes via three passes
+        # (exact -> trgm -> vector) and only auto-inserts when none of
+        # them hit. canonical_of is followed transparently so a CV with
+        # "Postgres" + "PostgreSQL" + "postgres" yields ONE user_skills
+        # row, not three. Pre-resolver behaviour was to insert all three
+        # names verbatim and end up with three user_skills rows.
+        skill_ids = await resolve_skill_ids(
+            parsed_skills,
+            supabase=supabase,
+            source="cv_upload",
+            user_id=user_id,
         )
-        name_to_id = {row["name"]: row["id"] for row in (name_id_lookup.data or [])}
-
-        # ignore_duplicates preserves an existing user_skills row's `source`
-        # (don't overwrite a manual entry with cv_parse).
-        user_skill_rows = [
-            {"user_id": user_id, "skill_id": name_to_id[name], "source": "cv_parse"}
-            for name in parsed_skills
-            if name in name_to_id
-        ]
-        if user_skill_rows:
+        if skill_ids:
+            # ignore_duplicates preserves an existing user_skills row's
+            # `source` — don't overwrite a manual entry with cv_parse.
             supabase.table("user_skills").upsert(
-                user_skill_rows,
+                [
+                    {"user_id": user_id, "skill_id": sid, "source": "cv_parse"}
+                    for sid in skill_ids
+                ],
                 on_conflict="user_id,skill_id",
                 ignore_duplicates=True,
             ).execute()
