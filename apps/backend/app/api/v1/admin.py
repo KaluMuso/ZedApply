@@ -470,8 +470,12 @@ async def list_users(
     if tier:
         query = query.eq("subscription_tier", tier)
     if search:
+        # Use `*` as the ilike wildcard (PostgREST-equivalent of `%`) so
+        # the URL doesn't carry literal `%` characters into the upstream
+        # Cloudflare Worker, which 1101's on malformed percent-encoding
+        # — same vector as the /jobs filter fix.
         query = query.or_(
-            f"phone.ilike.%{search}%,full_name.ilike.%{search}%,email.ilike.%{search}%"
+            f"phone.ilike.*{search}*,full_name.ilike.*{search}*,email.ilike.*{search}*"
         )
     offset = (page - 1) * per_page
     result = query.range(offset, offset + per_page - 1).execute()

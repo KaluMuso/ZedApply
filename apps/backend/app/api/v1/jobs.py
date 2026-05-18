@@ -222,12 +222,26 @@ async def list_jobs(
         query = query.order("posted_at", desc=True)
 
     if location:
-        query = query.ilike("location", f"%{location}%")
+        # `*` is PostgREST's URL-safe wildcard for ilike, equivalent to
+        # SQL's `%`. supabase-py 2.9.1 passes the raw filter value into
+        # httpx.QueryParams; for the direct `.ilike(col, "%x%")` path
+        # httpx does NOT percent-encode the `%` characters, so the URL
+        # arrives at Supabase as `…location=ilike.%Lusaka%…` — a
+        # malformed percent-encoding (Lu/sa are not hex). Direct
+        # PostgREST tolerates it; the upstream Cloudflare Worker
+        # doesn't and 1101's with `APIError: JSON could not be
+        # generated` — Sentry issue ZEDCV-BACKEND-C. `*` encodes
+        # cleanly to `%2A` and PostgREST treats it the same.
+        query = query.ilike("location", f"*{location}*")
     if search:
+        # Same wildcard treatment for the search-across-3-columns case.
+        # (Note: the embedded form inside `.or_()` is encoded correctly
+        # by httpx so the `%` would have worked here — switching to `*`
+        # anyway for consistency with the location filter above.)
         query = query.or_(
-            f"title.ilike.%{search}%,"
-            f"company.ilike.%{search}%,"
-            f"description.ilike.%{search}%"
+            f"title.ilike.*{search}*,"
+            f"company.ilike.*{search}*,"
+            f"description.ilike.*{search}*"
         )
     if source:
         sources = [s.strip() for s in source.split(",") if s.strip()]

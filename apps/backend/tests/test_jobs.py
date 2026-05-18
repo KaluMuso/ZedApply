@@ -243,6 +243,67 @@ class TestJobList:
         # `skills_required` mirrors `skills` for frontend compatibility.
         assert by_id["job-A"]["skills_required"] == by_id["job-A"]["skills"]
 
+    def test_list_jobs_location_filter_uses_star_wildcard_not_percent(
+        self, client, fake_supabase
+    ):
+        """Regression for Sentry issue ZEDCV-BACKEND-C: the location
+        filter must produce a URL-safe wildcard. supabase-py 2.9.1
+        leaves the raw `%` characters in the URL for the direct
+        `.ilike(col, "%x%")` path (httpx's QueryParams treats them as
+        literal, producing `…location=ilike.%Lusaka%…` — malformed
+        percent-encoding). Upstream Cloudflare Worker rejects that with
+        exception 1101 (`APIError: JSON could not be generated`),
+        forcing the retry-degrade block to swallow the request. `*` is
+        PostgREST's URL-safe wildcard, equivalent to `%` for ilike,
+        and encodes cleanly to `%2A`.
+
+        Verifies both: (a) the filter value handed to the supabase
+        client has no `%` chars, (b) the response carries the matching
+        Lusaka row instead of the degraded empty page that prod was
+        emitting before this fix.
+        """
+        captured_ilike: list[tuple[str, str]] = []
+
+        class _CapturingQuery(FakeSupabaseQuery):
+            def ilike(self, column, value):  # type: ignore[override]
+                captured_ilike.append((column, value))
+                return self
+
+        fake_supabase.set_table(
+            "jobs",
+            _CapturingQuery(
+                data=[
+                    {
+                        "id": "lusaka-1",
+                        "title": "Accountant",
+                        "company": "Co",
+                        "location": "Lusaka",
+                        "description": "x",
+                        "source": "manual",
+                        "posted_at": "2026-05-18T00:00:00Z",
+                        "is_active": True,
+                    }
+                ],
+                count=1,
+            ),
+        )
+
+        resp = client.get("/api/v1/jobs?location=Lusaka")
+        assert resp.status_code == 200
+        body = resp.json()
+        # Behavioural: not degraded.
+        assert body["total"] == 1
+        assert len(body["jobs"]) == 1
+        assert body["jobs"][0]["location"] == "Lusaka"
+        # URL-safety: every captured ilike value uses `*`, never `%`.
+        assert captured_ilike, "expected list_jobs to call .ilike()"
+        assert ("location", "*Lusaka*") in captured_ilike
+        for column, value in captured_ilike:
+            assert "%" not in value, (
+                f"raw `%` in filter value {value!r} for column {column!r} "
+                "would re-introduce CF 1101 (ZEDCV-BACKEND-C)"
+            )
+
 
 class TestJobCreate:
     @patch("app.api.v1.jobs.generate_embedding", new_callable=AsyncMock)
