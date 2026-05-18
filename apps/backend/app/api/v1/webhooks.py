@@ -1,6 +1,7 @@
 """Webhook handlers for WAHA WhatsApp and DPO Pay."""
+import hmac
 import logging
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, HTTPException, Request, Depends
 from app.core.config import get_settings
 from app.core.deps import get_supabase
 from app.schemas.subscription import TIER_LIMITS, TIER_PRICES
@@ -123,6 +124,24 @@ async def _handle_channel_message(payload: dict, supabase, settings) -> dict:
 
 @router.post("/whatsapp")
 async def whatsapp_webhook(request: Request, supabase=Depends(get_supabase)):
+    settings = get_settings()
+
+    # Shared-secret auth. WAHA pins X-Webhook-Token via its customHeaders
+    # config; we reject anything that doesn't match. Without this any
+    # public caller could forge digest sends, enumerate phones, and (with
+    # channel ingest on) inject jobs. Empty secret means dev/test only —
+    # the warning is loud so the gap is obvious in logs.
+    if settings.waha_webhook_secret:
+        provided = request.headers.get("x-webhook-token", "")
+        if not hmac.compare_digest(provided, settings.waha_webhook_secret):
+            logger.warning("WhatsApp webhook: invalid or missing X-Webhook-Token")
+            raise HTTPException(status_code=401, detail="Invalid webhook token")
+    else:
+        logger.warning(
+            "WhatsApp webhook: WAHA_WEBHOOK_SECRET unset — accepting "
+            "unauthenticated delivery (must be set in production)"
+        )
+
     body = await request.json()
     if body.get("event") != "message":
         return {"status": "ignored"}
@@ -135,7 +154,6 @@ async def whatsapp_webhook(request: Request, supabase=Depends(get_supabase)):
     # the user-command handler. Channel chatIds end in `@newsletter`,
     # not `@c.us`, so they would otherwise fall through to the
     # "I didn't understand that" reply at the bottom of this handler.
-    settings = get_settings()
     chat_id = payload.get("from") or payload.get("chatId") or ""
     if (
         settings.whatsapp_jobs_ingest_enabled
