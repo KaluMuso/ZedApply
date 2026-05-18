@@ -311,18 +311,11 @@ async def dpo_webhook(request: Request, supabase=Depends(get_supabase)):
     if verification["is_paid"]:
         from datetime import datetime, timedelta, timezone
 
-        # Update payment as completed
-        supabase.table("payments").update({
-            "status": "completed",
-            "provider_ref": parsed.get("transaction_ref", parsed["transaction_token"]),
-            "webhook_data": parsed,
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-        }).eq("id", payment_id).execute()
-
         # Determine tier from payment amount (ngwee). Reverse-lookup against
         # the canonical TIER_PRICES dict — exact-match wins, otherwise fall
         # back defensively to the highest paid tier whose price <= amount and
-        # mark the payment as needing review.
+        # mark the payment as needing review. Done BEFORE the claim UPDATE
+        # so the audit-trail flags land in the same write.
         amount_ngwee = payment["amount"]
         paid_tiers = {price: tier for tier, price in TIER_PRICES.items() if tier != "free"}
         new_tier = paid_tiers.get(amount_ngwee)
@@ -341,6 +334,30 @@ async def dpo_webhook(request: Request, supabase=Depends(get_supabase)):
             parsed["_resolved_tier"] = new_tier
         new_limit = TIER_LIMITS[new_tier]
         now = datetime.now(timezone.utc)
+
+        # Atomic idempotency: only complete the payment if it's still pending.
+        # The SELECT-time check above handles the easy case (replay arrives
+        # well after first completion). This conditional UPDATE handles the
+        # hard case — two webhooks delivered within milliseconds both see
+        # status='pending' at SELECT, both proceed; whichever loses the
+        # race here matches 0 rows and bails out without re-upgrading the
+        # subscription or re-stacking the period_end.
+        claim_result = (
+            supabase.table("payments").update({
+                "status": "completed",
+                "provider_ref": parsed.get("transaction_ref", parsed["transaction_token"]),
+                "webhook_data": parsed,
+                "completed_at": now.isoformat(),
+            })
+            .eq("id", payment_id)
+            .eq("status", "pending")
+            .execute()
+        )
+        if not claim_result.data:
+            logging.info(
+                f"DPO webhook: payment {payment_id} already claimed by concurrent delivery, skipping"
+            )
+            return {"status": "already_processed"}
 
         # Period-end safety: if a webhook arrives mid-cycle (e.g. early renewal
         # or duplicate that bypassed the idempotency guard via a different
@@ -494,16 +511,10 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
         amount_ngwee = fields["amount_ngwee"] or payment["amount"]
         now = datetime.now(timezone.utc)
 
-        supabase.table("payments").update({
-            "status": "completed",
-            "provider_ref": fields.get("lenco_ref") or company_ref,
-            "webhook_data": payload,
-            "completed_at": now.isoformat(),
-        }).eq("id", payment_id).execute()
-
         # Resolve tier from amount — same logic as DPO. Exact match wins;
         # otherwise the highest paid tier whose price <= amount, flagged
-        # for audit.
+        # for audit. Resolved here so the audit fields land in the same
+        # write as the claim.
         paid_tiers = {price: tier for tier, price in TIER_PRICES.items() if tier != "free"}
         new_tier = paid_tiers.get(amount_ngwee)
         if new_tier is None:
@@ -517,6 +528,28 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
                 "starter",
             )
         new_limit = TIER_LIMITS[new_tier]
+
+        # Atomic idempotency — see DPO handler for the full reasoning. The
+        # SELECT-time check above catches the easy replay case; this
+        # conditional UPDATE handles concurrent deliveries that both saw
+        # status='pending' at SELECT.
+        claim_result = (
+            supabase.table("payments").update({
+                "status": "completed",
+                "provider_ref": fields.get("lenco_ref") or company_ref,
+                "webhook_data": payload,
+                "completed_at": now.isoformat(),
+            })
+            .eq("id", payment_id)
+            .eq("status", "pending")
+            .execute()
+        )
+        if not claim_result.data:
+            logging.info(
+                "Lenco webhook: payment %s already claimed by concurrent delivery",
+                payment_id,
+            )
+            return {"status": "already_processed"}
 
         # Period-end safety: stack on top of any remaining paid days.
         existing_end_str = (payment.get("subscriptions") or {}).get("current_period_end")
