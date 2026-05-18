@@ -52,6 +52,15 @@ class Settings(BaseSettings):
     # WhatsApp (WAHA)
     waha_api_url: str = "http://localhost:3001"
     waha_api_key: str = ""
+    # Shared secret WAHA sends back as `X-Webhook-Token` on every webhook
+    # delivery (configure under WAHA's `webhooks[*].customHeaders`). When
+    # set, /webhooks/whatsapp rejects deliveries without a matching token
+    # via constant-time compare. When empty, the route logs a warning and
+    # accepts unauthenticated traffic — dev/test ergonomic, but every
+    # deployed environment MUST set this env var. Without it, anyone with
+    # the public URL can forge match-digest sends, enumerate phones, or
+    # (with channel ingest on) inject jobs.
+    waha_webhook_secret: str = ""
 
     # WhatsApp channel ingest (Slice F).
     # When `whatsapp_jobs_ingest_enabled` is True and a webhook message's
