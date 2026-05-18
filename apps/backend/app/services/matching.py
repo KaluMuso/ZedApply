@@ -147,17 +147,26 @@ async def store_matches(
 
 
 async def check_match_quota(user_id: str, supabase: Client) -> tuple[bool, int]:
-    """Check remaining match quota. Returns (has_quota, remaining)."""
+    """Check remaining match quota. Returns (has_quota, remaining).
+
+    Missing subscription row → free-tier default (covers the signup race
+    where a user's `users` row exists but the `subscriptions` row hasn't
+    been inserted yet). Subscription present but non-active (expired,
+    cancelled, past_due) → (False, 0): historically the active-status
+    filter short-circuited to the free-tier default, which let any
+    lapsed paying user keep generating matches forever.
+    """
     result = (
         supabase.table("subscriptions")
-        .select("matches_used, matches_limit")
+        .select("matches_used, matches_limit, status")
         .eq("user_id", user_id)
-        .eq("status", "active")
         .single()
         .execute()
     )
     if not result.data:
-        return True, 10  # Free tier default
+        return True, 10  # Signup-race free-tier default
+    if result.data.get("status") != "active":
+        return False, 0
     used = result.data["matches_used"]
     limit = result.data["matches_limit"]
     return max(0, limit - used) > 0, max(0, limit - used)
