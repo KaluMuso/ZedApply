@@ -14,7 +14,11 @@ _BACKEND_ROOT = os.path.join(os.path.dirname(__file__), "..")
 if _BACKEND_ROOT not in sys.path:
     sys.path.insert(0, _BACKEND_ROOT)
 
-from app.services.job_enricher import JobEnrichment, enrich_job
+from app.services.job_enricher import (
+    JobEnrichment,
+    enrich_job,
+    parse_llm_enrichment_payload,
+)
 from app.services.job_enrichment import apply_job_enrichment
 from tests.conftest import FakeSupabaseQuery
 from tests.test_admin_jobs import JobsFakeSupabase
@@ -190,7 +194,6 @@ class TestBackfillScript:
         import backfill_job_enrichment as mod
 
         monkeypatch.setattr(mod, "PROGRESS_PATH", tmp_path / "progress.json")
-        monkeypatch.setattr(mod, "RATE_LIMIT_SECONDS", 0)
 
         jobs = [
             {
@@ -209,14 +212,19 @@ class TestBackfillScript:
             data=jobs
         )
 
+        from app.services.job_enricher import EnrichJobOutcome
+
         async def _fake_enrich(**_kw):
-            return JobEnrichment(
-                skills=["python"],
-                employment_type="full_time",
-                work_arrangement="remote",
+            return EnrichJobOutcome(
+                enrichment=JobEnrichment(
+                    skills=["python"],
+                    employment_type="full_time",
+                    work_arrangement="remote",
+                ),
+                completed=True,
             )
 
-        monkeypatch.setattr(mod, "enrich_job", _fake_enrich)
+        monkeypatch.setattr(mod, "enrich_job_for_backfill", _fake_enrich)
         monkeypatch.setattr(
             mod,
             "create_client",
@@ -236,7 +244,7 @@ class TestBackfillScript:
 
             buf = StringIO()
             with patch("sys.stdout", buf):
-                code = await mod.run_backfill(apply=False)
+                code = await mod.run_backfill(apply=False, delay_seconds=0.01)
 
         assert code == 0
         out = buf.getvalue()
@@ -246,6 +254,32 @@ class TestBackfillScript:
 
 
 class TestJobEnricher:
+    def test_coerces_unknown_employment_type_but_keeps_skills(self):
+        result = parse_llm_enrichment_payload(
+            {
+                "skills": ["zica", "bookkeeping"],
+                "employment_type": "volunteer",
+                "work_arrangement": "on_site",
+            }
+        )
+        assert result.skills == ["zica", "bookkeeping"]
+        assert result.employment_type is None
+        assert result.work_arrangement == "on_site"
+
+    def test_multi_job_array_uses_first_row(self):
+        result = parse_llm_enrichment_payload(
+            [
+                {
+                    "skills": ["masonry"],
+                    "employment_type": "contract",
+                    "work_arrangement": "on_site",
+                },
+                {"skills": ["ignored"], "employment_type": None, "work_arrangement": None},
+            ]
+        )
+        assert result.skills == ["masonry"]
+        assert result.employment_type == "contract"
+
     @pytest.mark.asyncio
     async def test_returns_empty_skills_on_api_error(self):
         with patch("app.services.job_enricher._client") as mock_client_factory:

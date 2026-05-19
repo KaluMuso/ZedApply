@@ -36,7 +36,10 @@ os.environ.setdefault("JWT_SECRET", "unused-by-backfill-scripts")
 from supabase import create_client  # noqa: E402
 
 from app.core.config import get_settings  # noqa: E402
-from app.services.job_enricher import JobEnrichment, enrich_job  # noqa: E402
+from app.services.job_enricher import (  # noqa: E402
+    JobEnrichment,
+    enrich_job_for_backfill,
+)
 from app.services.job_enrichment import apply_job_enrichment  # noqa: E402
 
 logging.basicConfig(
@@ -47,7 +50,9 @@ log = logging.getLogger("backfill_job_enrichment")
 
 PROGRESS_PATH = Path("/tmp/zedcv_backfill_progress.json")
 MIN_DESCRIPTION_LEN = 50
-RATE_LIMIT_SECONDS = 1.0
+# OpenRouter free/paid Flash tiers rate-limit below 1 req/s when the SDK
+# also retries 429s — default 2.5s keeps dry-runs under the cap.
+DEFAULT_DELAY_SECONDS = 2.5
 
 
 def _load_progress() -> dict[str, str]:
@@ -132,20 +137,25 @@ async def _process_job(
     *,
     apply: bool,
     progress: dict[str, str],
-) -> str:
+) -> tuple[str, bool]:
+    """Returns (diff_line, rate_limited)."""
     job_id = str(job["id"])
-    if progress.get(job_id) == "done":
-        return ""
+    if apply and progress.get(job_id) == "done":
+        return "", False
 
     description = (job.get("description") or "").strip()
     if len(description) < MIN_DESCRIPTION_LEN:
-        return ""
+        return "", False
 
-    enrichment = await enrich_job(
+    outcome = await enrich_job_for_backfill(
         title=str(job.get("title") or ""),
         company=job.get("company"),
         description=description,
     )
+    if not outcome.completed:
+        return "", True
+
+    enrichment = outcome.enrichment
     existing = _existing_skill_names(supabase, job_id)
     line = format_enrichment_diff_line(job, enrichment, existing)
 
@@ -157,13 +167,13 @@ async def _process_job(
             enrichment=enrichment,
             source="backfill",
         )
+        progress[job_id] = "done"
+        _save_progress(progress)
 
-    progress[job_id] = "done"
-    _save_progress(progress)
-    return line
+    return line, False
 
 
-async def run_backfill(*, apply: bool) -> int:
+async def run_backfill(*, apply: bool, delay_seconds: float) -> int:
     settings = get_settings()
     if not settings.openrouter_api_key:
         log.error("OPENROUTER_API_KEY is not set — cannot call enrich_job")
@@ -189,13 +199,28 @@ async def run_backfill(*, apply: bool) -> int:
 
     lines: list[str] = []
     processed = 0
+    rate_limited = 0
     for job in jobs:
-        line = await _process_job(supabase, job, apply=apply, progress=progress)
+        line, was_limited = await _process_job(
+            supabase,
+            job,
+            apply=apply,
+            progress=progress,
+        )
+        if was_limited:
+            rate_limited += 1
+            log.warning(
+                "Rate limited on job %s — waiting %.1fs before next",
+                str(job.get("id", ""))[:8],
+                delay_seconds * 3,
+            )
+            await asyncio.sleep(delay_seconds * 3)
+            continue
         if line:
             print(line)
             lines.append(line)
             processed += 1
-        await asyncio.sleep(RATE_LIMIT_SECONDS)
+        await asyncio.sleep(delay_seconds)
 
     eligible = sum(
         1
@@ -208,7 +233,17 @@ async def run_backfill(*, apply: bool) -> int:
         f"\nEstimated {eligible} jobs × ~700 input tokens + 100 output tokens = "
         f"~${est_usd:.3f} at current OpenRouter pricing for Gemini Flash 2.0."
     )
-    print(f"Processed {processed} jobs this run ({'apply' if apply else 'dry-run'}).")
+    mode = "apply" if apply else "dry-run"
+    print(f"Processed {processed} jobs this run ({mode}).")
+    if rate_limited:
+        print(
+            f"Rate-limited on {rate_limited} jobs — re-run the same command; "
+            f"{'only unfinished jobs are written in apply mode' if apply else 'no progress file was updated'}."
+        )
+    if not apply:
+        print(
+            "Dry-run does not write /tmp/zedcv_backfill_progress.json — safe to re-run."
+        )
     return 0
 
 
@@ -219,10 +254,21 @@ def main() -> int:
         action="store_true",
         help="Write enrichment to the database (default is dry-run)",
     )
+    parser.add_argument(
+        "--delay",
+        type=float,
+        default=DEFAULT_DELAY_SECONDS,
+        help=f"Seconds between OpenRouter calls (default {DEFAULT_DELAY_SECONDS})",
+    )
     args = parser.parse_args()
     if args.apply:
         log.warning("APPLY mode — database will be updated")
-    return asyncio.run(run_backfill(apply=args.apply))
+    if args.delay < 1.0:
+        log.error("--delay must be >= 1.0 second")
+        return 1
+    return asyncio.run(
+        run_backfill(apply=args.apply, delay_seconds=args.delay)
+    )
 
 
 if __name__ == "__main__":

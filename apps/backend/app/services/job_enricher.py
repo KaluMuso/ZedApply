@@ -29,6 +29,18 @@ EmploymentTypeLiteral = Literal[
 ]
 WorkArrangementLiteral = Literal["on_site", "remote", "hybrid"]
 
+_VALID_EMPLOYMENT_TYPES = frozenset(
+    {
+        "full_time",
+        "part_time",
+        "contract",
+        "freelance",
+        "internship",
+        "temporary",
+    }
+)
+_VALID_WORK_ARRANGEMENTS = frozenset({"on_site", "remote", "hybrid"})
+
 JOB_ENRICH_SYSTEM_PROMPT = """You extract structured job metadata from job postings for the Zambian job market.
 
 Return ONLY valid JSON matching this exact shape:
@@ -48,7 +60,8 @@ Rules for skills:
 Rules for employment_type and work_arrangement:
 - Use null when the description does not clearly state the value. Do NOT guess.
 - employment_type must be one of: full_time, part_time, contract, freelance, internship, temporary.
-- work_arrangement must be one of: on_site, remote, hybrid."""
+- work_arrangement must be one of: on_site, remote, hybrid.
+- Return ONE object only — never a JSON array, even if the posting lists multiple roles."""
 
 
 class JobEnrichment(BaseModel):
@@ -73,13 +86,23 @@ class JobEnrichment(BaseModel):
         return out[:25]
 
 
-@lru_cache(maxsize=1)
-def _client() -> OpenAI:
+def _make_client(*, max_retries: int) -> OpenAI:
     settings = get_settings()
     return OpenAI(
         api_key=settings.openrouter_api_key,
         base_url="https://openrouter.ai/api/v1",
+        max_retries=max_retries,
     )
+
+
+@lru_cache(maxsize=1)
+def _client() -> OpenAI:
+    return _make_client(max_retries=2)
+
+
+@lru_cache(maxsize=1)
+def _client_no_retry() -> OpenAI:
+    return _make_client(max_retries=0)
 
 
 def _strip_fences(text: str) -> str:
@@ -88,6 +111,36 @@ def _strip_fences(text: str) -> str:
     if "```" in text:
         return text.split("```", 1)[1].split("```", 1)[0]
     return text
+
+
+def parse_llm_enrichment_payload(data: object) -> JobEnrichment:
+    """Lenient parse: multi-job arrays → first row; unknown enums → null."""
+    if isinstance(data, list):
+        data = data[0] if data and isinstance(data[0], dict) else {}
+    if not isinstance(data, dict):
+        return JobEnrichment()
+
+    payload = dict(data)
+    et = payload.get("employment_type")
+    if et is not None:
+        et_norm = str(et).strip().lower()
+        payload["employment_type"] = (
+            et_norm if et_norm in _VALID_EMPLOYMENT_TYPES else None
+        )
+    wa = payload.get("work_arrangement")
+    if wa is not None:
+        wa_norm = str(wa).strip().lower()
+        payload["work_arrangement"] = (
+            wa_norm if wa_norm in _VALID_WORK_ARRANGEMENTS else None
+        )
+
+    try:
+        return JobEnrichment.model_validate(payload)
+    except ValidationError:
+        skills_raw = payload.get("skills")
+        if isinstance(skills_raw, list):
+            return JobEnrichment.model_validate({"skills": skills_raw})
+        return JobEnrichment()
 
 
 async def enrich_job(
@@ -122,7 +175,7 @@ async def enrich_job(
             if not raw:
                 return JobEnrichment()
             data = json.loads(_strip_fences(raw).strip())
-            return JobEnrichment.model_validate(data)
+            return parse_llm_enrichment_payload(data)
         except ValidationError as exc:
             logger.warning("job enrich validation failed: %s", exc.errors()[:3])
             return JobEnrichment()
@@ -145,5 +198,75 @@ async def enrich_job(
                 exc_info=True,
             )
             return JobEnrichment()
+
+    return await asyncio.to_thread(_call)
+
+
+class EnrichJobOutcome(BaseModel):
+    """Backfill helper — distinguishes rate limits from empty LLM output."""
+
+    enrichment: JobEnrichment = Field(default_factory=JobEnrichment)
+    completed: bool = True
+    """False when OpenRouter rate-limited; caller should not advance progress."""
+
+
+async def enrich_job_for_backfill(
+    *,
+    title: str,
+    company: str | None,
+    description: str,
+) -> EnrichJobOutcome:
+    """Like enrich_job but no SDK retries and surfaces rate-limit for resume logic."""
+    settings = get_settings()
+    client = _client_no_retry()
+
+    company_line = f"Company: {company}\n" if company else ""
+    user_prompt = (
+        f"Title: {title}\n"
+        f"{company_line}"
+        f"Description:\n{description[:12000]}"
+    )
+
+    def _call() -> EnrichJobOutcome:
+        try:
+            response = client.chat.completions.create(
+                model=settings.llm_model,
+                max_tokens=512,
+                messages=[
+                    {"role": "system", "content": JOB_ENRICH_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                response_format={"type": "json_object"},
+            )
+            raw = (response.choices[0].message.content or "").strip()
+            if not raw:
+                return EnrichJobOutcome()
+            data = json.loads(_strip_fences(raw).strip())
+            return EnrichJobOutcome(
+                enrichment=parse_llm_enrichment_payload(data),
+                completed=True,
+            )
+        except RateLimitError:
+            logger.warning("OpenRouter rate limit during job enrichment (backfill)")
+            return EnrichJobOutcome(completed=False)
+        except ValidationError as exc:
+            logger.warning("job enrich validation failed: %s", exc.errors()[:3])
+            return EnrichJobOutcome()
+        except (json.JSONDecodeError, TypeError, ValueError):
+            logger.warning("job enrich returned non-JSON")
+            return EnrichJobOutcome()
+        except AuthenticationError:
+            logger.error("OpenRouter API key invalid for job enrichment")
+            return EnrichJobOutcome()
+        except APIError as exc:
+            logger.error("OpenRouter API error during job enrichment: %s", exc)
+            return EnrichJobOutcome()
+        except Exception as exc:
+            logger.error(
+                "Unexpected error during job enrichment: %s",
+                exc,
+                exc_info=True,
+            )
+            return EnrichJobOutcome()
 
     return await asyncio.to_thread(_call)
