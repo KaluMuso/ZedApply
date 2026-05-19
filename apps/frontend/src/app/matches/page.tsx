@@ -284,6 +284,8 @@ export default function MatchesPage() {
     return Number.isNaN(t) ? Number.POSITIVE_INFINITY : t;
   };
 
+  if (!data) return null;
+
   let filtered = data.matches.filter((m) => m.score >= scoreFilter);
   if (sort === "score") {
     filtered = [...filtered].sort((a, b) => b.score - a.score);
