@@ -23,8 +23,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(REPO_ROOT / "apps" / "backend"))
+# In the Docker image scripts live at /app/scripts/ and the package at
+# /app/app/. In dev they live at apps/backend/scripts/. parent.parent is
+# the backend root in both layouts (do not walk up to repo root).
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent
+if str(_BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_ROOT))
 
 os.environ.setdefault("SUPABASE_KEY", os.environ.get("SUPABASE_SERVICE_KEY", ""))
 os.environ.setdefault("JWT_SECRET", "unused-by-backfill-scripts")
