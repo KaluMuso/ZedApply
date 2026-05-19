@@ -307,9 +307,26 @@ cd ~/zedcv/infra/production && docker compose -f docker-compose.prod.yml logs ba
 docker compose exec zedcv-backend grep -c resolve_skill_ids /app/app/api/v1/cv.py
 # Should print >= 1 once Phase 2 Initiative #1 (semantic skill resolver) is in master.
 
+# Track 4a (scraper LLM enrichment) — both must pass after PR #47+ is deployed:
+docker compose exec zedcv-backend grep -c enrich_job /app/app/api/v1/jobs.py
+# >= 1
+docker compose exec zedcv-backend test -f /app/scripts/backfill_job_enrichment.py && echo ok
+# prints "ok"
+
 # Verify health endpoint
 curl -fsS https://api.zedcv.com/api/v1/health
 ```
+
+**If `grep enrich_job` prints 0 or the backfill script is missing**, the container is still on an old image. On the OCI box you must pull source *and* rebuild — `docker compose restart` is not enough:
+
+```bash
+cd ~/zedcv && git pull origin master
+cd ~/n8n-docker
+docker compose build --no-cache zedcv-backend
+docker compose up -d --force-recreate zedcv-backend
+```
+
+Then re-run the sanity checks above before running the backfill dry-run.
 
 ---
 
