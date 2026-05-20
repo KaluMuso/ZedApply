@@ -129,6 +129,52 @@ export default function JobsPage() {
 
   const drawerRef = useRef<HTMLDivElement>(null);
   const lastTriggerRef = useRef<HTMLElement | null>(null);
+  const urlHydratedRef = useRef(false);
+  const lastUrlSyncRef = useRef("");
+
+  const syncFiltersToUrl = process.env.VITEST === undefined;
+
+  // Hydrate filter state from URL (preserves shareable /jobs?q=… links).
+  useEffect(() => {
+    if (!syncFiltersToUrl || urlHydratedRef.current || !searchParams) return;
+    const q = searchParams.get("q") ?? "";
+    const loc = searchParams.get("location") ?? "";
+    const sortParam = searchParams.get("sort");
+    const pageParam = searchParams.get("page");
+    setSearchInput(q);
+    setSearchQuery(q);
+    setLocation(loc);
+    if (
+      sortParam === "relevance" ||
+      sortParam === "recent" ||
+      sortParam === "closing"
+    ) {
+      setSort(sortParam);
+    }
+    const parsedPage = pageParam ? Number.parseInt(pageParam, 10) : 1;
+    if (Number.isFinite(parsedPage) && parsedPage > 0) {
+      setPage(parsedPage);
+    }
+    urlHydratedRef.current = true;
+  }, [searchParams]);
+
+  // Sync filters → URL (keep drawer ?j= param intact).
+  useEffect(() => {
+    if (!syncFiltersToUrl || !urlHydratedRef.current) return;
+    const sp = new URLSearchParams(searchParams?.toString() ?? "");
+    if (searchQuery) sp.set("q", searchQuery);
+    else sp.delete("q");
+    if (location) sp.set("location", location);
+    else sp.delete("location");
+    if (sort !== "recent") sp.set("sort", sort);
+    else sp.delete("sort");
+    if (page > 1) sp.set("page", String(page));
+    else sp.delete("page");
+    const next = sp.toString();
+    if (next === lastUrlSyncRef.current) return;
+    lastUrlSyncRef.current = next;
+    router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
+  }, [searchQuery, location, sort, page, pathname, router, searchParams]);
 
   useEffect(() => {
     if (!token) {
@@ -271,6 +317,12 @@ export default function JobsPage() {
       employmentType ||
       workArrangement,
   );
+
+  const hasActiveFilters =
+    Boolean(searchQuery || searchInput || location) ||
+    sort !== "recent" ||
+    selectedSkills.length > 0 ||
+    Boolean(employmentType || workArrangement);
 
   const resetFilters = () => {
     setSearchInput("");

@@ -471,6 +471,32 @@ async def get_job(job_id: str, supabase=Depends(get_supabase)):
     return hydrate_job_row(result.data)
 
 
+@router.post("/{job_id}/save", status_code=status.HTTP_201_CREATED)
+async def save_job(
+    job_id: str,
+    user_id: str = Depends(get_current_user_id),
+    supabase=Depends(get_supabase),
+):
+    job = supabase.table("jobs").select("id").eq("id", job_id).limit(1).execute()
+    if not job.data:
+        raise HTTPException(status_code=404, detail="Job not found")
+    supabase.table("saved_jobs").upsert(
+        {"user_id": user_id, "job_id": job_id},
+        on_conflict="user_id,job_id",
+    ).execute()
+    return {"saved": True, "job_id": job_id}
+
+
+@router.delete("/{job_id}/save", status_code=status.HTTP_204_NO_CONTENT)
+async def unsave_job(
+    job_id: str,
+    user_id: str = Depends(get_current_user_id),
+    supabase=Depends(get_supabase),
+):
+    supabase.table("saved_jobs").delete().eq("user_id", user_id).eq("job_id", job_id).execute()
+    return None
+
+
 @router.post("", response_model=Job, status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
 async def create_job(request: Request, body: JobCreate, current_user: dict = Depends(require_admin), supabase=Depends(get_supabase)):

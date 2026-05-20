@@ -17,10 +17,14 @@ vi.mock("@/components/ui/Counter", () => ({
 // next/navigation isn't available in the jsdom env. Mock the surface
 // the page uses: useRouter().replace, usePathname, useSearchParams.
 vi.mock("next/navigation", () => {
-  const params = new URLSearchParams();
+  let params = new URLSearchParams();
+  const replace = vi.fn((href: string) => {
+    const query = href.includes("?") ? href.split("?")[1] : "";
+    params = new URLSearchParams(query);
+  });
   return {
     useRouter: () => ({
-      replace: vi.fn(),
+      replace,
       push: vi.fn(),
       prefetch: vi.fn(),
       refresh: vi.fn(),
@@ -40,6 +44,9 @@ let requestedUrls: string[] = [];
 beforeEach(() => {
   requestedUrls = [];
   server.use(
+    http.get(`${API_BASE}/users/me/saved-jobs`, () =>
+      HttpResponse.json({ job_ids: [] })
+    ),
     http.get(`${API_BASE}/jobs`, ({ request }) => {
       requestedUrls.push(request.url);
       return HttpResponse.json({

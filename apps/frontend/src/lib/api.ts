@@ -849,6 +849,7 @@ export const savedJobs = {
 // ── Matches ──
 export interface MatchData {
   id: string;
+  created_at: string | null;
   score: number;
   vector_score: number;
   skill_score: number;

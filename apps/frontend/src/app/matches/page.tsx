@@ -2,6 +2,10 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { RefreshCountdownRing } from "@/components/RefreshCountdownRing";
+import { SaveJobButton } from "@/components/SaveJobButton";
+import { formatMatchRelativeTime } from "@/lib/formatMatchRelativeTime";
+import { isJobExpired } from "@/lib/isJobExpired";
 import {
   matches as matchesApi,
   subscription as subscriptionApi,
@@ -51,6 +55,9 @@ function buildApplyHref(job: MatchData["job"]): string | null {
 // Human-friendly tier label. Free → "Free", super_standard → "Super",
 // etc. Falls back to the raw key if we don't recognize it so we don't
 // hide unknown tiers entirely.
+const MATCHES_CACHE_KEY = "zedapply_matches_cache_v1";
+const REFRESH_MAX_WAIT_MS = 30_000;
+
 const TIER_LABELS: Record<string, string> = {
   free: "Free",
   starter: "Starter",
@@ -86,6 +93,8 @@ export default function MatchesPage() {
   }>({});
   const [autoTriggering, setAutoTriggering] = useState(false);
   const autoTriggeredRef = useRef(false);
+  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const refreshStartedAtRef = useRef<number | null>(null);
 
   const loadMatches = useCallback(async (authToken: string) => {
     const [matchesRes, subRes, prefsRes, autoPrefsRes] = await Promise.allSettled([
@@ -281,6 +290,15 @@ export default function MatchesPage() {
       router.push("/auth");
       return;
     }
+    try {
+      const cached = sessionStorage.getItem(MATCHES_CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached) as MatchListResponse;
+        if (parsed?.matches) setData(parsed);
+      }
+    } catch {
+      /* ignore corrupt cache */
+    }
     loadMatches(token).then(async (result) => {
       if (result.unauthorized) {
         logout();
@@ -311,7 +329,18 @@ export default function MatchesPage() {
     }).finally(() => setLoading(false));
   }, [token, isAuthenticated, authLoading, router, logout, loadMatches]);
 
-  if (loading || authLoading) {
+  useEffect(() => {
+    if (!data) return;
+    try {
+      sessionStorage.setItem(MATCHES_CACHE_KEY, JSON.stringify(data));
+    } catch {
+      /* quota exceeded — non-fatal */
+    }
+  }, [data]);
+
+  const showInitialSkeleton = (loading || authLoading) && !data;
+
+  if (showInitialSkeleton) {
     // Skeleton mirrors the real layout: header headline + quota card,
     // filter/sort row, then 3 match cards with the auto/1fr/auto grid
     // (circular score badge · title+meta · button stack). Same outer
@@ -678,7 +707,7 @@ export default function MatchesPage() {
           <button
             onClick={handleRefreshMatches}
             disabled={refreshing || refreshCooldown}
-            className="btn btn-sm"
+            className="btn btn-sm flex items-center gap-2"
             style={{
               background: "var(--green-700)",
               color: "#faf7f2",
@@ -686,8 +715,27 @@ export default function MatchesPage() {
               cursor: refreshing || refreshCooldown ? "not-allowed" : "pointer",
             }}
           >
-            <Icon name="refresh" size={13} />
-            {refreshing ? "Refreshing\u2026" : "Refresh matches"}
+            {refreshing && refreshCountdown !== null ? (
+              <RefreshCountdownRing
+                totalSeconds={refreshCountdownTotal}
+                remainingSeconds={refreshCountdown}
+                size={36}
+              />
+            ) : (
+              <Icon name="refresh" size={13} />
+            )}
+            <span className="flex flex-col items-start leading-tight">
+              <span>
+                {refreshing
+                  ? refreshStatusText ?? "Refreshing\u2026"
+                  : "Refresh matches"}
+              </span>
+              {refreshing && refreshCountdown !== null && !refreshStatusText && (
+                <span className="font-mono text-[10px] opacity-90">
+                  ~{refreshCountdown}s remaining
+                </span>
+              )}
+            </span>
           </button>
         </div>
       </div>

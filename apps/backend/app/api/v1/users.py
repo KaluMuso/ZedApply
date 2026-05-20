@@ -73,3 +73,19 @@ async def update_auto_match_preferences(
         raise HTTPException(status_code=422, detail="No fields to update")
     supabase.table("users").update(update_data).eq("id", user_id).execute()
     return await get_auto_match_preferences(user_id, supabase)
+
+
+@router.get("/me/saved-jobs", response_model=SavedJobList)
+async def list_saved_jobs(
+    user_id: str = Depends(get_current_user_id),
+    supabase=Depends(get_supabase),
+):
+    result = (
+        supabase.table("saved_jobs")
+        .select("job_id")
+        .eq("user_id", user_id)
+        .order("saved_at", desc=True)
+        .execute()
+    )
+    job_ids = [row["job_id"] for row in (result.data or [])]
+    return SavedJobList(job_ids=job_ids)
