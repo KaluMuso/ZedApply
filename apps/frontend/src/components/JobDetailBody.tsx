@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { SaveJobButton } from "@/components/SaveJobButton";
 import { Avatar } from "@/components/ui/Avatar";
-import { SaveJobButton } from "@/components/SaveJobButton";
 import type { Job } from "@/lib/api";
 import { formatJobSource } from "@/lib/jobSource";
 import { splitDescriptionChunks } from "@/lib/jobDescription";

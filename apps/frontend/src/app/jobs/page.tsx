@@ -64,8 +64,8 @@ const WORK_ARRANGEMENT_OPTIONS: { value: "" | WorkArrangement; label: string }[]
 // once Path B (scraper + admin-wizard backfill that populates the
 // columns) ships, then this flag can be removed entirely.
 const FILTERS_AVAILABLE = {
-  employmentType: false,
-  workArrangement: false,
+  employmentType: true,
+  workArrangement: true,
 } as const;
 
 // Curated chip-row of skills most commonly tagged on Zambian listings.
@@ -308,15 +308,6 @@ export default function JobsPage() {
       document.body.style.overflow = prev;
     };
   }, [selectedJob]);
-
-  const hasActiveFilters = Boolean(
-    searchInput ||
-      searchQuery ||
-      location ||
-      selectedSkills.length > 0 ||
-      employmentType ||
-      workArrangement,
-  );
 
   const hasActiveFilters =
     Boolean(searchQuery || searchInput || location) ||

@@ -56,7 +56,7 @@ export function CountdownRing({ phase, total, secondsLeft }: CountdownRingProps)
             transformOrigin: "50% 50%",
             transition:
               phase === "countdown"
-                ? "stroke-dashoffset 0.35s linear"
+                ? "stroke-dashoffset 0.95s linear"
                 : "stroke-dashoffset 0.6s ease",
           }}
         />
