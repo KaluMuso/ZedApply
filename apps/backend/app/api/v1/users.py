@@ -1,10 +1,36 @@
 """User account preference routes."""
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import ValidationError
 
 from app.core.deps import get_current_user_id, get_supabase
+from app.schemas.saved_jobs import SavedJobsList
 from app.schemas.user import AutoMatchPreferences, AutoMatchPreferencesUpdate, NotificationChannels
+from app.services.job_hydration import hydrate_job_row
 
 router = APIRouter(prefix="/users", tags=["Users"])
+
+
+@router.get("/me/saved-jobs", response_model=SavedJobsList)
+async def list_saved_jobs(
+    user_id: str = Depends(get_current_user_id),
+    supabase=Depends(get_supabase),
+):
+    rows = (
+        supabase.table("saved_jobs")
+        .select("saved_at, jobs(*, job_skills(skills(name)))")
+        .eq("user_id", user_id)
+        .order("saved_at", desc=True)
+        .execute()
+    )
+    jobs_out = []
+    for row in rows.data or []:
+        nested = row.get("jobs")
+        if isinstance(nested, dict):
+            try:
+                jobs_out.append(hydrate_job_row(nested))
+            except ValidationError:
+                continue
+    return SavedJobsList(jobs=jobs_out)
 
 
 def _channels(raw: object) -> NotificationChannels:

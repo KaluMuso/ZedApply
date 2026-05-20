@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { SaveJobButton } from "@/components/SaveJobButton";
 import { Icon } from "@/components/ui/Icon";
 import { Avatar } from "@/components/ui/Avatar";
 import { formatJobSource } from "@/lib/jobSource";
@@ -36,6 +37,11 @@ interface JobCardProps {
   matchScore?: number;
   matchedSkills?: string[];
   onClick?: () => void;
+  /** When set with `id`, shows save / unsave (guests get a sign-in toast). */
+  saveToken?: string | null;
+  /** Whether this job is in the caller's saved list (from GET /users/me/saved-jobs). */
+  jobSaved?: boolean;
+  onSaveChange?: (jobId: string, nextSaved: boolean) => void;
 }
 
 function MatchPill({ score }: { score: number }) {
@@ -113,6 +119,9 @@ export function JobCard({
   matchScore,
   matchedSkills = [],
   onClick,
+  saveToken,
+  jobSaved = false,
+  onSaveChange,
 }: JobCardProps) {
   const matchedSet = new Set(matchedSkills.map((s) => s.toLowerCase()));
 
@@ -236,16 +245,25 @@ export function JobCard({
 
       {id && (
         <div
-          className="mt-4 pt-3 flex items-center justify-end"
+          className="mt-4 pt-3 flex items-center justify-between gap-2"
           style={{ borderTop: "1px solid var(--line)" }}
         >
+          {saveToken !== undefined && (
+            <SaveJobButton
+              jobId={id}
+              saved={jobSaved}
+              token={saveToken}
+              className="btn btn-ghost btn-sm shrink-0"
+              onChange={onSaveChange}
+            />
+          )}
           <Link
             href={`/jobs/${id}`}
             onClick={(e) => e.stopPropagation()}
             // Same stop pattern for keyboard: don't let Enter on the link
             // bubble up and re-trigger the card's drawer-open handler.
             onKeyDown={(e) => e.stopPropagation()}
-            className="text-sm font-medium inline-flex items-center gap-1 hover:underline"
+            className="text-sm font-medium inline-flex items-center gap-1 hover:underline ml-auto"
             style={{ color: "var(--copper-500)" }}
           >
             View full details <Icon name="arrowRight" size={13} />

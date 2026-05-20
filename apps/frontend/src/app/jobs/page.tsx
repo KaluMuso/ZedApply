@@ -5,10 +5,12 @@ import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import {
   jobs as jobsApi,
+  savedJobs,
   type Job,
   type EmploymentType,
   type WorkArrangement,
 } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { JobCard } from "@/components/JobCard";
 import { JobDetailBody } from "@/components/JobDetailBody";
 import { Icon } from "@/components/ui/Icon";
@@ -101,6 +103,9 @@ export default function JobsPage() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { token } = useAuth();
+
+  const [savedJobIds, setSavedJobIds] = useState<Set<string>>(() => new Set());
 
   const [jobsList, setJobsList] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
@@ -124,6 +129,25 @@ export default function JobsPage() {
 
   const drawerRef = useRef<HTMLDivElement>(null);
   const lastTriggerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!token) {
+      setSavedJobIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    savedJobs
+      .list(token)
+      .then((res) => {
+        if (!cancelled) setSavedJobIds(new Set(res.jobs.map((j) => j.id)));
+      })
+      .catch(() => {
+        if (!cancelled) setSavedJobIds(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   // Debounce searchInput → searchQuery (300ms). Page reset to 1 when the
   // committed query changes so the user doesn't get a confusing "page 5 of
@@ -239,14 +263,14 @@ export default function JobsPage() {
     };
   }, [selectedJob]);
 
-  // Submitting the form is a no-op shortcut to flush the debounce — useful
-  // if the user hits Enter while still typing. We just commit the input
-  // immediately rather than waiting 300ms.
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSearchQuery(searchInput);
-    setPage(1);
-  };
+  const hasActiveFilters = Boolean(
+    searchInput ||
+      searchQuery ||
+      location ||
+      selectedSkills.length > 0 ||
+      employmentType ||
+      workArrangement,
+  );
 
   const resetFilters = () => {
     setSearchInput("");
@@ -287,8 +311,8 @@ export default function JobsPage() {
       </div>
 
       {/* Filter bar */}
-      <form
-        onSubmit={handleSearch}
+      {/* Filter bar — search is debounced (300ms); no submit button. */}
+      <div
         className="sticky top-[65px] z-30 -mx-6 px-6 py-4 mb-6 flex flex-col md:flex-row gap-3 items-stretch md:items-center"
         style={{
           background: "rgba(250,247,242,0.9)",
@@ -306,6 +330,13 @@ export default function JobsPage() {
             type="text"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                setSearchQuery(searchInput);
+                setPage(1);
+              }
+            }}
             placeholder="Search jobs, skills, companies..."
             className="field pl-10"
             style={{ height: 44 }}
@@ -391,10 +422,15 @@ export default function JobsPage() {
           </select>
         )}
 
-        <button type="submit" className="btn btn-primary">
-          <Icon name="search" size={16} /> Search
+        <button
+          type="button"
+          className="btn btn-ghost"
+          disabled={!hasActiveFilters}
+          onClick={resetFilters}
+        >
+          <Icon name="x" size={14} /> Clear filters
         </button>
-      </form>
+      </div>
 
       {/* Skills chip row — single-click filter by common Zambian job
           areas. Selected chips are echoed back to the backend's
@@ -501,6 +537,16 @@ export default function JobsPage() {
                 salaryMax={job.salary_max}
                 source={job.source}
                 sourceUrl={job.source_url}
+                saveToken={token}
+                jobSaved={savedJobIds.has(job.id)}
+                onSaveChange={(jobId, next) => {
+                  setSavedJobIds((prev) => {
+                    const n = new Set(prev);
+                    if (next) n.add(jobId);
+                    else n.delete(jobId);
+                    return n;
+                  });
+                }}
                 onClick={() =>
                   // For keyboard a11y: stash the currently-focused element
                   // (which IS the card the user just activated via Enter/
@@ -565,7 +611,20 @@ export default function JobsPage() {
               </div>
             ) : (
               <>
-                <JobDetailBody job={selectedJob} onClose={closeJob} />
+                <JobDetailBody
+                  job={selectedJob}
+                  onClose={closeJob}
+                  authToken={token}
+                  jobSaved={savedJobIds.has(selectedJob.id)}
+                  onSavedChange={(next) => {
+                    setSavedJobIds((prev) => {
+                      const n = new Set(prev);
+                      if (next) n.add(selectedJob.id);
+                      else n.delete(selectedJob.id);
+                      return n;
+                    });
+                  }}
+                />
                 {/* Shareable permalink — styled as a ghost button so it
                     reads as a real action, not legalese small-print. */}
                 <div className="px-6 md:px-8 pb-8 -mt-2">
