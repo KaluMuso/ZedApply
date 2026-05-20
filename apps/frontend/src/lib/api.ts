@@ -37,6 +37,10 @@ async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T>
     throw new ApiError(res.status, body.detail || body.title || "Unknown error");
   }
 
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
   return res.json() as Promise<T>;
 }
 
@@ -830,9 +834,22 @@ export const jobs = {
   },
 };
 
+export const savedJobs = {
+  list: (token: string) =>
+    apiFetch<{ job_ids: string[] }>("/users/me/saved-jobs", { token }),
+  save: (token: string, jobId: string) =>
+    apiFetch<{ saved: boolean; job_id: string }>(`/jobs/${jobId}/save`, {
+      method: "POST",
+      token,
+    }),
+  unsave: (token: string, jobId: string) =>
+    apiFetch<void>(`/jobs/${jobId}/save`, { method: "DELETE", token }),
+};
+
 // ── Matches ──
 export interface MatchData {
   id: string;
+  created_at: string | null;
   score: number;
   vector_score: number;
   skill_score: number;

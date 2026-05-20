@@ -2,6 +2,10 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { RefreshCountdownRing } from "@/components/RefreshCountdownRing";
+import { SaveJobButton } from "@/components/SaveJobButton";
+import { formatMatchRelativeTime } from "@/lib/formatMatchRelativeTime";
+import { isJobExpired } from "@/lib/isJobExpired";
 import {
   matches as matchesApi,
   subscription as subscriptionApi,
@@ -46,6 +50,9 @@ function buildApplyHref(job: MatchData["job"]): string | null {
 // Human-friendly tier label. Free → "Free", super_standard → "Super",
 // etc. Falls back to the raw key if we don't recognize it so we don't
 // hide unknown tiers entirely.
+const MATCHES_CACHE_KEY = "zedapply_matches_cache_v1";
+const REFRESH_MAX_WAIT_MS = 30_000;
+
 const TIER_LABELS: Record<string, string> = {
   free: "Free",
   starter: "Starter",
@@ -68,8 +75,13 @@ export default function MatchesPage() {
   const [prepFor, setPrepFor] = useState<MatchData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshCooldown, setRefreshCooldown] = useState(false);
+  const [refreshCountdown, setRefreshCountdown] = useState<number | null>(null);
+  const [refreshCountdownTotal, setRefreshCountdownTotal] = useState(15);
+  const [refreshStatusText, setRefreshStatusText] = useState<string | null>(null);
   const [autoTriggering, setAutoTriggering] = useState(false);
   const autoTriggeredRef = useRef(false);
+  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const refreshStartedAtRef = useRef<number | null>(null);
 
   const loadMatches = useCallback(async (authToken: string) => {
     const [matchesRes, subRes, prefsRes, autoPrefsRes] = await Promise.allSettled([
@@ -98,21 +110,81 @@ export default function MatchesPage() {
     } as const;
   }, []);
 
-  const handleRefreshMatches = useCallback(async () => {
-    if (!token || refreshing || refreshCooldown) return;
-    setRefreshing(true);
-    try {
-      const res = await matchesApi.trigger(token);
-      const waitMs = (res.estimated_seconds ?? 15) * 1000;
-      await new Promise((r) => setTimeout(r, waitMs));
-      const result = await loadMatches(token);
+  const clearRefreshTimers = useCallback(() => {
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+  }, []);
+
+  const finishRefresh = useCallback(
+    (
+      result: Awaited<ReturnType<typeof loadMatches>>,
+      preRefreshIds: Set<string>
+    ) => {
       if (result.unauthorized) {
         logout();
         router.replace("/auth?next=/matches");
         return;
       }
-      const newCount = result.matches?.matches.length ?? 0;
-      toast.success(`Matches refreshed — ${newCount} matches scored.`);
+      const nextMatches = result.matches?.matches ?? [];
+      const newItems = nextMatches.filter((m) => !preRefreshIds.has(m.id));
+      if (newItems.length > 0) {
+        toast.success(`${newItems.length} new matches scored.`);
+      } else {
+        toast.success("No new matches this cycle — your queue is up to date.");
+      }
+    },
+    [logout, router]
+  );
+
+  const handleRefreshMatches = useCallback(async () => {
+    if (!token || refreshing || refreshCooldown) return;
+
+    const preRefreshIds = new Set(data?.matches.map((m) => m.id) ?? []);
+    refreshStartedAtRef.current = Date.now();
+    clearRefreshTimers();
+    setRefreshing(true);
+    setRefreshStatusText(null);
+
+    try {
+      const res = await matchesApi.trigger(token);
+      const estimated = res.estimated_seconds ?? 15;
+      setRefreshCountdownTotal(estimated);
+      setRefreshCountdown(estimated);
+
+      await new Promise<void>((resolve) => {
+        countdownTimerRef.current = setInterval(() => {
+          setRefreshCountdown((prev) => {
+            if (prev === null || prev <= 1) {
+              clearRefreshTimers();
+              resolve();
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      });
+
+      setRefreshStatusText("Still working…");
+      const fetchPromise = loadMatches(token);
+      const timeoutPromise = new Promise<"timeout">((resolve) => {
+        const elapsed = Date.now() - (refreshStartedAtRef.current ?? Date.now());
+        const remaining = Math.max(0, REFRESH_MAX_WAIT_MS - elapsed);
+        setTimeout(() => resolve("timeout"), remaining);
+      });
+
+      const raced = await Promise.race([
+        fetchPromise.then((r) => ({ kind: "done" as const, result: r })),
+        timeoutPromise.then(() => ({ kind: "timeout" as const })),
+      ]);
+
+      if (raced.kind === "done") {
+        finishRefresh(raced.result, preRefreshIds);
+      } else {
+        const result = await fetchPromise;
+        finishRefresh(result, preRefreshIds);
+      }
     } catch (e: unknown) {
       if (e instanceof ApiError) {
         if (e.status === 403) toast.error("Monthly match quota used up.");
@@ -123,11 +195,24 @@ export default function MatchesPage() {
         toast.error("Couldn't refresh matches. Try again in a moment.");
       }
     } finally {
+      clearRefreshTimers();
       setRefreshing(false);
+      setRefreshCountdown(null);
+      setRefreshStatusText(null);
       setRefreshCooldown(true);
       setTimeout(() => setRefreshCooldown(false), 60_000);
     }
-  }, [token, refreshing, refreshCooldown, loadMatches, logout, router]);
+  }, [
+    token,
+    refreshing,
+    refreshCooldown,
+    data?.matches,
+    loadMatches,
+    clearRefreshTimers,
+    finishRefresh,
+  ]);
+
+  useEffect(() => () => clearRefreshTimers(), [clearRefreshTimers]);
 
   const toggleAutoMatch = useCallback(async () => {
     if (!token || !autoPrefs || savingAutoPrefs) return;
@@ -149,6 +234,15 @@ export default function MatchesPage() {
     if (!isAuthenticated || !token) {
       router.push("/auth");
       return;
+    }
+    try {
+      const cached = sessionStorage.getItem(MATCHES_CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached) as MatchListResponse;
+        if (parsed?.matches) setData(parsed);
+      }
+    } catch {
+      /* ignore corrupt cache */
     }
     loadMatches(token).then(async (result) => {
       if (result.unauthorized) {
@@ -180,7 +274,18 @@ export default function MatchesPage() {
     }).finally(() => setLoading(false));
   }, [token, isAuthenticated, authLoading, router, logout, loadMatches]);
 
-  if (loading || authLoading) {
+  useEffect(() => {
+    if (!data) return;
+    try {
+      sessionStorage.setItem(MATCHES_CACHE_KEY, JSON.stringify(data));
+    } catch {
+      /* quota exceeded — non-fatal */
+    }
+  }, [data]);
+
+  const showInitialSkeleton = (loading || authLoading) && !data;
+
+  if (showInitialSkeleton) {
     // Skeleton mirrors the real layout: header headline + quota card,
     // filter/sort row, then 3 match cards with the auto/1fr/auto grid
     // (circular score badge · title+meta · button stack). Same outer
@@ -527,7 +632,7 @@ export default function MatchesPage() {
           <button
             onClick={handleRefreshMatches}
             disabled={refreshing || refreshCooldown}
-            className="btn btn-sm"
+            className="btn btn-sm flex items-center gap-2"
             style={{
               background: "var(--green-700)",
               color: "#faf7f2",
@@ -535,8 +640,27 @@ export default function MatchesPage() {
               cursor: refreshing || refreshCooldown ? "not-allowed" : "pointer",
             }}
           >
-            <Icon name="refresh" size={13} />
-            {refreshing ? "Refreshing\u2026" : "Refresh matches"}
+            {refreshing && refreshCountdown !== null ? (
+              <RefreshCountdownRing
+                totalSeconds={refreshCountdownTotal}
+                remainingSeconds={refreshCountdown}
+                size={36}
+              />
+            ) : (
+              <Icon name="refresh" size={13} />
+            )}
+            <span className="flex flex-col items-start leading-tight">
+              <span>
+                {refreshing
+                  ? refreshStatusText ?? "Refreshing\u2026"
+                  : "Refresh matches"}
+              </span>
+              {refreshing && refreshCountdown !== null && !refreshStatusText && (
+                <span className="font-mono text-[10px] opacity-90">
+                  ~{refreshCountdown}s remaining
+                </span>
+              )}
+            </span>
           </button>
         </div>
       </div>
@@ -576,8 +700,27 @@ export default function MatchesPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-3.5">
-          {filtered.map((match) => (
-            <article key={match.id} className="card overflow-hidden">
+          {filtered.map((match) => {
+            const expired = isJobExpired(match.job.closing_date);
+            const matchedLabel = formatMatchRelativeTime(match.created_at);
+            return (
+            <article
+              key={match.id}
+              className="card overflow-hidden relative"
+              style={{ opacity: expired ? 0.5 : 1 }}
+            >
+              {expired && (
+                <span
+                  className="absolute top-3 right-3 tag tag-mono text-[10px] font-semibold"
+                  style={{
+                    background: "var(--bg-2)",
+                    color: "var(--muted)",
+                    border: "1px solid var(--line-2)",
+                  }}
+                >
+                  EXPIRED
+                </span>
+              )}
               <div
                 className="match-row p-5 sm:p-6 grid gap-6 items-center"
                 style={{ gridTemplateColumns: "auto 1fr auto" }}
@@ -615,6 +758,14 @@ export default function MatchesPage() {
                   >
                     {match.job.title}
                   </Link>
+                  {matchedLabel && (
+                    <p
+                      className="text-xs mt-1.5"
+                      style={{ color: "var(--muted)" }}
+                    >
+                      {matchedLabel}
+                    </p>
+                  )}
 
                   {/* Match explainability — tells the user WHY the score is
                       what it is. When matched_skills is non-empty, surface
@@ -663,32 +814,39 @@ export default function MatchesPage() {
                 </div>
 
                 <div className="match-actions flex flex-col gap-2 items-end">
-                  {/* Apply button uses the same helper as the public
-                      drawer / standalone job page. Falls back to mailto
-                      then source listing; disables when nothing is
-                      available so we never ship a dead button. */}
-                  {(() => {
-                    const href = buildApplyHref(match.job);
-                    return href ? (
-                      <a
-                        href={href}
-                        target={href.startsWith("mailto:") ? undefined : "_blank"}
-                        rel={href.startsWith("mailto:") ? undefined : "noopener noreferrer"}
-                        className="btn btn-primary btn-sm w-40"
-                      >
-                        Apply now <Icon name="external" size={13} />
-                      </a>
-                    ) : (
-                      <button
-                        className="btn btn-primary btn-sm w-40"
-                        disabled
-                        title="No application link or email on this listing"
-                        type="button"
-                      >
-                        Apply unavailable
-                      </button>
-                    );
-                  })()}
+                  {expired ? (
+                    <button
+                      className="btn btn-primary btn-sm w-40"
+                      disabled
+                      type="button"
+                    >
+                      Application closed
+                    </button>
+                  ) : (
+                    (() => {
+                      const href = buildApplyHref(match.job);
+                      return href ? (
+                        <a
+                          href={href}
+                          target={href.startsWith("mailto:") ? undefined : "_blank"}
+                          rel={href.startsWith("mailto:") ? undefined : "noopener noreferrer"}
+                          className="btn btn-primary btn-sm w-40"
+                        >
+                          Apply now <Icon name="external" size={13} />
+                        </a>
+                      ) : (
+                        <button
+                          className="btn btn-primary btn-sm w-40"
+                          disabled
+                          title="No application link or email on this listing"
+                          type="button"
+                        >
+                          Apply unavailable
+                        </button>
+                      );
+                    })()
+                  )}
+                  <SaveJobButton jobId={match.job.id} className="btn btn-ghost btn-sm w-40" />
                   {/* Interview Prep is Super Standard only (backend enforced
                       in interview_prep.py). Mirror that gate here so users
                       below SS see a clear upgrade affordance instead of
@@ -821,7 +979,8 @@ export default function MatchesPage() {
                 </div>
               </div>
             </article>
-          ))}
+          );
+          })}
         </div>
       )}
 

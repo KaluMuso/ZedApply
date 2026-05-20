@@ -4,8 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 
 import MatchesPage from "../page";
-import { AuthProvider } from "@/lib/auth";
 import { server } from "@/test/msw/server";
+import { renderWithProviders } from "@/test/renderWithProviders";
 
 class MockIntersectionObserver {
   observe() { /* noop */ }
@@ -118,6 +118,9 @@ function withHandlers(opts: {
         { status: triggerStatus }
       );
     }),
+    http.get(`${API}/users/me/saved-jobs`, () =>
+      HttpResponse.json({ job_ids: [] })
+    ),
   );
 }
 
@@ -133,16 +136,16 @@ afterEach(() => {
 describe("Refresh button", () => {
   it("renders when matches exist", async () => {
     withHandlers({ matches: [MATCH_OBJ], cvUploaded: false });
-    render(<AuthProvider><MatchesPage /></AuthProvider>);
-    const buttons = await screen.findAllByText("Refresh matches", {}, { timeout: 5000 });
+    renderWithProviders(<MatchesPage />);
+    const buttons = await screen.findAllByRole("button", { name: /refresh matches/i }, { timeout: 5000 });
     expect(buttons.length).toBeGreaterThan(0);
   });
 
   it("calls trigger on click", async () => {
     let triggered = false;
     withHandlers({ matches: [MATCH_OBJ], onTrigger: () => { triggered = true; } });
-    render(<AuthProvider><MatchesPage /></AuthProvider>);
-    const buttons = await screen.findAllByText("Refresh matches", {}, { timeout: 5000 });
+    renderWithProviders(<MatchesPage />);
+    const buttons = await screen.findAllByRole("button", { name: /refresh matches/i }, { timeout: 5000 });
     await userEvent.click(buttons[0]);
     await waitFor(() => expect(triggered).toBe(true));
   });
@@ -151,14 +154,14 @@ describe("Refresh button", () => {
     withHandlers({ matches: [MATCH_OBJ] });
     server.use(
       http.post(`${API}/matches/trigger`, async () => {
-        await new Promise((r) => setTimeout(r, 200));
-        return HttpResponse.json({ message: "ok", estimated_seconds: 0 });
+        await new Promise((r) => setTimeout(r, 400));
+        return HttpResponse.json({ message: "ok", estimated_seconds: 2 });
       }),
     );
-    render(<AuthProvider><MatchesPage /></AuthProvider>);
-    const buttons = await screen.findAllByText("Refresh matches", {}, { timeout: 5000 });
+    renderWithProviders(<MatchesPage />);
+    const buttons = await screen.findAllByRole("button", { name: /refresh matches/i }, { timeout: 5000 });
     await userEvent.click(buttons[0]);
-    const refreshingBtns = screen.getAllByText("Refreshing\u2026");
+    const refreshingBtns = screen.getAllByRole("button", { name: /refreshing/i });
     expect(refreshingBtns[0]).toBeDisabled();
   });
 });
@@ -167,14 +170,14 @@ describe("Auto-trigger", () => {
   it("fires when empty matches + CV uploaded", async () => {
     let triggered = false;
     withHandlers({ matches: [], cvUploaded: true, onTrigger: () => { triggered = true; } });
-    render(<AuthProvider><MatchesPage /></AuthProvider>);
+    renderWithProviders(<MatchesPage />);
     await waitFor(() => expect(triggered).toBe(true), { timeout: 5000 });
   });
 
   it("does NOT fire when no CV", async () => {
     let triggered = false;
     withHandlers({ matches: [], cvUploaded: false, onTrigger: () => { triggered = true; } });
-    render(<AuthProvider><MatchesPage /></AuthProvider>);
+    renderWithProviders(<MatchesPage />);
     await screen.findByText("No matches yet", {}, { timeout: 5000 });
     expect(triggered).toBe(false);
   });
@@ -182,7 +185,7 @@ describe("Auto-trigger", () => {
   it("does NOT fire when matches exist", async () => {
     let triggered = false;
     withHandlers({ matches: [MATCH_OBJ], cvUploaded: true, onTrigger: () => { triggered = true; } });
-    render(<AuthProvider><MatchesPage /></AuthProvider>);
+    renderWithProviders(<MatchesPage />);
     await screen.findByText("Engineer", {}, { timeout: 5000 });
     expect(triggered).toBe(false);
   });
@@ -197,7 +200,7 @@ describe("Auto-match toggle", () => {
         patched = body;
       },
     });
-    render(<AuthProvider><MatchesPage /></AuthProvider>);
+    renderWithProviders(<MatchesPage />);
     const toggle = await screen.findByLabelText("Auto-match", {}, { timeout: 5000 });
     await userEvent.click(toggle);
     await waitFor(() => {

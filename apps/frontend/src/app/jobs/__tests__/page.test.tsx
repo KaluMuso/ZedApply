@@ -16,10 +16,14 @@ vi.mock("@/components/ui/Counter", () => ({
 // next/navigation isn't available in the jsdom env. Mock the surface
 // the page uses: useRouter().replace, usePathname, useSearchParams.
 vi.mock("next/navigation", () => {
-  const params = new URLSearchParams();
+  let params = new URLSearchParams();
+  const replace = vi.fn((href: string) => {
+    const query = href.includes("?") ? href.split("?")[1] : "";
+    params = new URLSearchParams(query);
+  });
   return {
     useRouter: () => ({
-      replace: vi.fn(),
+      replace,
       push: vi.fn(),
       prefetch: vi.fn(),
       refresh: vi.fn(),
@@ -39,6 +43,9 @@ let requestedUrls: string[] = [];
 beforeEach(() => {
   requestedUrls = [];
   server.use(
+    http.get(`${API_BASE}/users/me/saved-jobs`, () =>
+      HttpResponse.json({ job_ids: [] })
+    ),
     http.get(`${API_BASE}/jobs`, ({ request }) => {
       requestedUrls.push(request.url);
       return HttpResponse.json({
@@ -94,20 +101,44 @@ describe("/jobs page filters", () => {
     expect(url.searchParams.get("work_arrangement")).toBeNull();
   });
 
-  it("submitting the search form forwards `search` to the API", async () => {
+  it("debounced search forwards `search` to the API after 300ms", async () => {
     const user = userEvent.setup();
     render(<JobsPage />);
     await waitFor(() => expect(requestedUrls.length).toBeGreaterThan(0));
 
     await user.type(
       screen.getByRole("textbox", { name: /search jobs/i }),
-      "accountant",
+      "a",
     );
-    await user.click(screen.getByRole("button", { name: /^search$/i }));
+    const afterFirstKey = requestedUrls.length;
 
-    await waitFor(() => {
-      expect(lastRequest().searchParams.get("search")).toBe("accountant");
-    });
+    await waitFor(
+      () => {
+        expect(lastRequest().searchParams.get("search")).toBe("a");
+      },
+      { timeout: 1500 }
+    );
+    // Debounce batches keystrokes — not one request per character.
+    expect(requestedUrls.length - afterFirstKey).toBeLessThanOrEqual(2);
+  });
+
+  it("shows Clear filters when filters are active", async () => {
+    const user = userEvent.setup();
+    render(<JobsPage />);
+    await waitFor(() => expect(requestedUrls.length).toBeGreaterThan(0));
+
+    expect(
+      screen.queryByRole("button", { name: /clear filters/i })
+    ).not.toBeInTheDocument();
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: /location/i }),
+      "Lusaka",
+    );
+
+    expect(
+      await screen.findByRole("button", { name: /clear filters/i })
+    ).toBeInTheDocument();
   });
 
   it("changing the location dropdown forwards `location`", async () => {

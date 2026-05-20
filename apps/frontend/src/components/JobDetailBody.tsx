@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Avatar } from "@/components/ui/Avatar";
+import { SaveJobButton } from "@/components/SaveJobButton";
 import type { Job } from "@/lib/api";
 import { formatJobSource } from "@/lib/jobSource";
 import { splitDescriptionChunks } from "@/lib/jobDescription";
@@ -479,14 +480,7 @@ export function JobDetailBody({
             Application link unavailable
           </button>
         )}
-        <button
-          className="btn btn-ghost"
-          type="button"
-          aria-label="Save job"
-          title="Save this job (coming soon)"
-        >
-          <Icon name="bookmark" size={16} />
-        </button>
+        {job.id && <SaveJobButton jobId={job.id} stopPropagation={false} />}
       </div>
     </div>
   );

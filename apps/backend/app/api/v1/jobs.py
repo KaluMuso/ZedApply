@@ -5,7 +5,7 @@ import logging
 import re as _re
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from app.core.config import Settings, get_settings
-from app.core.deps import get_supabase, require_admin
+from app.core.deps import get_current_user_id, get_supabase, require_admin
 from app.core.rate_limit import limiter
 from app.schemas.jobs import (
     Job,
@@ -442,6 +442,32 @@ async def get_job(job_id: str, supabase=Depends(get_supabase)):
     j["skills_required"] = skills
     j["skills"] = skills
     return Job(**j)
+
+
+@router.post("/{job_id}/save", status_code=status.HTTP_201_CREATED)
+async def save_job(
+    job_id: str,
+    user_id: str = Depends(get_current_user_id),
+    supabase=Depends(get_supabase),
+):
+    job = supabase.table("jobs").select("id").eq("id", job_id).limit(1).execute()
+    if not job.data:
+        raise HTTPException(status_code=404, detail="Job not found")
+    supabase.table("saved_jobs").upsert(
+        {"user_id": user_id, "job_id": job_id},
+        on_conflict="user_id,job_id",
+    ).execute()
+    return {"saved": True, "job_id": job_id}
+
+
+@router.delete("/{job_id}/save", status_code=status.HTTP_204_NO_CONTENT)
+async def unsave_job(
+    job_id: str,
+    user_id: str = Depends(get_current_user_id),
+    supabase=Depends(get_supabase),
+):
+    supabase.table("saved_jobs").delete().eq("user_id", user_id).eq("job_id", job_id).execute()
+    return None
 
 
 @router.post("", response_model=Job, status_code=status.HTTP_201_CREATED)

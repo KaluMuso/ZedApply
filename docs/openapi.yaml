@@ -1408,6 +1408,49 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Job' }
 
+  /jobs/{job_id}/save:
+    post:
+      operationId: saveJob
+      tags: [Jobs]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: job_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '201':
+          description: Job saved (idempotent)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  saved: { type: boolean }
+                  job_id: { type: string, format: uuid }
+        '404': { description: Job not found }
+    delete:
+      operationId: unsaveJob
+      tags: [Jobs]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: job_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Job removed from saved list }
+
+  /users/me/saved-jobs:
+    get:
+      operationId: listSavedJobs
+      tags: [Users]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_ids:
+                    type: array
+                    items: { type: string, format: uuid }
+
   /matches:
     get:
       operationId: getMatches

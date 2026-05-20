@@ -5,6 +5,7 @@ import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { MobileTabBar } from "@/components/MobileTabBar";
 import { AuthProvider } from "@/lib/auth";
+import { SavedJobsProvider } from "@/lib/SavedJobsProvider";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PWAProvider } from "@/components/PWAProvider";
@@ -113,12 +114,14 @@ export default function RootLayout({
         <ThemeProvider>
           <ErrorBoundary>
             <AuthProvider>
-              <PWAProvider>
-                <Navbar />
-                {children}
-                <Footer />
-                <MobileTabBar />
-              </PWAProvider>
+              <SavedJobsProvider>
+                <PWAProvider>
+                  <Navbar />
+                  {children}
+                  <Footer />
+                  <MobileTabBar />
+                </PWAProvider>
+              </SavedJobsProvider>
             </AuthProvider>
           </ErrorBoundary>
         </ThemeProvider>
