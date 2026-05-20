@@ -12,6 +12,7 @@ import {
   preferencesApi,
   profile as profileApi,
   autoMatchPreferences,
+  savedJobs,
   ApiError,
   type MatchData,
   type MatchListResponse,
@@ -28,6 +29,10 @@ import { Counter } from "@/components/ui/Counter";
 import Link from "next/link";
 import { toast } from "sonner";
 import { InterviewPrepModal } from "./_components/InterviewPrepModal";
+import { CountdownRing } from "@/components/CountdownRing";
+import { SaveJobButton } from "@/components/SaveJobButton";
+import { formatMatchedRelative } from "@/lib/formatMatchedRelative";
+import { isJobPastClosing } from "@/lib/isJobPastClosing";
 
 /**
  * Build the most useful URL for "Apply" — employer page if present, mailto
@@ -75,9 +80,17 @@ export default function MatchesPage() {
   const [prepFor, setPrepFor] = useState<MatchData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshCooldown, setRefreshCooldown] = useState(false);
-  const [refreshCountdown, setRefreshCountdown] = useState<number | null>(null);
-  const [refreshCountdownTotal, setRefreshCountdownTotal] = useState(15);
-  const [refreshStatusText, setRefreshStatusText] = useState<string | null>(null);
+  const [savedJobIds, setSavedJobIds] = useState<Set<string>>(() => new Set());
+  /** UI while POST /matches/trigger + optional wait + refetch */
+  const [refreshRing, setRefreshRing] = useState<{
+    phase: "countdown" | "working";
+    total: number;
+    secondsLeft: number;
+  } | null>(null);
+  const refreshTimersRef = useRef<{
+    tick?: ReturnType<typeof setInterval>;
+    watchdog?: ReturnType<typeof setTimeout>;
+  }>({});
   const [autoTriggering, setAutoTriggering] = useState(false);
   const autoTriggeredRef = useRef(false);
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -110,109 +123,151 @@ export default function MatchesPage() {
     } as const;
   }, []);
 
-  const clearRefreshTimers = useCallback(() => {
-    if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current);
-      countdownTimerRef.current = null;
+  useEffect(() => {
+    if (!token) {
+      setSavedJobIds(new Set());
+      return;
     }
-  }, []);
+    let cancelled = false;
+    savedJobs
+      .list(token)
+      .then((res) => {
+        if (!cancelled) setSavedJobIds(new Set(res.jobs.map((j) => j.id)));
+      })
+      .catch(() => {
+        if (!cancelled) setSavedJobIds(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
-  const finishRefresh = useCallback(
-    (
-      result: Awaited<ReturnType<typeof loadMatches>>,
-      preRefreshIds: Set<string>
-    ) => {
-      if (result.unauthorized) {
-        logout();
-        router.replace("/auth?next=/matches");
-        return;
+  useEffect(
+    () => () => {
+      if (refreshTimersRef.current.tick) {
+        clearInterval(refreshTimersRef.current.tick);
       }
-      const nextMatches = result.matches?.matches ?? [];
-      const newItems = nextMatches.filter((m) => !preRefreshIds.has(m.id));
-      if (newItems.length > 0) {
-        toast.success(`${newItems.length} new matches scored.`);
-      } else {
-        toast.success("No new matches this cycle — your queue is up to date.");
+      if (refreshTimersRef.current.watchdog) {
+        clearTimeout(refreshTimersRef.current.watchdog);
       }
     },
-    [logout, router]
+    [],
   );
 
   const handleRefreshMatches = useCallback(async () => {
     if (!token || refreshing || refreshCooldown) return;
+    const preIds = new Set((data?.matches ?? []).map((m) => m.id));
 
-    const preRefreshIds = new Set(data?.matches.map((m) => m.id) ?? []);
-    refreshStartedAtRef.current = Date.now();
-    clearRefreshTimers();
     setRefreshing(true);
-    setRefreshStatusText(null);
+    setRefreshRing(null);
+    if (refreshTimersRef.current.tick) {
+      clearInterval(refreshTimersRef.current.tick);
+      refreshTimersRef.current.tick = undefined;
+    }
+    if (refreshTimersRef.current.watchdog) {
+      clearTimeout(refreshTimersRef.current.watchdog);
+      refreshTimersRef.current.watchdog = undefined;
+    }
 
+    let total = 15;
     try {
       const res = await matchesApi.trigger(token);
-      const estimated = res.estimated_seconds ?? 15;
-      setRefreshCountdownTotal(estimated);
-      setRefreshCountdown(estimated);
-
-      await new Promise<void>((resolve) => {
-        countdownTimerRef.current = setInterval(() => {
-          setRefreshCountdown((prev) => {
-            if (prev === null || prev <= 1) {
-              clearRefreshTimers();
-              resolve();
-              return 0;
-            }
-            return prev - 1;
-          });
-        }, 1000);
-      });
-
-      setRefreshStatusText("Still working…");
-      const fetchPromise = loadMatches(token);
-      const timeoutPromise = new Promise<"timeout">((resolve) => {
-        const elapsed = Date.now() - (refreshStartedAtRef.current ?? Date.now());
-        const remaining = Math.max(0, REFRESH_MAX_WAIT_MS - elapsed);
-        setTimeout(() => resolve("timeout"), remaining);
-      });
-
-      const raced = await Promise.race([
-        fetchPromise.then((r) => ({ kind: "done" as const, result: r })),
-        timeoutPromise.then(() => ({ kind: "timeout" as const })),
-      ]);
-
-      if (raced.kind === "done") {
-        finishRefresh(raced.result, preRefreshIds);
-      } else {
-        const result = await fetchPromise;
-        finishRefresh(result, preRefreshIds);
-      }
+      total = Math.max(0, res.estimated_seconds ?? 15);
     } catch (e: unknown) {
+      setRefreshing(false);
+      setRefreshRing(null);
       if (e instanceof ApiError) {
         if (e.status === 403) toast.error("Monthly match quota used up.");
         else if (e.status === 422) toast.error("Upload a CV first before matching.");
-        else if (e.status === 429) toast.error("Too many refreshes — try again in a minute.");
-        else toast.error(e.detail || "Couldn't refresh matches. Try again in a moment.");
+        else if (e.status === 429)
+          toast.error("Too many refreshes — try again in a minute.");
+        else
+          toast.error(e.detail || "Couldn't refresh matches. Try again in a moment.");
       } else {
         toast.error("Couldn't refresh matches. Try again in a moment.");
       }
-    } finally {
-      clearRefreshTimers();
-      setRefreshing(false);
-      setRefreshCountdown(null);
-      setRefreshStatusText(null);
-      setRefreshCooldown(true);
-      setTimeout(() => setRefreshCooldown(false), 60_000);
+      return;
     }
-  }, [
-    token,
-    refreshing,
-    refreshCooldown,
-    data?.matches,
-    loadMatches,
-    clearRefreshTimers,
-    finishRefresh,
-  ]);
 
-  useEffect(() => () => clearRefreshTimers(), [clearRefreshTimers]);
+    const runAfterCountdown = async () => {
+      setRefreshRing({ phase: "working", total: total || 15, secondsLeft: 0 });
+
+      const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T> =>
+        new Promise((resolve, reject) => {
+          const to = setTimeout(() => reject(new Error("timeout")), ms);
+          refreshTimersRef.current.watchdog = to;
+          p.then(
+            (v) => {
+              clearTimeout(to);
+              if (refreshTimersRef.current.watchdog === to) {
+                refreshTimersRef.current.watchdog = undefined;
+              }
+              resolve(v);
+            },
+            (err) => {
+              clearTimeout(to);
+              if (refreshTimersRef.current.watchdog === to) {
+                refreshTimersRef.current.watchdog = undefined;
+              }
+              reject(err);
+            },
+          );
+        });
+
+      try {
+        const result = await withTimeout(loadMatches(token), 30_000);
+        if (result.unauthorized) {
+          logout();
+          router.replace("/auth?next=/matches");
+          return;
+        }
+        const next = result.matches?.matches ?? [];
+        const newOnes = next.filter((m) => !preIds.has(m.id));
+        const n = newOnes.length;
+        if (n > 0) {
+          toast.success(`${n} new matches scored.`);
+        } else {
+          toast.message("No new matches this cycle — your queue is up to date.");
+        }
+      } catch (err: unknown) {
+        if (err instanceof Error && err.message === "timeout") {
+          toast.error("Still working… timed out. Try Refresh again.");
+        } else {
+          toast.error("Couldn't load refreshed matches.");
+        }
+      } finally {
+        setRefreshRing(null);
+        setRefreshing(false);
+        setRefreshCooldown(true);
+        setTimeout(() => setRefreshCooldown(false), 60_000);
+      }
+    };
+
+    if (total <= 0) {
+      setRefreshRing({ phase: "working", total: 15, secondsLeft: 0 });
+      await runAfterCountdown();
+      return;
+    }
+
+    let elapsed = 0;
+    setRefreshRing({ phase: "countdown", total, secondsLeft: total });
+    await new Promise<void>((resolve) => {
+      refreshTimersRef.current.tick = setInterval(() => {
+        elapsed += 1;
+        const left = Math.max(0, total - elapsed);
+        setRefreshRing({ phase: left > 0 ? "countdown" : "working", total, secondsLeft: left });
+        if (elapsed >= total) {
+          if (refreshTimersRef.current.tick) {
+            clearInterval(refreshTimersRef.current.tick);
+            refreshTimersRef.current.tick = undefined;
+          }
+          resolve();
+        }
+      }, 1000);
+    });
+
+    await runAfterCountdown();
+  }, [token, refreshing, refreshCooldown, data, loadMatches, logout, router]);
 
   const toggleAutoMatch = useCallback(async () => {
     if (!token || !autoPrefs || savingAutoPrefs) return;
@@ -604,7 +659,7 @@ export default function MatchesPage() {
             </button>
           ))}
         </div>
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2 items-center flex-wrap justify-end">
           <span
             className="font-mono text-[11px]"
             style={{ color: "var(--muted)" }}
@@ -629,6 +684,26 @@ export default function MatchesPage() {
               {l}
             </button>
           ))}
+          {refreshRing && (
+            <div
+              className="flex flex-col items-center gap-1 px-1"
+              aria-live="polite"
+            >
+              <CountdownRing
+                phase={refreshRing.phase}
+                total={refreshRing.total}
+                secondsLeft={refreshRing.secondsLeft}
+              />
+              <span
+                className="text-[11px] font-mono text-center leading-tight"
+                style={{ color: "var(--muted)", maxWidth: 100 }}
+              >
+                {refreshRing.phase === "working"
+                  ? "Still working…"
+                  : `~${refreshRing.secondsLeft}s remaining`}
+              </span>
+            </div>
+          )}
           <button
             onClick={handleRefreshMatches}
             disabled={refreshing || refreshCooldown}
@@ -701,8 +776,7 @@ export default function MatchesPage() {
       ) : (
         <div className="flex flex-col gap-3.5">
           {filtered.map((match) => {
-            const expired = isJobExpired(match.job.closing_date);
-            const matchedLabel = formatMatchRelativeTime(match.created_at);
+            const expired = isJobPastClosing(match.job.closing_date);
             return (
             <article
               key={match.id}
@@ -711,11 +785,10 @@ export default function MatchesPage() {
             >
               {expired && (
                 <span
-                  className="absolute top-3 right-3 tag tag-mono text-[10px] font-semibold"
+                  className="absolute top-3 right-3 z-10 px-2 py-0.5 rounded text-[10px] font-bold font-mono tracking-wide"
                   style={{
-                    background: "var(--bg-2)",
-                    color: "var(--muted)",
-                    border: "1px solid var(--line-2)",
+                    background: "var(--muted)",
+                    color: "#faf7f2",
                   }}
                 >
                   EXPIRED
@@ -758,14 +831,14 @@ export default function MatchesPage() {
                   >
                     {match.job.title}
                   </Link>
-                  {matchedLabel && (
+                  {match.created_at ? (
                     <p
                       className="text-xs mt-1.5"
                       style={{ color: "var(--muted)" }}
                     >
-                      {matchedLabel}
+                      {formatMatchedRelative(match.created_at)}
                     </p>
-                  )}
+                  ) : null}
 
                   {/* Match explainability — tells the user WHY the score is
                       what it is. When matched_skills is non-empty, surface
@@ -814,11 +887,16 @@ export default function MatchesPage() {
                 </div>
 
                 <div className="match-actions flex flex-col gap-2 items-end">
+                  {/* Apply button uses the same helper as the public
+                      drawer / standalone job page. Falls back to mailto
+                      then source listing; disables when nothing is
+                      available so we never ship a dead button. */}
                   {expired ? (
                     <button
+                      type="button"
                       className="btn btn-primary btn-sm w-40"
                       disabled
-                      type="button"
+                      style={{ cursor: "not-allowed" }}
                     >
                       Application closed
                     </button>
@@ -846,7 +924,20 @@ export default function MatchesPage() {
                       );
                     })()
                   )}
-                  <SaveJobButton jobId={match.job.id} className="btn btn-ghost btn-sm w-40" />
+                  <SaveJobButton
+                    jobId={match.job.id}
+                    saved={savedJobIds.has(match.job.id)}
+                    token={token}
+                    className="btn btn-ghost btn-sm w-40"
+                    onChange={(jobId, next) => {
+                      setSavedJobIds((prev) => {
+                        const n = new Set(prev);
+                        if (next) n.add(jobId);
+                        else n.delete(jobId);
+                        return n;
+                      });
+                    }}
+                  />
                   {/* Interview Prep is Super Standard only (backend enforced
                       in interview_prep.py). Mirror that gate here so users
                       below SS see a clear upgrade affordance instead of
@@ -979,7 +1070,7 @@ export default function MatchesPage() {
                 </div>
               </div>
             </article>
-          );
+            );
           })}
         </div>
       )}

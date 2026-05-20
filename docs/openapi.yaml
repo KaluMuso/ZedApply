@@ -725,6 +725,18 @@ components:
         per_page: { type: integer }
         pages: { type: integer }
 
+    SaveJobResponse:
+      type: object
+      properties:
+        saved: { type: boolean, default: true }
+
+    SavedJobsList:
+      type: object
+      properties:
+        jobs:
+          type: array
+          items: { $ref: '#/components/schemas/Job' }
+
     MatchResult:
       type: object
       properties:
@@ -949,6 +961,17 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AutoMatchPreferences' }
+
+  /users/me/saved-jobs:
+    get:
+      operationId: listSavedJobs
+      tags: [Users]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SavedJobsList' }
 
   /preferences:
     get:
@@ -1416,15 +1439,10 @@ paths:
       parameters:
         - { name: job_id, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
-        '201':
-          description: Job saved (idempotent)
+        '200':
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  saved: { type: boolean }
-                  job_id: { type: string, format: uuid }
+              schema: { $ref: '#/components/schemas/SaveJobResponse' }
         '404': { description: Job not found }
     delete:
       operationId: unsaveJob
@@ -1433,23 +1451,7 @@ paths:
       parameters:
         - { name: job_id, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
-        '204': { description: Job removed from saved list }
-
-  /users/me/saved-jobs:
-    get:
-      operationId: listSavedJobs
-      tags: [Users]
-      security: [{ bearerAuth: [] }]
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  job_ids:
-                    type: array
-                    items: { type: string, format: uuid }
+        '204': { description: Removed from saved list }
 
   /matches:
     get:

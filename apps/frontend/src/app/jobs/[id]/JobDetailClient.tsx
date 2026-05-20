@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Job } from "@/lib/api";
+import { savedJobs, type Job } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { JobDetailBody } from "@/components/JobDetailBody";
 
 /**
@@ -12,12 +14,37 @@ import { JobDetailBody } from "@/components/JobDetailBody";
  */
 export function JobDetailClient({ job }: { job: Job }) {
   const router = useRouter();
+  const { token } = useAuth();
+  const [jobSaved, setJobSaved] = useState(false);
+
+  useEffect(() => {
+    if (!token) {
+      setJobSaved(false);
+      return;
+    }
+    let cancelled = false;
+    savedJobs
+      .list(token)
+      .then((res) => {
+        if (!cancelled) setJobSaved(res.jobs.some((j) => j.id === job.id));
+      })
+      .catch(() => {
+        if (!cancelled) setJobSaved(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, job.id]);
+
   return (
     <JobDetailBody
       job={job}
       showBack
       backLabel="All jobs"
       onBack={() => router.push("/jobs")}
+      authToken={token}
+      jobSaved={jobSaved}
+      onSavedChange={setJobSaved}
     />
   );
 }

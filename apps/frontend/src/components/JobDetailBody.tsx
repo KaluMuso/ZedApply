@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
+import { SaveJobButton } from "@/components/SaveJobButton";
 import { Avatar } from "@/components/ui/Avatar";
 import { SaveJobButton } from "@/components/SaveJobButton";
 import type { Job } from "@/lib/api";
@@ -91,6 +92,11 @@ interface JobDetailBodyProps {
   /** Header text for the back affordance. */
   backLabel?: string;
   onBack?: () => void;
+  /** Bearer token when signed in — enables save / unsave. */
+  authToken?: string | null;
+  /** Whether this job is already saved (from /users/me/saved-jobs). */
+  jobSaved?: boolean;
+  onSavedChange?: (nextSaved: boolean) => void;
 }
 
 function formatRelativeTime(iso: string | null | undefined): string | null {
@@ -146,6 +152,9 @@ export function JobDetailBody({
   showBack = false,
   backLabel = "Back to jobs",
   onBack,
+  authToken,
+  jobSaved = false,
+  onSavedChange,
 }: JobDetailBodyProps) {
   const postedRel = formatRelativeTime(job.posted_at);
   const salary = formatSalary(job.salary_min, job.salary_max);
@@ -480,7 +489,13 @@ export function JobDetailBody({
             Application link unavailable
           </button>
         )}
-        {job.id && <SaveJobButton jobId={job.id} stopPropagation={false} />}
+        <SaveJobButton
+          jobId={job.id}
+          saved={jobSaved}
+          token={authToken ?? null}
+          className="btn btn-ghost"
+          onChange={(_id, next) => onSavedChange?.(next)}
+        />
       </div>
     </div>
   );

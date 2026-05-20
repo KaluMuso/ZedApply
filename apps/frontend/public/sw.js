@@ -38,6 +38,17 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
+  // Next.js App Router: RSC navigations and prefetch requests must not hit
+  // the cache-first branch below — stale RSC payloads feel like a full
+  // page reload in production (service worker is disabled on localhost).
+  if (
+    url.searchParams.has("_rsc") ||
+    event.request.headers.get("RSC") === "1" ||
+    event.request.headers.get("Next-Router-Prefetch") === "1"
+  ) {
+    return;
+  }
+
   // API calls — always go to network
   if (url.pathname.startsWith('/api/') || url.hostname !== self.location.hostname) {
     return;

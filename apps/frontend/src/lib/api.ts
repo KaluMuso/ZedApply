@@ -836,9 +836,9 @@ export const jobs = {
 
 export const savedJobs = {
   list: (token: string) =>
-    apiFetch<{ job_ids: string[] }>("/users/me/saved-jobs", { token }),
+    apiFetch<{ jobs: Job[] }>("/users/me/saved-jobs", { token }),
   save: (token: string, jobId: string) =>
-    apiFetch<{ saved: boolean; job_id: string }>(`/jobs/${jobId}/save`, {
+    apiFetch<{ saved: boolean }>(`/jobs/${jobId}/save`, {
       method: "POST",
       token,
     }),
@@ -857,6 +857,8 @@ export interface MatchData {
   matched_skills: string[];
   missing_skills: string[];
   explanation: string | null;
+  /** When this match row was created / last refreshed for the user. */
+  created_at: string;
   job: {
     id: string;
     title: string;

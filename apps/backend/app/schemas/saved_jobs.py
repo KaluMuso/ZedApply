@@ -1,12 +1,13 @@
-from datetime import datetime
+"""Saved jobs API models."""
 
 from pydantic import BaseModel
 
-
-class SavedJobEntry(BaseModel):
-    job_id: str
-    saved_at: datetime
+from app.schemas.jobs import Job
 
 
-class SavedJobList(BaseModel):
-    job_ids: list[str]
+class SavedJobsList(BaseModel):
+    jobs: list[Job]
+
+
+class SaveJobResponse(BaseModel):
+    saved: bool = True

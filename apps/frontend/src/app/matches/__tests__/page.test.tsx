@@ -66,6 +66,7 @@ function withHandlers(opts: {
     triggerStatus = 200,
   } = opts;
   server.use(
+    http.get(`${API}/users/me/saved-jobs`, () => HttpResponse.json({ jobs: [] })),
     http.get(`${API}/matches`, () =>
       HttpResponse.json({ matches, remaining_quota: 10 })
     ),
