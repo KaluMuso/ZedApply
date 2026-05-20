@@ -306,12 +306,14 @@ class TestJobList:
 
 
 class TestJobCreate:
+    @patch("app.api.v1.jobs.resolve_skill_ids", new_callable=AsyncMock)
     @patch("app.api.v1.jobs.generate_embedding", new_callable=AsyncMock)
     def test_create_job_success(
-        self, mock_embed, client, auth_headers, fake_supabase
+        self, mock_embed, mock_resolve, client, auth_headers, fake_supabase
     ):
         """Creates a job with embedding and dedup fingerprint."""
         mock_embed.return_value = [0.1] * 1536
+        mock_resolve.return_value = []
         fake_supabase.set_table(
             "users",
             FakeSupabaseQuery(

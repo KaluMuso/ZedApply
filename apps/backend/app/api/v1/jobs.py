@@ -21,6 +21,7 @@ from app.services.job_hydration import hydrate_job_row
 from app.services.embedding import generate_embedding
 from app.services.job_enricher import enrich_job
 from app.services.job_enrichment import apply_job_enrichment
+from app.services.skill_resolver import resolve_skill_ids
 
 logger = logging.getLogger(__name__)
 
@@ -130,27 +131,20 @@ def _fingerprint(title: str, company: str | None, description: str) -> str:
     ).hexdigest()
 
 
-def _link_job_skills(supabase, job_id: str, skill_names: list[str]) -> None:
-    """Resolve each skill name through skills.name then skill_aliases.alias
-    and insert into job_skills. Silently skips unknown skills — n8n's AI
-    parser can emit fuzzy strings, and that's preferable to 500-ing the
-    whole job."""
-    for raw in skill_names:
-        key = (raw or "").strip().lower()
-        if not key:
-            continue
-        skill_id: str | None = None
-        sk = supabase.table("skills").select("id").eq("name", key).limit(1).execute()
-        if sk.data:
-            skill_id = sk.data[0]["id"]
-        else:
-            al = supabase.table("skill_aliases").select("skill_id").eq("alias", key).limit(1).execute()
-            if al.data:
-                skill_id = al.data[0]["skill_id"]
-        if skill_id:
+async def _attach_job_skills(supabase, job_id: str, skill_names: list[str]) -> None:
+    """Resolve skills via Wave 2.5 resolver and link job_skills rows."""
+    skill_ids = await resolve_skill_ids(
+        skill_names,
+        supabase=supabase,
+        source="job_ingest",
+    )
+    for skill_id in skill_ids:
+        try:
             supabase.table("job_skills").insert(
                 {"job_id": job_id, "skill_id": skill_id}
             ).execute()
+        except Exception:
+            pass
 
 
 # Sort modes accepted by GET /jobs. "relevance" is anonymous-friendly: we
@@ -506,7 +500,7 @@ async def create_job(request: Request, body: JobCreate, current_user: dict = Dep
     job = result.data[0]
 
     supabase.table("job_fingerprints").insert({"fingerprint": fp, "job_id": job["id"]}).execute()
-    _link_job_skills(supabase, job["id"], skills_required)
+    await _attach_job_skills(supabase, job["id"], skills_required)
 
     return Job(**job)
 
@@ -620,7 +614,7 @@ async def _ingest_one_job(
         supabase.table("job_fingerprints").insert(
             {"fingerprint": fp, "job_id": job_id}
         ).execute()
-        _link_job_skills(supabase, job_id, skills_required)
+        await _attach_job_skills(supabase, job_id, skills_required)
 
         try:
             enrichment = await enrich_job(
