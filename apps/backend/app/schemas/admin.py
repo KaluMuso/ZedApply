@@ -16,7 +16,6 @@ class AdminStats(BaseModel):
     matches_total: int = 0
     revenue_ngwee_30d: int = 0
     revenue_ngwee_total: int = 0
-    pending_review_count: int = 0
 
 
 class AdminUserRow(BaseModel):
@@ -66,30 +65,6 @@ class BulkDeactivateRequest(BaseModel):
 
 class BulkDeactivateResponse(BaseModel):
     deactivated: int
-
-
-class AdminJobReviewRow(BaseModel):
-    id: str
-    title: str
-    company: Optional[str] = None
-    source: str
-    source_url: Optional[str] = None
-    reasons: list[str] = []
-    created_at: Optional[datetime] = None
-
-
-class AdminJobReviewQueue(BaseModel):
-    jobs: list[AdminJobReviewRow]
-    total: int
-    page: int
-    per_page: int
-    pages: int
-
-
-class AdminJobReviewUpdate(BaseModel):
-    apply_url: Optional[str] = None
-    apply_email: Optional[str] = None
-    application_instructions: Optional[str] = Field(None, max_length=2000)
 
 
 class AdminPaymentRow(BaseModel):

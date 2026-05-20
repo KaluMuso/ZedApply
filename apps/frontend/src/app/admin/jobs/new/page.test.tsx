@@ -37,12 +37,6 @@ function profileEndpoint(role: "admin" | "superadmin" | "user") {
   );
 }
 
-function adminStatsEndpoint() {
-  return http.get(`${API_BASE}/admin/stats`, () =>
-    HttpResponse.json({ pending_review_count: 0 }),
-  );
-}
-
 function renderGuarded() {
   return render(
     <AuthProvider>
@@ -84,7 +78,7 @@ describe("/admin/jobs/new page", () => {
   });
 
   it("renders the wizard for admin users", async () => {
-    server.use(profileEndpoint("admin"), adminStatsEndpoint());
+    server.use(profileEndpoint("admin"));
     renderGuarded();
 
     expect(
