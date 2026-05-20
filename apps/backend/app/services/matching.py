@@ -60,17 +60,56 @@ async def get_user_tier_limit(user_id: str, supabase: Client) -> tuple[str, int,
     return tier, TIER_LIMITS.get(tier, TIER_LIMITS["free"]), True
 
 
+async def _billing_period_start(
+    user_id: str,
+    supabase: Client,
+    *,
+    now: datetime | None = None,
+) -> datetime:
+    """Start of the current billing window for match quota counting.
+
+    Uses subscriptions.current_period_start for active paid rows; falls back
+    to calendar month start for free users without a period.
+    """
+    sub_res = (
+        supabase.table("subscriptions")
+        .select("current_period_start, status")
+        .eq("user_id", user_id)
+        .eq("status", "active")
+        .limit(1)
+        .execute()
+    )
+    sub = _first_row(sub_res.data)
+    period_start = _parse_period_start(sub.get("current_period_start") if sub else None)
+    if period_start is not None:
+        return period_start
+    return _month_start(now)
+
+
+def _parse_period_start(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
 async def get_credited_match_count(
     user_id: str,
     supabase: Client,
     *,
     now: datetime | None = None,
 ) -> int:
+    period_start = await _billing_period_start(user_id, supabase, now=now)
     result = (
         supabase.table("matches")
         .select("id", count="exact")
         .eq("user_id", user_id)
-        .gte("credited_at", _month_start(now).isoformat())
+        .gte("credited_at", period_start.isoformat())
         .execute()
     )
     if result.count is not None:

@@ -776,6 +776,24 @@ components:
         users_processed: { type: integer }
         notifications_sent: { type: integer }
 
+    ContactSubmission:
+      type: object
+      required: [name, email, message]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        email: { type: string, format: email }
+        phone:
+          type: string
+          pattern: '^\+260[0-9]{9}$'
+          description: Optional Zambian E.164 phone
+        message: { type: string, minLength: 10, maxLength: 5000 }
+
+    ContactResult:
+      type: object
+      properties:
+        success: { type: boolean }
+        message: { type: string }
+
     Subscription:
       type: object
       description: |
@@ -852,6 +870,26 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/HealthCheck' }
+
+  /contact:
+    post:
+      operationId: submitContact
+      summary: Relay contact-form message to operator inbox
+      tags: [Contact]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContactSubmission' }
+      responses:
+        '200':
+          description: Message relayed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContactResult' }
+        '422': { description: Validation error }
+        '429': { description: Rate limited (2 submissions per hour per IP) }
+        '503': { description: Email relay unavailable }
 
   /auth/otp/request:
     post:
