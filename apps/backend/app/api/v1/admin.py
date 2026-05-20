@@ -34,7 +34,7 @@ from app.schemas.admin import (
     AdminJobReviewUpdate,
 )
 from app.schemas.jobs import AdminJobCreate, AdminJobUpdate, Job
-from app.schemas.subscription import TIER_LIMITS
+from app.services.tier_config import get_tier_limits
 from app.schemas.db_enums import QueueStatus
 from app.services.embedding import generate_embedding
 from app.services.skill_resolver import resolve_skill_id, resolve_skill_ids
@@ -515,6 +515,7 @@ async def list_users(
         for s in subs.data or []:
             sub_map[s["user_id"]] = s
 
+    tier_limits = await get_tier_limits(supabase)
     rows = []
     for u in result.data or []:
         sub = sub_map.get(u["id"], {})
@@ -528,7 +529,7 @@ async def list_users(
                 subscription_tier=tier,
                 role=u.get("role") or "user",
                 matches_used=await get_credited_match_count(u["id"], supabase),
-                matches_limit=TIER_LIMITS.get(tier, TIER_LIMITS["free"]),
+                matches_limit=tier_limits.get(tier, tier_limits["free"]),
                 created_at=u.get("created_at"),
             )
         )
@@ -1193,6 +1194,7 @@ async def list_subscriptions(
         )
         user_map = {u["id"]: u for u in (users.data or [])}
 
+    tier_limits = await get_tier_limits(supabase)
     rows = []
     for s in (result.data or []):
         tier = s.get("tier", "free")
@@ -1204,7 +1206,7 @@ async def list_subscriptions(
                 tier=tier,
                 status=s.get("status", "active"),
                 matches_used=await get_credited_match_count(s["user_id"], supabase),
-                matches_limit=TIER_LIMITS.get(tier, TIER_LIMITS["free"]),
+                matches_limit=tier_limits.get(tier, tier_limits["free"]),
                 current_period_end=s.get("current_period_end"),
                 created_at=s.get("created_at"),
             )
@@ -1226,8 +1228,9 @@ async def update_subscription(
     body: AdminSubscriptionUpdate,
     supabase=Depends(get_supabase),
 ):
-    """Set a user's tier. Quota limit is derived from TIER_LIMITS by tier."""
-    new_limit = TIER_LIMITS[body.tier]
+    """Set a user's tier. Quota limit is derived from tier_config by tier."""
+    tier_limits = await get_tier_limits(supabase)
+    new_limit = tier_limits[body.tier]
     res = (
         supabase.table("subscriptions")
         .update({"tier": body.tier, "status": "active"})
@@ -1257,7 +1260,7 @@ async def update_subscription(
         tier=tier,
         status=sub.get("status", "active"),
         matches_used=await get_credited_match_count(user_id, supabase),
-        matches_limit=TIER_LIMITS.get(tier, new_limit),
+        matches_limit=tier_limits.get(tier, new_limit),
         current_period_end=sub.get("current_period_end"),
         created_at=sub.get("created_at"),
     )

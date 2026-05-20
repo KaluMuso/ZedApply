@@ -7,11 +7,10 @@ from app.schemas.subscription import (
     Subscription,
     PaymentInitiate,
     PaymentInitiateResponse,
-    TIER_PRICES,
-    TIER_LIMITS,
 )
 from app.services.matching import get_credited_match_count
 from app.services.payment_methods import normalize_payment_method
+from app.services.tier_config import get_tier_limits, get_tier_prices
 
 router = APIRouter(prefix="/subscription", tags=["Subscription"])
 
@@ -34,7 +33,8 @@ async def get_subscription(
     sub = result.data
     matches_used = await get_credited_match_count(user_id, supabase)
     tier = sub["tier"]
-    matches_limit = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
+    tier_limits = await get_tier_limits(supabase)
+    matches_limit = tier_limits.get(tier, tier_limits["free"])
     return Subscription(
         tier=tier,
         matches_used=matches_used,
@@ -53,13 +53,14 @@ async def initiate_payment(
     supabase=Depends(get_supabase),
 ):
     tier_value = body.tier.value if hasattr(body.tier, "value") else body.tier
-    if tier_value not in TIER_PRICES or tier_value == "free":
+    tier_prices = await get_tier_prices(supabase)
+    if tier_value not in tier_prices or tier_value == "free":
         raise HTTPException(
             status_code=422,
             detail="Invalid tier. Choose starter, professional, or super_standard.",
         )
 
-    amount_ngwee = TIER_PRICES[tier_value]
+    amount_ngwee = tier_prices[tier_value]
 
     # Get or verify subscription exists
     sub_result = (
