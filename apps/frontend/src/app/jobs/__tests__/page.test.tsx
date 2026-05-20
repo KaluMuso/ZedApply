@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 
 import JobsPage from "../page";
+import { AuthProvider } from "@/lib/auth";
 import { server } from "@/test/msw/server";
 
 // Counter relies on IntersectionObserver which jsdom doesn't ship.
@@ -73,8 +74,17 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
 });
+
+function renderJobsPage() {
+  return render(
+    <AuthProvider>
+      <JobsPage />
+    </AuthProvider>,
+  );
+}
 
 function lastRequest(): URL {
   expect(requestedUrls.length).toBeGreaterThan(0);
@@ -83,7 +93,7 @@ function lastRequest(): URL {
 
 describe("/jobs page filters", () => {
   it("issues an initial fetch on mount", async () => {
-    render(<JobsPage />);
+    renderJobsPage();
     await waitFor(() => expect(requestedUrls.length).toBeGreaterThan(0));
     const url = lastRequest();
     // Default sort is "recent"; no other filters set.
@@ -94,25 +104,49 @@ describe("/jobs page filters", () => {
     expect(url.searchParams.get("work_arrangement")).toBeNull();
   });
 
-  it("submitting the search form forwards `search` to the API", async () => {
+  it(
+    "debounces search input (300ms) before calling the API with `search`",
+    async () => {
+      renderJobsPage();
+      await waitFor(() => expect(requestedUrls.length).toBeGreaterThan(0));
+      const nAfterMount = requestedUrls.length;
+
+      const user = userEvent.setup();
+      await user.type(
+        screen.getByRole("textbox", { name: /search jobs/i }),
+        "accountant",
+      );
+
+      expect(requestedUrls.length).toBe(nAfterMount);
+
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 350));
+      });
+
+      await waitFor(() => {
+        expect(requestedUrls.length).toBeGreaterThan(nAfterMount);
+        expect(lastRequest().searchParams.get("search")).toBe("accountant");
+      });
+    },
+    10_000,
+  );
+
+  it("pressing Enter in the search field commits the query immediately", async () => {
     const user = userEvent.setup();
-    render(<JobsPage />);
+    renderJobsPage();
     await waitFor(() => expect(requestedUrls.length).toBeGreaterThan(0));
 
-    await user.type(
-      screen.getByRole("textbox", { name: /search jobs/i }),
-      "accountant",
-    );
-    await user.click(screen.getByRole("button", { name: /^search$/i }));
+    const field = screen.getByRole("textbox", { name: /search jobs/i });
+    await user.type(field, "engineer{Enter}");
 
     await waitFor(() => {
-      expect(lastRequest().searchParams.get("search")).toBe("accountant");
+      expect(lastRequest().searchParams.get("search")).toBe("engineer");
     });
   });
 
   it("changing the location dropdown forwards `location`", async () => {
     const user = userEvent.setup();
-    render(<JobsPage />);
+    renderJobsPage();
     await waitFor(() => expect(requestedUrls.length).toBeGreaterThan(0));
 
     await user.selectOptions(
@@ -131,7 +165,7 @@ describe("/jobs page filters", () => {
   // ships and the flag flips to true.
   it.skip("selecting an employment type forwards `employment_type`", async () => {
     const user = userEvent.setup();
-    render(<JobsPage />);
+    renderJobsPage();
     await waitFor(() => expect(requestedUrls.length).toBeGreaterThan(0));
 
     await user.selectOptions(
@@ -150,7 +184,7 @@ describe("/jobs page filters", () => {
   // jobs/page.tsx (see sibling skip above).
   it.skip("selecting a work arrangement forwards `work_arrangement`", async () => {
     const user = userEvent.setup();
-    render(<JobsPage />);
+    renderJobsPage();
     await waitFor(() => expect(requestedUrls.length).toBeGreaterThan(0));
 
     await user.selectOptions(
@@ -168,7 +202,7 @@ describe("/jobs page filters", () => {
   // already covered by the location test above.
   it.skip("multiple filters compose into a single request", async () => {
     const user = userEvent.setup();
-    render(<JobsPage />);
+    renderJobsPage();
     await waitFor(() => expect(requestedUrls.length).toBeGreaterThan(0));
 
     await user.selectOptions(
@@ -199,7 +233,7 @@ describe("/jobs page filters", () => {
       ),
     );
     const user = userEvent.setup();
-    render(<JobsPage />);
+    renderJobsPage();
 
     await user.selectOptions(
       screen.getByRole("combobox", { name: /location/i }),

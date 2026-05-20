@@ -3,9 +3,9 @@ import hashlib
 import html as _html
 import logging
 import re as _re
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from app.core.config import Settings, get_settings
-from app.core.deps import get_supabase, require_admin
+from app.core.deps import get_current_user_id, get_supabase, require_admin
 from app.core.rate_limit import limiter
 from app.schemas.jobs import (
     Job,
@@ -16,6 +16,8 @@ from app.schemas.jobs import (
     JobIngestErrorItem,
     _parse_salary_to_ngwee,
 )
+from app.schemas.saved_jobs import SaveJobResponse
+from app.services.job_hydration import hydrate_job_row
 from app.services.embedding import generate_embedding
 from app.services.job_enricher import enrich_job
 from app.services.job_enrichment import apply_job_enrichment
@@ -431,17 +433,42 @@ async def list_jobs_for_sitemap(supabase=Depends(get_supabase)):
     }
 
 
+@router.post("/{job_id}/save", response_model=SaveJobResponse)
+async def save_job(
+    job_id: str,
+    user_id: str = Depends(get_current_user_id),
+    supabase=Depends(get_supabase),
+):
+    exists = (
+        supabase.table("jobs").select("id").eq("id", job_id).limit(1).execute()
+    )
+    if not exists.data:
+        raise HTTPException(status_code=404, detail="Job not found")
+    supabase.table("saved_jobs").upsert(
+        {"user_id": user_id, "job_id": job_id},
+        on_conflict="user_id,job_id",
+    ).execute()
+    return SaveJobResponse()
+
+
+@router.delete("/{job_id}/save", status_code=status.HTTP_204_NO_CONTENT)
+async def unsave_job(
+    job_id: str,
+    user_id: str = Depends(get_current_user_id),
+    supabase=Depends(get_supabase),
+):
+    supabase.table("saved_jobs").delete().eq("user_id", user_id).eq(
+        "job_id", job_id
+    ).execute()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/{job_id}", response_model=Job)
 async def get_job(job_id: str, supabase=Depends(get_supabase)):
     result = supabase.table("jobs").select("*, job_skills(skills(name))").eq("id", job_id).single().execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Job not found")
-    j = result.data
-    skill_rows = j.pop("job_skills", [])
-    skills = [s["skills"]["name"] for s in skill_rows if s.get("skills")]
-    j["skills_required"] = skills
-    j["skills"] = skills
-    return Job(**j)
+    return hydrate_job_row(result.data)
 
 
 @router.post("", response_model=Job, status_code=status.HTTP_201_CREATED)
