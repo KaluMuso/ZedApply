@@ -226,7 +226,7 @@ class JobCreate(BaseModel):
     salary_max: Optional[int] = None
     apply_url: Optional[str] = None
     apply_email: Optional[str] = None
-    source: JobSource
+    source: JobSource | str
     # URL of the source listing on the scraper site (e.g. jobwebzambia.com).
     # Distinct from apply_url, which should ideally point at the employer's
     # own application page when extractable from the description.
@@ -258,6 +258,13 @@ class JobCreate(BaseModel):
     pay_frequency: Optional[PayFrequency] = None
     bonus_structure: Optional[str] = Field(None, max_length=500)
     equity_offered: Optional[bool] = None
+    experience_min_years: Optional[int] = Field(None, ge=0, le=50)
+    seniority_level: Optional[str] = Field(None, max_length=32)
+    qualifications_required: list[str] = Field(default_factory=list)
+
+    # WhatsApp ingest (Track 4c) — stored on jobs row.
+    whatsapp_message_id: Optional[str] = Field(None, max_length=256)
+    ocr_source_text: Optional[str] = Field(None, max_length=20000)
 
     # INPUT-ONLY (not stored). When the scraper emits a free-text salary
     # string and leaves salary_min/max null, the ingest pipeline runs
@@ -270,10 +277,34 @@ class JobCreate(BaseModel):
     # Tolerant date parsing — the scraper's AI parsing nodes have been
     # observed emitting non-ISO formats like "11/May/2026". Accept them
     # rather than 422-ing the whole batch.
+    @field_validator("source", mode="before")
+    @classmethod
+    def _coerce_source(cls, v: Any) -> str:
+        if isinstance(v, JobSource):
+            return v.value
+        s = str(v).strip()
+        if s in {e.value for e in JobSource}:
+            return s
+        if s.startswith("whatsapp_"):
+            return s[:128]
+        raise ValueError(f"Invalid job source: {s!r}")
+
     @field_validator("posted_at", "closing_date", mode="before")
     @classmethod
     def _parse_dates(cls, v: Any) -> Optional[date]:
         return _tolerant_parse_date(v)
+
+    @field_validator("seniority_level", mode="before")
+    @classmethod
+    def _normalize_seniority(cls, v: Any) -> Optional[str]:
+        from app.services.seniority import normalize_seniority_level
+        return normalize_seniority_level(v)
+
+    @field_validator("qualifications_required", mode="after")
+    @classmethod
+    def _cap_qualifications(cls, v: list[str]) -> list[str]:
+        from app.services.seniority import normalize_qualifications
+        return normalize_qualifications(v, max_items=20)
 
     @field_validator("benefits", mode="after")
     @classmethod

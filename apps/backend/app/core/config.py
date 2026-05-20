@@ -75,6 +75,12 @@ class Settings(BaseSettings):
     whatsapp_channel_jobs_id: str = ""
     whatsapp_jobs_ingest_enabled: bool = False
 
+    # Track 4c: multi-channel WhatsApp job scraper (separate webhook from OTP).
+    whatsapp_scrape_channels: str = ""
+    whatsapp_scraper_webhook_token: str = ""
+    openrouter_vision_model: str = "google/gemini-2.0-flash-001"
+    waha_session_name: str = "default"
+
     # Auth
     jwt_secret: str
     jwt_algorithm: str = "HS256"

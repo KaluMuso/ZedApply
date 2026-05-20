@@ -367,8 +367,11 @@ def test_whatsapp_channel_branch_routes_to_extractor(
         return_value=_mock_extractor_response(payload),
     ), patch(
         "app.api.v1.jobs.generate_embedding", new_callable=AsyncMock
-    ) as mock_embed:
+    ) as mock_embed, patch(
+        "app.api.v1.jobs.resolve_skill_ids", new_callable=AsyncMock
+    ) as mock_resolve:
         mock_embed.return_value = [0.1] * 768
+        mock_resolve.return_value = ["skill-acc", "skill-ifrs", "skill-xls"]
         resp = client.post(
             "/api/v1/webhooks/whatsapp",
             json={

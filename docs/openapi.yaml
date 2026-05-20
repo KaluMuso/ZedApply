@@ -1709,3 +1709,59 @@ paths:
       tags: [Webhooks]
       responses:
         '200': { description: Webhook processed }
+
+  /whatsapp/scraper-webhook:
+    post:
+      operationId: whatsappScraperWebhook
+      summary: WAHA webhook for WhatsApp channel job scraping (Track 4c)
+      description: |
+        Receives WAHA `message` events from channels listed in
+        `WHATSAPP_SCRAPE_CHANNELS`. Classifies text or image posts via
+        OpenRouter Gemini 2.0 Flash and ingests jobs when `is_job` is true.
+        Authenticate with header `X-Webhook-Token` matching
+        `WHATSAPP_SCRAPER_WEBHOOK_TOKEN` (separate from the OTP webhook secret).
+      tags: [WhatsApp Scraper]
+      parameters:
+        - in: header
+          name: X-Webhook-Token
+          required: false
+          schema: { type: string }
+          description: Must match WHATSAPP_SCRAPER_WEBHOOK_TOKEN when set
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                event:
+                  type: string
+                  enum: [message, message.any]
+                payload:
+                  type: object
+                  properties:
+                    id: { type: string }
+                    from: { type: string }
+                    body: { type: string }
+                    hasMedia: { type: boolean }
+                    fromMe: { type: boolean }
+                    media:
+                      type: object
+                      properties:
+                        url: { type: string }
+                        mimetype: { type: string }
+      responses:
+        '200':
+          description: Message processed (ingested, deduplicated, ignored, or not a job)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  ingest_result: { type: string }
+                  reason: { type: string }
+        '401':
+          description: Invalid or missing X-Webhook-Token
+        '503':
+          description: Classifier infrastructure unavailable
