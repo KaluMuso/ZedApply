@@ -812,7 +812,23 @@ components:
       required: [tier, payment_method]
       properties:
         tier: { type: string, enum: [starter, professional, super_standard] }
-        payment_method: { type: string, enum: [mtn_money, airtel_money] }
+        payment_method:
+          type: string
+          description: >
+            DPO short names (mtn, airtel, card) or Lenco sub-channels
+            (lenco_mtn_money, lenco_airtel_money, lenco_card). Generic lenco
+            is resolved from the phone prefix on the server.
+          enum:
+            - mtn
+            - airtel
+            - card
+            - mtn_money
+            - airtel_money
+            - card_money
+            - lenco
+            - lenco_mtn_money
+            - lenco_airtel_money
+            - lenco_card
         phone: { type: string, pattern: '^\+260[0-9]{9}$' }
 
     InterviewPrepRequest:

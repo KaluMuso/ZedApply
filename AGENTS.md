@@ -171,6 +171,7 @@ because each item has caught a real bug.
 - [ ] If you added an endpoint, update `docs/openapi.yaml` in the same change.
 - [ ] If you added a Pydantic model, run `pytest apps/backend/tests/` locally — schema validation tests catch refusal/echo regressions in LLM output.
 - [ ] If you changed a SQL migration: did you create a NEW file? Never edit an applied migration.
+- [ ] If you dropped a DB column: did you grep `apps/backend/` for `["col"]`, `.col`, and related names **before** merging? Eager `.get(k, row["col"])` fallbacks still KeyError when the column is gone.
 - [ ] If you changed `requirements.txt`: did you `docker compose build zedcv-backend` (not just up)?
 - [ ] If you changed `.env`: did you `up -d --force-recreate`, not just `restart`?
 - [ ] If you touched the embedding model or vector dim: have you planned a re-embed? An untriggered model change means 0 matches in prod.

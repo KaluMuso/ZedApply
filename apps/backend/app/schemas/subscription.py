@@ -43,7 +43,14 @@ class Subscription(BaseModel):
 
 class PaymentInitiate(BaseModel):
     tier: SubscriptionTier
-    payment_method: str = Field(..., description="mtn or airtel")
+    payment_method: str = Field(
+        ...,
+        description=(
+            "DPO short names (mtn, airtel, card) or Lenco sub-channels "
+            "(lenco_mtn_money, lenco_airtel_money, lenco_card). Generic "
+            "'lenco' is accepted and resolved from phone prefix."
+        ),
+    )
     phone: str = Field(..., pattern=r"^\+260[0-9]{9}$")
 
 class PaymentInitiateResponse(BaseModel):

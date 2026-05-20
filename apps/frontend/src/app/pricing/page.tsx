@@ -130,6 +130,23 @@ const comparisonFeatures: ComparisonFeature[] = [
 
 type PaymentMethod = "mtn" | "airtel" | "card" | "lenco";
 
+/** Map UI choice to payments.payment_method CHECK values (Path A). */
+function paymentMethodForApi(method: PaymentMethod): string {
+  switch (method) {
+    case "mtn":
+      return "lenco_mtn_money";
+    case "airtel":
+      return "lenco_airtel_money";
+    case "card":
+      return "lenco_card";
+    case "lenco":
+      // Generic Lenco brand — server infers network from phone (Path B).
+      return "lenco";
+    default:
+      return method;
+  }
+}
+
 export default function PricingPage() {
   const router = useRouter();
   const { token, isAuthenticated } = useAuth();
@@ -192,7 +209,7 @@ export default function PricingPage() {
     try {
       const res = await subscription.pay(token, {
         tier: selectedPlan,
-        payment_method: paymentMethod,
+        payment_method: paymentMethodForApi(paymentMethod),
         phone: `+260${payPhone.replace(/\s/g, "")}`,
       });
       setPayMsg(`Payment initiated! ${res.message}`);
