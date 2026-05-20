@@ -50,7 +50,7 @@ export function RefreshCountdownRing({
         strokeDasharray={circumference}
         strokeDashoffset={dashOffset}
         transform={`rotate(-90 ${center} ${center})`}
-        style={{ transition: "stroke-dashoffset 0.9s linear" }}
+        style={{ transition: "stroke-dashoffset 0.95s linear" }}
       />
       <text
         x={center}

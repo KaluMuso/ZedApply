@@ -30,7 +30,6 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { InterviewPrepModal } from "./_components/InterviewPrepModal";
 import { CountdownRing } from "@/components/CountdownRing";
-import { SaveJobButton } from "@/components/SaveJobButton";
 import { formatMatchedRelative } from "@/lib/formatMatchedRelative";
 import { isJobPastClosing } from "@/lib/isJobPastClosing";
 
@@ -56,6 +55,8 @@ function buildApplyHref(job: MatchData["job"]): string | null {
 // etc. Falls back to the raw key if we don't recognize it so we don't
 // hide unknown tiers entirely.
 const MATCHES_CACHE_KEY = "zedapply_matches_cache_v1";
+/** Seconds for refresh countdown ring when API omits estimated_seconds. */
+const DEFAULT_REFRESH_COUNTDOWN_SECONDS = 30;
 const REFRESH_MAX_WAIT_MS = 30_000;
 
 const TIER_LABELS: Record<string, string> = {
@@ -169,10 +170,10 @@ export default function MatchesPage() {
       refreshTimersRef.current.watchdog = undefined;
     }
 
-    let total = 15;
+    let total = DEFAULT_REFRESH_COUNTDOWN_SECONDS;
     try {
       const res = await matchesApi.trigger(token);
-      total = Math.max(0, res.estimated_seconds ?? 15);
+      total = Math.max(0, res.estimated_seconds ?? DEFAULT_REFRESH_COUNTDOWN_SECONDS);
     } catch (e: unknown) {
       setRefreshing(false);
       setRefreshRing(null);
@@ -190,7 +191,11 @@ export default function MatchesPage() {
     }
 
     const runAfterCountdown = async () => {
-      setRefreshRing({ phase: "working", total: total || 15, secondsLeft: 0 });
+      setRefreshRing({
+        phase: "working",
+        total: total || DEFAULT_REFRESH_COUNTDOWN_SECONDS,
+        secondsLeft: 0,
+      });
 
       const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T> =>
         new Promise((resolve, reject) => {
@@ -215,7 +220,7 @@ export default function MatchesPage() {
         });
 
       try {
-        const result = await withTimeout(loadMatches(token), 30_000);
+        const result = await withTimeout(loadMatches(token), REFRESH_MAX_WAIT_MS);
         if (result.unauthorized) {
           logout();
           router.replace("/auth?next=/matches");
@@ -244,7 +249,11 @@ export default function MatchesPage() {
     };
 
     if (total <= 0) {
-      setRefreshRing({ phase: "working", total: 15, secondsLeft: 0 });
+      setRefreshRing({
+        phase: "working",
+        total: DEFAULT_REFRESH_COUNTDOWN_SECONDS,
+        secondsLeft: 0,
+      });
       await runAfterCountdown();
       return;
     }
@@ -317,7 +326,7 @@ export default function MatchesPage() {
           if (userProfile.cv_uploaded) {
             setAutoTriggering(true);
             const triggerRes = await matchesApi.trigger(token);
-            const waitMs = (triggerRes.estimated_seconds ?? 15) * 1000;
+            const waitMs = (triggerRes.estimated_seconds ?? DEFAULT_REFRESH_COUNTDOWN_SECONDS) * 1000;
             if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs));
             await loadMatches(token);
             setAutoTriggering(false);
@@ -449,7 +458,7 @@ export default function MatchesPage() {
         </div>
         <h3 className="font-display text-2xl mb-2">Generating your first matches&hellip;</h3>
         <p className="text-sm" style={{ color: "var(--muted)" }}>
-          Scoring your CV against available jobs. This takes about 15 seconds.
+          Scoring your CV against available jobs. This takes about 30 seconds.
         </p>
       </div>
     );
@@ -484,6 +493,11 @@ export default function MatchesPage() {
     (data.matches_limit ?? sub?.matches_limit ?? (matchesUsed + data.remaining_quota)) || 25;
   const usagePct = matchesLimit > 0 ? Math.min(100, (matchesUsed / matchesLimit) * 100) : 0;
   const tierLabel = TIER_LABELS[sub?.tier ?? ""] ?? (sub?.tier ?? "Starter");
+
+  const refreshCountdown =
+    refreshing && refreshRing?.phase === "countdown" ? refreshRing.secondsLeft : null;
+  const refreshCountdownTotal =
+    refreshRing?.total ?? DEFAULT_REFRESH_COUNTDOWN_SECONDS;
 
   return (
     <div className="max-w-[1280px] mx-auto px-6 py-8 md:py-12">
@@ -726,11 +740,9 @@ export default function MatchesPage() {
             )}
             <span className="flex flex-col items-start leading-tight">
               <span>
-                {refreshing
-                  ? refreshStatusText ?? "Refreshing\u2026"
-                  : "Refresh matches"}
+                {refreshing ? "Refreshing\u2026" : "Refresh matches"}
               </span>
-              {refreshing && refreshCountdown !== null && !refreshStatusText && (
+              {refreshing && refreshCountdown !== null && (
                 <span className="font-mono text-[10px] opacity-90">
                   ~{refreshCountdown}s remaining
                 </span>

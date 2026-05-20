@@ -45,7 +45,7 @@ beforeEach(() => {
   requestedUrls = [];
   server.use(
     http.get(`${API_BASE}/users/me/saved-jobs`, () =>
-      HttpResponse.json({ job_ids: [] })
+      HttpResponse.json({ jobs: [] })
     ),
     http.get(`${API_BASE}/jobs`, ({ request }) => {
       requestedUrls.push(request.url);

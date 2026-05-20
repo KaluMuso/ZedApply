@@ -38,7 +38,7 @@ export function SavedJobsProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       const res = await savedJobsApi.list(token);
-      setSavedIds(new Set(res.job_ids));
+      setSavedIds(new Set(res.jobs.map((j) => j.id)));
     } catch {
       setSavedIds(new Set());
     } finally {
