@@ -2,9 +2,14 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { subscription } from "@/lib/api";
+import { subscription, tiers, type TierConfigRow } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Icon } from "@/components/ui/Icon";
+import {
+  formatMatchesLimit,
+  formatPriceLabel,
+  UNLIMITED_MATCHES,
+} from "@/lib/tier-config";
 
 // Tier rank for context-aware pricing CTAs. Higher number = more inclusive
 // tier. A user on super_standard (3) seeing professional (2) or starter (1)
@@ -130,9 +135,48 @@ const comparisonFeatures: ComparisonFeature[] = [
 
 type PaymentMethod = "mtn" | "airtel" | "card" | "lenco";
 
+/** Map UI choice to payments.payment_method CHECK values (Path A). */
+function paymentMethodForApi(method: PaymentMethod): string {
+  switch (method) {
+    case "mtn":
+      return "lenco_mtn_money";
+    case "airtel":
+      return "lenco_airtel_money";
+    case "card":
+      return "lenco_card";
+    case "lenco":
+      // Generic Lenco brand — server infers network from phone (Path B).
+      return "lenco";
+    default:
+      return method;
+  }
+}
+
+function applyTierConfig(base: Plan[], config: TierConfigRow[]): Plan[] {
+  const byTier = Object.fromEntries(config.map((t) => [t.tier, t]));
+  return base.map((plan) => {
+    const row = byTier[plan.tier];
+    if (!row) return plan;
+    const matchLine =
+      row.matches_limit >= UNLIMITED_MATCHES
+        ? "Unlimited job matches"
+        : `${formatMatchesLimit(row.matches_limit)} job matches per month`;
+    const features = plan.features.map((f, i) =>
+      i === 0 && /matches/i.test(f) ? matchLine : f,
+    );
+    return {
+      ...plan,
+      name: row.display_name || plan.name,
+      price: formatPriceLabel(row.price_ngwee, plan.tier),
+      features,
+    };
+  });
+}
+
 export default function PricingPage() {
   const router = useRouter();
   const { token, isAuthenticated } = useAuth();
+  const [displayPlans, setDisplayPlans] = useState<Plan[]>(plans);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("mtn");
   const [payPhone, setPayPhone] = useState("");
@@ -145,6 +189,14 @@ export default function PricingPage() {
   // "Upgrade to X" on every card. Non-fatal if it fails — falls back to
   // "free" which is the safest default (shows all upgrades as available).
   const [currentTier, setCurrentTier] = useState<string>("free");
+
+  useEffect(() => {
+    tiers
+      .list()
+      .then((r) => setDisplayPlans(applyTierConfig(plans, r.tiers)))
+      .catch(() => setDisplayPlans(plans));
+  }, []);
+
   useEffect(() => {
     if (!token) {
       setCurrentTier("free");
@@ -192,7 +244,7 @@ export default function PricingPage() {
     try {
       const res = await subscription.pay(token, {
         tier: selectedPlan,
-        payment_method: paymentMethod,
+        payment_method: paymentMethodForApi(paymentMethod),
         phone: `+260${payPhone.replace(/\s/g, "")}`,
       });
       setPayMsg(`Payment initiated! ${res.message}`);
@@ -230,7 +282,7 @@ export default function PricingPage() {
 
       {/* Plan cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto mb-16 md:mb-24">
-        {plans.map((plan) => (
+        {displayPlans.map((plan) => (
           <div
             key={plan.name}
             className={`card p-6 md:p-8 relative ${plan.highlight ? "lift" : ""}`}
@@ -473,7 +525,7 @@ export default function PricingPage() {
               className="font-display text-2xl mb-6"
               style={{ letterSpacing: "-0.01em" }}
             >
-              Pay for {plans.find((p) => p.tier === selectedPlan)?.name}
+              Pay for {displayPlans.find((p) => p.tier === selectedPlan)?.name}
             </h3>
 
             <div className="space-y-5">
@@ -599,7 +651,7 @@ export default function PricingPage() {
                   ) : (
                     <>
                       Pay{" "}
-                      {plans.find((p) => p.tier === selectedPlan)?.price}
+                      {displayPlans.find((p) => p.tier === selectedPlan)?.price}
                     </>
                   )}
                 </button>

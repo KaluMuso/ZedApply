@@ -4,7 +4,11 @@ import logging
 from fastapi import APIRouter, HTTPException, Request, Depends
 from app.core.config import get_settings
 from app.core.deps import get_supabase
-from app.schemas.subscription import TIER_LIMITS, TIER_PRICES
+from app.services.tier_config import (
+    build_plan_info_by_tier,
+    build_tier_display_names,
+    get_tier_prices,
+)
 from app.services.whatsapp import send_whatsapp_message, send_match_digest
 from app.services.email import send_payment_confirmation_email
 
@@ -14,25 +18,6 @@ router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
 
 COMMANDS = {"hi": "welcome", "hello": "welcome", "menu": "menu", "help": "menu",
             "matches": "matches", "jobs": "matches", "cv": "cv_info", "plan": "subscription", "upgrade": "subscription", "more": "more_matches"}
-
-# Human-readable tier labels used in WhatsApp + email payment-confirmation
-# copy. Kept at module level so DPO and Lenco webhooks render the exact same
-# wording — drift between the two would surface as inconsistent receipts.
-# Prices match TIER_PRICES in app.schemas.subscription (ngwee → "K{kwacha}").
-TIER_DISPLAY_NAMES = {
-    "starter": "Starter (K125/mo)",
-    "professional": "Professional (K250/mo)",
-    "super_standard": "Super Standard (K500/mo)",
-}
-
-# Subscription plan info shown to users via WhatsApp "plan" / "upgrade"
-# command. Free tier included since it's a valid state the user might be in.
-PLAN_INFO_BY_TIER = {
-    "free": "Free - 10 matches/month",
-    "starter": "Starter (K125/mo) - 50 matches/month",
-    "professional": "Professional (K250/mo) - 125 matches/month",
-    "super_standard": "Super Standard (K500/mo) - Unlimited matches",
-}
 
 
 async def _handle_channel_message(payload: dict, supabase, settings) -> dict:
@@ -188,7 +173,11 @@ async def whatsapp_webhook(request: Request, supabase=Depends(get_supabase)):
         user = supabase.table("users").select("id, subscription_tier").eq("phone", phone).limit(1).execute()
         if user.data:
             tier = user.data[0]["subscription_tier"]
-            await send_whatsapp_message(phone, f"*Your Plan:* {PLAN_INFO_BY_TIER.get(tier, tier)}\n\nVisit zedcv.com/pricing to upgrade.")
+            plan_info = await build_plan_info_by_tier(supabase)
+            await send_whatsapp_message(
+                phone,
+                f"*Your Plan:* {plan_info.get(tier, tier)}\n\nVisit zedcv.com/pricing to upgrade.",
+            )
     elif message_body.isdigit() and 1 <= int(message_body) <= get_settings().whatsapp_reply_max_index:
         await send_whatsapp_message(phone, f"Opening job #{message_body} details...\nVisit zedcv.com/matches for full details.")
     else:
@@ -317,7 +306,8 @@ async def dpo_webhook(request: Request, supabase=Depends(get_supabase)):
         # mark the payment as needing review. Done BEFORE the claim UPDATE
         # so the audit-trail flags land in the same write.
         amount_ngwee = payment["amount"]
-        paid_tiers = {price: tier for tier, price in TIER_PRICES.items() if tier != "free"}
+        tier_prices = await get_tier_prices(supabase)
+        paid_tiers = {price: tier for tier, price in tier_prices.items() if tier != "free"}
         new_tier = paid_tiers.get(amount_ngwee)
         if new_tier is None:
             logging.warning(
@@ -372,7 +362,8 @@ async def dpo_webhook(request: Request, supabase=Depends(get_supabase)):
         # Send WhatsApp + email confirmation
         user = supabase.table("users").select("phone").eq("id", user_id).single().execute()
         if user.data:
-            tier_name = TIER_DISPLAY_NAMES.get(new_tier, new_tier)
+            display_names = await build_tier_display_names(supabase)
+            tier_name = display_names.get(new_tier, new_tier)
             try:
                 await send_whatsapp_message(
                     user.data["phone"],
@@ -496,7 +487,8 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
         # otherwise the highest paid tier whose price <= amount, flagged
         # for audit. Resolved here so the audit fields land in the same
         # write as the claim.
-        paid_tiers = {price: tier for tier, price in TIER_PRICES.items() if tier != "free"}
+        tier_prices = await get_tier_prices(supabase)
+        paid_tiers = {price: tier for tier, price in tier_prices.items() if tier != "free"}
         new_tier = paid_tiers.get(amount_ngwee)
         if new_tier is None:
             logging.warning(
@@ -545,7 +537,8 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
         # Notify on WhatsApp + email — best-effort, never fail the webhook.
         user = supabase.table("users").select("phone").eq("id", user_id).single().execute()
         if user.data:
-            tier_name = TIER_DISPLAY_NAMES.get(new_tier, new_tier)
+            display_names = await build_tier_display_names(supabase)
+            tier_name = display_names.get(new_tier, new_tier)
             try:
                 await send_whatsapp_message(
                     user.data["phone"],

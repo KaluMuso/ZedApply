@@ -554,6 +554,40 @@ components:
         per_page: { type: integer }
         pages: { type: integer }
 
+    TierConfigRow:
+      type: object
+      properties:
+        tier: { type: string, enum: [free, starter, professional, super_standard] }
+        display_name: { type: string }
+        price_ngwee: { type: integer, description: 'Price in ngwee (K125 = 12500)' }
+        matches_limit: { type: integer, description: 'Monthly match quota; 99999 = unlimited' }
+        sort_order: { type: integer }
+        updated_at: { type: string, format: date-time, nullable: true }
+
+    TierConfigList:
+      type: object
+      properties:
+        tiers: { type: array, items: { $ref: '#/components/schemas/TierConfigRow' } }
+
+    TierConfigUpdateItem:
+      type: object
+      required: [tier, display_name, price_ngwee, matches_limit]
+      properties:
+        tier: { type: string, enum: [free, starter, professional, super_standard] }
+        display_name: { type: string }
+        price_ngwee: { type: integer, minimum: 0 }
+        matches_limit: { type: integer, minimum: 0, maximum: 999999 }
+
+    TierConfigBulkUpdate:
+      type: object
+      required: [tiers]
+      properties:
+        tiers:
+          type: array
+          minItems: 4
+          maxItems: 4
+          items: { $ref: '#/components/schemas/TierConfigUpdateItem' }
+
     AdminSubscriptionUpdate:
       type: object
       required: [tier]
@@ -812,7 +846,23 @@ components:
       required: [tier, payment_method]
       properties:
         tier: { type: string, enum: [starter, professional, super_standard] }
-        payment_method: { type: string, enum: [mtn_money, airtel_money] }
+        payment_method:
+          type: string
+          description: >
+            DPO short names (mtn, airtel, card) or Lenco sub-channels
+            (lenco_mtn_money, lenco_airtel_money, lenco_card). Generic lenco
+            is resolved from the phone prefix on the server.
+          enum:
+            - mtn
+            - airtel
+            - card
+            - mtn_money
+            - airtel_money
+            - card_money
+            - lenco
+            - lenco_mtn_money
+            - lenco_airtel_money
+            - lenco_card
         phone: { type: string, pattern: '^\+260[0-9]{9}$' }
 
     InterviewPrepRequest:
@@ -1340,6 +1390,47 @@ paths:
               schema: { $ref: '#/components/schemas/AdminSubscriptionRow' }
         '403': { description: Superadmin only }
         '404': { description: Subscription not found }
+
+  /tiers:
+    get:
+      operationId: listPublicTiers
+      tags: [Pricing]
+      summary: Public tier pricing and match quotas
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TierConfigList' }
+
+  /admin/tier-config:
+    get:
+      operationId: adminGetTierConfig
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      summary: Read tier pricing and match quotas (superadmin)
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TierConfigList' }
+        '403': { description: Superadmin only }
+    put:
+      operationId: adminUpdateTierConfig
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      summary: Update tier pricing and match quotas (superadmin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TierConfigBulkUpdate' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TierConfigList' }
+        '403': { description: Superadmin only }
+        '422': { description: Validation error }
 
   /admin/payments:
     get:

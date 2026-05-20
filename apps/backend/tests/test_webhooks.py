@@ -6,8 +6,7 @@ Covers slice 2D-1c hardening:
 - Tier mapping: exact-price reverse-lookup against TIER_PRICES + TIER_LIMITS.
 - Unknown-amount fallback: log a warning and stamp webhook_data with the
   resolved tier for human review.
-- Subscription/pay rejects payment_method values starting with 'lenco_'
-  (the live Lenco initiation path was reverted in this slice).
+- Subscription/pay accepts Lenco sub-channel payment_method values.
 """
 import logging
 from datetime import datetime, timedelta, timezone
@@ -249,8 +248,8 @@ def test_subscription_pay_accepts_lenco_method(client, auth_headers, fake_supaba
         headers=auth_headers,
         json={
             "tier": "starter",
-            "payment_method": "lenco",
-            "phone": "+260971234567",
+            "payment_method": "lenco_mtn_money",
+            "phone": "+260979370372",
         },
     )
     assert resp.status_code == 200

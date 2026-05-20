@@ -651,6 +651,36 @@ export const admin = {
     ),
 };
 
+export interface TierConfigRow {
+  tier: string;
+  display_name: string;
+  price_ngwee: number;
+  matches_limit: number;
+  sort_order?: number;
+  updated_at?: string | null;
+}
+
+export interface TierConfigList {
+  tiers: TierConfigRow[];
+}
+
+/** Public pricing catalog (no auth). */
+export const tiers = {
+  list: () => apiFetch<TierConfigList>("/tiers"),
+};
+
+/** Superadmin tier pricing editor. */
+export const adminTierConfig = {
+  get: (token: string) =>
+    apiFetch<TierConfigList>("/admin/tier-config", { token }),
+  update: (token: string, tiersPayload: TierConfigRow[]) =>
+    apiFetch<TierConfigList>("/admin/tier-config", {
+      method: "PUT",
+      token,
+      body: JSON.stringify({ tiers: tiersPayload }),
+    }),
+};
+
 // ── CV ──
 // Matches docs/openapi.yaml:265 (CVUploadResponse).
 // 200 path returns the parsed-sync fields; 202 path returns the queue fields.
