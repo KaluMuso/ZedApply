@@ -309,7 +309,7 @@ async def dpo_webhook(request: Request, supabase=Depends(get_supabase)):
         return {"status": "already_processed"}
 
     if verification["is_paid"]:
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timezone
 
         # Determine tier from payment amount (ngwee). Reverse-lookup against
         # the canonical TIER_PRICES dict — exact-match wins, otherwise fall
@@ -332,7 +332,6 @@ async def dpo_webhook(request: Request, supabase=Depends(get_supabase)):
             # Cheap audit trail — preserved by the webhook_data update below.
             parsed["_inexact_amount_match"] = True
             parsed["_resolved_tier"] = new_tier
-        new_limit = TIER_LIMITS[new_tier]
         now = datetime.now(timezone.utc)
 
         # Atomic idempotency: only complete the payment if it's still pending.
@@ -359,34 +358,16 @@ async def dpo_webhook(request: Request, supabase=Depends(get_supabase)):
             )
             return {"status": "already_processed"}
 
-        # Period-end safety: if a webhook arrives mid-cycle (e.g. early renewal
-        # or duplicate that bypassed the idempotency guard via a different
-        # token), stack the new 30 days on top of any remaining paid days
-        # rather than truncating the cycle.
-        existing_end_str = (payment.get("subscriptions") or {}).get("current_period_end")
-        existing_end = None
-        if existing_end_str:
-            try:
-                existing_end = datetime.fromisoformat(existing_end_str.replace("Z", "+00:00"))
-            except (TypeError, ValueError):
-                existing_end = None
-        base = existing_end if (existing_end and existing_end > now) else now
-        new_period_end = base + timedelta(days=get_settings().subscription_period_days)
+        from app.services.subscription_billing import activate_subscription_after_payment
 
-        # Upgrade subscription
-        supabase.table("subscriptions").update({
-            "tier": new_tier,
-            "status": "active",
-            "matches_limit": new_limit,
-            "matches_used": 0,
-            "current_period_start": now.isoformat(),
-            "current_period_end": new_period_end.isoformat(),
-        }).eq("user_id", user_id).execute()
-
-        # Update user's subscription_tier field
-        supabase.table("users").update({
-            "subscription_tier": new_tier,
-        }).eq("id", user_id).execute()
+        activate_subscription_after_payment(
+            supabase,
+            user_id=user_id,
+            payment_id=payment_id,
+            new_tier=new_tier,
+            subscription_row=payment.get("subscriptions"),
+            now=now,
+        )
 
         # Send WhatsApp + email confirmation
         user = supabase.table("users").select("phone").eq("id", user_id).single().execute()
@@ -436,7 +417,7 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
     outcomes so Lenco stops retrying once delivery succeeded.
     """
     from fastapi import HTTPException
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timezone
     from app.core.config import get_settings
     from app.services.lenco_webhook import verify_signature, extract_event_fields
 
@@ -527,8 +508,6 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
                 (tier for price, tier in reversed(sorted_paid) if price <= amount_ngwee),
                 "starter",
             )
-        new_limit = TIER_LIMITS[new_tier]
-
         # Atomic idempotency — see DPO handler for the full reasoning. The
         # SELECT-time check above catches the easy replay case; this
         # conditional UPDATE handles concurrent deliveries that both saw
@@ -551,29 +530,17 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
             )
             return {"status": "already_processed"}
 
-        # Period-end safety: stack on top of any remaining paid days.
-        existing_end_str = (payment.get("subscriptions") or {}).get("current_period_end")
-        existing_end = None
-        if existing_end_str:
-            try:
-                existing_end = datetime.fromisoformat(existing_end_str.replace("Z", "+00:00"))
-            except (TypeError, ValueError):
-                existing_end = None
-        base = existing_end if (existing_end and existing_end > now) else now
-        new_period_end = base + timedelta(days=settings.subscription_period_days)
+        from app.services.subscription_billing import activate_subscription_after_payment
 
-        supabase.table("subscriptions").update({
-            "tier": new_tier,
-            "status": "active",
-            "matches_limit": new_limit,
-            "matches_used": 0,
-            "current_period_start": now.isoformat(),
-            "current_period_end": new_period_end.isoformat(),
-        }).eq("user_id", user_id).execute()
-
-        supabase.table("users").update({
-            "subscription_tier": new_tier,
-        }).eq("id", user_id).execute()
+        activate_subscription_after_payment(
+            supabase,
+            user_id=user_id,
+            payment_id=payment_id,
+            new_tier=new_tier,
+            subscription_row=payment.get("subscriptions"),
+            lenco_subscription_ref=fields.get("lenco_ref"),
+            now=now,
+        )
 
         # Notify on WhatsApp + email — best-effort, never fail the webhook.
         user = supabase.table("users").select("phone").eq("id", user_id).single().execute()
