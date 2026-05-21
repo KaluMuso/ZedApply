@@ -2,10 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── ZedApply Design Tokens ─── */
+/* ─── ZedApply Design Tokens (Track 5) ─── */
 :root {
   /* Type */
-  --font-display: "Instrument Serif", "Times New Roman", serif;
+  --font-display: var(--font-crimson), "Georgia", serif;
   --font-body: "Inter", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
@@ -25,47 +25,46 @@
 
 :root {
 
-  /* Brand — green */
-  --green-900: #052e1c;
-  --green-800: #0a3f26;
-  --green-700: #0f5132;
-  --green-600: #14693f;
-  --green-500: #198754;
+  /* Brand — primary green (#0E5C3A) */
+  --green-900: #042117;
+  --green-800: #062f1f;
+  --green-700: #0E5C3A;
+  --green-600: #0b4a2f;
+  --green-500: #0E5C3A;
   --green-400: #2faa6e;
   --green-300: #66c79a;
   --green-200: #a9e2c5;
   --green-100: #d8f0e3;
-  --green-50: #f0fdf4;
+  --green-50: #f0fdf6;
 
-  /* Brand — copper */
-  --copper-700: #7a3e15;
-  --copper-600: #944f1d;
-  --copper-500: #b8602a;
-  --copper-400: #d27a3f;
-  --copper-300: #eda56e;
-  --copper-200: #f4c69b;
-  --copper-100: #fae3cd;
+  /* Accent — amber (#D97706) */
+  --copper-700: #92400e;
+  --copper-600: #b45309;
+  --copper-500: #D97706;
+  --copper-400: #f59e0b;
+  --copper-300: #fbbf24;
+  --copper-200: #fde68a;
+  --copper-100: #fef3c7;
 
-  /* CTA orange */
-  --orange-600: #ea580c;
-  --orange-500: #f97316;
+  --orange-600: #c2410c;
+  --orange-500: #ea580c;
   --orange-400: #fb923c;
 
-  /* Neutrals — warm cream */
-  --bg: #faf7f2;
-  --bg-2: #f3ede2;
+  /* Surfaces */
+  --bg: #FAFAF7;
+  --bg-2: #f3f2eb;
   --surface: #ffffff;
-  --line: #e8e1d3;
-  --line-2: #d8cebb;
-  --ink: #15140f;
-  --ink-2: #3a382f;
-  --muted: #6f6a5c;
-  --muted-2: #9b9485;
+  --line: #E5E5DB;
+  --line-2: #d8d6c8;
+  --ink: #0F172A;
+  --ink-2: #334155;
+  --muted: #64748b;
+  --muted-2: #94a3b8;
 
   /* Functional */
-  --danger: #b91c1c;
-  --warn: #c2700b;
-  --success: #14693f;
+  --danger: #DC2626;
+  --warn: #F59E0B;
+  --success: #16A34A;
 
   /* Radius */
   --r-xs: 6px;
@@ -82,31 +81,71 @@
   --shadow-lg: 0 18px 40px -12px rgba(20, 18, 10, 0.18),
     0 4px 12px -4px rgba(20, 18, 10, 0.08);
 
-  /* Accent */
   --accent: var(--copper-500);
   --accent-soft: var(--copper-100);
+
+  /* shadcn / Tailwind semantic (HSL channels) */
+  --background: 60 33% 98%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --primary: 154 73% 21%;
+  --primary-foreground: 60 33% 98%;
+  --secondary: 60 14% 92%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 215 16% 47%;
+  --muted-foreground: 215 16% 47%;
+  --accent: 32 95% 44%;
+  --accent-foreground: 60 33% 98%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 60 33% 98%;
+  --success: 142 76% 36%;
+  --success-foreground: 60 33% 98%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 222 47% 11%;
+  --border: 60 14% 88%;
+  --input: 60 14% 88%;
+  --ring: 154 73% 21%;
+  --radius: 10px;
 }
 
 /* ─── Dark Theme ─── */
 .dark {
-  --bg: #0d0c0a;
-  --bg-2: #15140f;
-  --surface: #1a1813;
-  --line: #2a271f;
-  --line-2: #3a362b;
-  --ink: #f5f1e8;
-  --ink-2: #d8d2c3;
-  --muted: #9b9485;
-  --muted-2: #6f6a5c;
+  --bg: #0C0D0C;
+  --bg-2: #151614;
+  --surface: #141514;
+  --line: #1F2937;
+  --line-2: #374151;
+  --ink: #F8FAFC;
+  --ink-2: #cbd5e1;
+  --muted: #94a3b8;
+  --muted-2: #64748b;
 
+  --green-700: #4ade80;
   --green-500: #4ade80;
   --green-400: #6ee7a3;
   --green-100: #1c3527;
   --green-50: #122418;
 
-  --copper-500: #eda56e;
-  --copper-300: #f4c69b;
+  --copper-500: #fbbf24;
+  --copper-300: #fde68a;
   --copper-100: #3a2716;
+
+  --background: 120 5% 5%;
+  --foreground: 210 40% 98%;
+  --card: 120 4% 8%;
+  --card-foreground: 210 40% 98%;
+  --primary: 142 69% 58%;
+  --primary-foreground: 154 73% 12%;
+  --secondary: 215 28% 17%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 215 16% 47%;
+  --muted-foreground: 215 20% 65%;
+  --accent: 38 92% 50%;
+  --accent-foreground: 222 47% 11%;
+  --border: 215 28% 17%;
+  --input: 215 28% 17%;
+  --ring: 142 69% 58%;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 16px -4px rgba(0, 0, 0, 0.5);
@@ -124,9 +163,17 @@ body {
   font-family: var(--font-body);
   background: var(--bg);
   color: var(--ink);
+  font-size: 0.9375rem;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: "ss01", "cv11";
+}
+
+@media (min-width: 768px) {
+  body {
+    font-size: 1rem;
+  }
 }
 
 /* ─── Typography ─── */
@@ -207,14 +254,41 @@ body {
 }
 
 .btn-sm {
-  height: 36px;
+  min-height: 44px;
+  height: 32px;
   padding: 0 12px;
-  font-size: 13px;
+  font-size: 0.875rem;
 }
 .btn-lg {
-  height: 52px;
+  min-height: 44px;
+  height: 48px;
   padding: 0 24px;
-  font-size: 15px;
+  font-size: 1rem;
+}
+
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--line-2);
+}
+.btn-outline:hover {
+  background: var(--bg-2);
+}
+
+.btn-destructive {
+  background: var(--danger);
+  color: #fff;
+  border-color: transparent;
+}
+.btn-destructive:hover {
+  filter: brightness(0.95);
 }
 
 /* ─── Cards ─── */
@@ -288,19 +362,40 @@ body {
 /* ─── Inputs ─── */
 .field {
   width: 100%;
+  min-height: 44px;
   height: 44px;
   padding: 0 14px;
   background: var(--surface);
   border: 1px solid var(--line-2);
   border-radius: var(--r-sm);
-  font-size: 14px;
+  font-size: 16px;
   outline: none;
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+  transition: border-color 200ms ease-out, box-shadow 200ms ease-out;
   color: var(--ink);
+}
+@media (min-width: 768px) {
+  .field {
+    font-size: 1rem;
+  }
 }
 .field:focus {
   border-color: var(--green-500);
-  box-shadow: 0 0 0 3px rgba(25, 135, 84, 0.14);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green-500) 25%, transparent);
+}
+.field:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.field-error {
+  border-color: var(--danger);
+}
+.field-error:focus {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 20%, transparent);
+}
+.field-helper {
+  font-size: 0.8125rem;
+  color: var(--danger);
+  margin-top: 6px;
 }
 
 /* ─── Decorative ─── */

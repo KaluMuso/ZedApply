@@ -1,0 +1,567 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`MatchesPage responsive layout > matches 380px mobile snapshot 1`] = `
+<div
+  data-testid="viewport-root"
+  style="width: 380px; max-width: 380px;"
+>
+  <div
+    class="max-w-[1280px] mx-auto px-6 py-8 md:py-12"
+  >
+    <div
+      class="matches-header grid gap-8 items-start mb-10"
+      style="grid-template-columns: 1.4fr 1fr;"
+    >
+      <div>
+        <div
+          class="skeleton h-3 w-40 mb-2"
+        />
+        <div
+          class="skeleton h-14 md:h-20 w-11/12 mb-3"
+        />
+        <div
+          class="skeleton h-14 md:h-20 w-3/4 mb-4"
+        />
+        <div
+          class="skeleton h-4 w-2/3"
+        />
+      </div>
+      <div
+        class="card p-6"
+      >
+        <div
+          class="flex justify-between items-start"
+        >
+          <div
+            class="flex-1"
+          >
+            <div
+              class="skeleton h-3 w-20 mb-3"
+            />
+            <div
+              class="skeleton h-10 w-32 mb-1"
+            />
+            <div
+              class="skeleton h-3 w-24"
+            />
+          </div>
+          <div
+            class="skeleton h-6 w-16 rounded-full"
+          />
+        </div>
+        <div
+          class="skeleton h-2 w-full mt-5 rounded-full"
+        />
+        <div
+          class="flex justify-between mt-3"
+        >
+          <div
+            class="skeleton h-3 w-24"
+          />
+          <div
+            class="skeleton h-3 w-32"
+          />
+        </div>
+      </div>
+    </div>
+    <div
+      class="flex items-center justify-between flex-wrap gap-3 pb-4 mb-6"
+      style="border-bottom: 1px solid var(--line);"
+    >
+      <div
+        class="flex gap-2 flex-wrap"
+      >
+        <div
+          class="skeleton h-8 w-12 rounded-md"
+        />
+        <div
+          class="skeleton h-8 w-14 rounded-md"
+        />
+        <div
+          class="skeleton h-8 w-20 rounded-md"
+        />
+      </div>
+      <div
+        class="flex gap-2 items-center"
+      >
+        <div
+          class="skeleton h-3 w-8"
+        />
+        <div
+          class="skeleton h-8 w-16 rounded-md"
+        />
+        <div
+          class="skeleton h-8 w-24 rounded-md"
+        />
+      </div>
+    </div>
+    <div
+      class="flex flex-col gap-3.5"
+    >
+      <div
+        class="card overflow-hidden"
+      >
+        <div
+          class="match-row p-5 sm:p-6 grid gap-6 items-center"
+          style="grid-template-columns: auto 1fr auto;"
+        >
+          <div
+            class="skeleton rounded-full"
+            style="width: 80px; height: 80px;"
+          />
+          <div
+            class="min-w-0"
+          >
+            <div
+              class="flex items-center gap-2.5 mb-2"
+            >
+              <div
+                class="skeleton rounded-full"
+                style="width: 28px; height: 28px;"
+              />
+              <div
+                class="skeleton h-3 w-40"
+              />
+            </div>
+            <div
+              class="skeleton h-7 md:h-8 w-3/4 mb-3"
+            />
+            <div
+              class="flex flex-wrap gap-1.5"
+            >
+              <div
+                class="skeleton h-6 w-14 rounded-md"
+              />
+              <div
+                class="skeleton h-6 w-20 rounded-md"
+              />
+              <div
+                class="skeleton h-6 w-16 rounded-md"
+              />
+              <div
+                class="skeleton h-6 w-12 rounded-md"
+              />
+            </div>
+          </div>
+          <div
+            class="match-actions flex flex-col gap-2 items-end"
+          >
+            <div
+              class="skeleton h-8 w-40 rounded-md"
+            />
+            <div
+              class="skeleton h-8 w-40 rounded-md"
+            />
+            <div
+              class="skeleton h-8 w-40 rounded-md"
+            />
+          </div>
+        </div>
+      </div>
+      <div
+        class="card overflow-hidden"
+      >
+        <div
+          class="match-row p-5 sm:p-6 grid gap-6 items-center"
+          style="grid-template-columns: auto 1fr auto;"
+        >
+          <div
+            class="skeleton rounded-full"
+            style="width: 80px; height: 80px;"
+          />
+          <div
+            class="min-w-0"
+          >
+            <div
+              class="flex items-center gap-2.5 mb-2"
+            >
+              <div
+                class="skeleton rounded-full"
+                style="width: 28px; height: 28px;"
+              />
+              <div
+                class="skeleton h-3 w-40"
+              />
+            </div>
+            <div
+              class="skeleton h-7 md:h-8 w-3/4 mb-3"
+            />
+            <div
+              class="flex flex-wrap gap-1.5"
+            >
+              <div
+                class="skeleton h-6 w-14 rounded-md"
+              />
+              <div
+                class="skeleton h-6 w-20 rounded-md"
+              />
+              <div
+                class="skeleton h-6 w-16 rounded-md"
+              />
+              <div
+                class="skeleton h-6 w-12 rounded-md"
+              />
+            </div>
+          </div>
+          <div
+            class="match-actions flex flex-col gap-2 items-end"
+          >
+            <div
+              class="skeleton h-8 w-40 rounded-md"
+            />
+            <div
+              class="skeleton h-8 w-40 rounded-md"
+            />
+            <div
+              class="skeleton h-8 w-40 rounded-md"
+            />
+          </div>
+        </div>
+      </div>
+      <div
+        class="card overflow-hidden"
+      >
+        <div
+          class="match-row p-5 sm:p-6 grid gap-6 items-center"
+          style="grid-template-columns: auto 1fr auto;"
+        >
+          <div
+            class="skeleton rounded-full"
+            style="width: 80px; height: 80px;"
+          />
+          <div
+            class="min-w-0"
+          >
+            <div
+              class="flex items-center gap-2.5 mb-2"
+            >
+              <div
+                class="skeleton rounded-full"
+                style="width: 28px; height: 28px;"
+              />
+              <div
+                class="skeleton h-3 w-40"
+              />
+            </div>
+            <div
+              class="skeleton h-7 md:h-8 w-3/4 mb-3"
+            />
+            <div
+              class="flex flex-wrap gap-1.5"
+            >
+              <div
+                class="skeleton h-6 w-14 rounded-md"
+              />
+              <div
+                class="skeleton h-6 w-20 rounded-md"
+              />
+              <div
+                class="skeleton h-6 w-16 rounded-md"
+              />
+              <div
+                class="skeleton h-6 w-12 rounded-md"
+              />
+            </div>
+          </div>
+          <div
+            class="match-actions flex flex-col gap-2 items-end"
+          >
+            <div
+              class="skeleton h-8 w-40 rounded-md"
+            />
+            <div
+              class="skeleton h-8 w-40 rounded-md"
+            />
+            <div
+              class="skeleton h-8 w-40 rounded-md"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`MatchesPage responsive layout > matches 1024px desktop snapshot 1`] = `
+<div
+  data-testid="viewport-root"
+  style="width: 1024px; max-width: 1024px;"
+>
+  <div
+    class="max-w-[1280px] mx-auto px-6 py-8 md:py-12"
+  >
+    <div
+      class="matches-header grid gap-8 items-start mb-10"
+      style="grid-template-columns: 1.4fr 1fr;"
+    >
+      <div>
+        <div
+          class="skeleton h-3 w-40 mb-2"
+        />
+        <div
+          class="skeleton h-14 md:h-20 w-11/12 mb-3"
+        />
+        <div
+          class="skeleton h-14 md:h-20 w-3/4 mb-4"
+        />
+        <div
+          class="skeleton h-4 w-2/3"
+        />
+      </div>
+      <div
+        class="card p-6"
+      >
+        <div
+          class="flex justify-between items-start"
+        >
+          <div
+            class="flex-1"
+          >
+            <div
+              class="skeleton h-3 w-20 mb-3"
+            />
+            <div
+              class="skeleton h-10 w-32 mb-1"
+            />
+            <div
+              class="skeleton h-3 w-24"
+            />
+          </div>
+          <div
+            class="skeleton h-6 w-16 rounded-full"
+          />
+        </div>
+        <div
+          class="skeleton h-2 w-full mt-5 rounded-full"
+        />
+        <div
+          class="flex justify-between mt-3"
+        >
+          <div
+            class="skeleton h-3 w-24"
+          />
+          <div
+            class="skeleton h-3 w-32"
+          />
+        </div>
+      </div>
+    </div>
+    <div
+      class="flex items-center justify-between flex-wrap gap-3 pb-4 mb-6"
+      style="border-bottom: 1px solid var(--line);"
+    >
+      <div
+        class="flex gap-2 flex-wrap"
+      >
+        <div
+          class="skeleton h-8 w-12 rounded-md"
+        />
+        <div
+          class="skeleton h-8 w-14 rounded-md"
+        />
+        <div
+          class="skeleton h-8 w-20 rounded-md"
+        />
+      </div>
+      <div
+        class="flex gap-2 items-center"
+      >
+        <div
+          class="skeleton h-3 w-8"
+        />
+        <div
+          class="skeleton h-8 w-16 rounded-md"
+        />
+        <div
+          class="skeleton h-8 w-24 rounded-md"
+        />
+      </div>
+    </div>
+    <div
+      class="flex flex-col gap-3.5"
+    >
+      <div
+        class="card overflow-hidden"
+      >
+        <div
+          class="match-row p-5 sm:p-6 grid gap-6 items-center"
+          style="grid-template-columns: auto 1fr auto;"
+        >
+          <div
+            class="skeleton rounded-full"
+            style="width: 80px; height: 80px;"
+          />
+          <div
+            class="min-w-0"
+          >
+            <div
+              class="flex items-center gap-2.5 mb-2"
+            >
+              <div
+                class="skeleton rounded-full"
+                style="width: 28px; height: 28px;"
+              />
+              <div
+                class="skeleton h-3 w-40"
+              />
+            </div>
+            <div
+              class="skeleton h-7 md:h-8 w-3/4 mb-3"
+            />
+            <div
+              class="flex flex-wrap gap-1.5"
+            >
+              <div
+                class="skeleton h-6 w-14 rounded-md"
+              />
+              <div
+                class="skeleton h-6 w-20 rounded-md"
+              />
+              <div
+                class="skeleton h-6 w-16 rounded-md"
+              />
+              <div
+                class="skeleton h-6 w-12 rounded-md"
+              />
+            </div>
+          </div>
+          <div
+            class="match-actions flex flex-col gap-2 items-end"
+          >
+            <div
+              class="skeleton h-8 w-40 rounded-md"
+            />
+            <div
+              class="skeleton h-8 w-40 rounded-md"
+            />
+            <div
+              class="skeleton h-8 w-40 rounded-md"
+            />
+          </div>
+        </div>
+      </div>
+      <div
+        class="card overflow-hidden"
+      >
+        <div
+          class="match-row p-5 sm:p-6 grid gap-6 items-center"
+          style="grid-template-columns: auto 1fr auto;"
+        >
+          <div
+            class="skeleton rounded-full"
+            style="width: 80px; height: 80px;"
+          />
+          <div
+            class="min-w-0"
+          >
+            <div
+              class="flex items-center gap-2.5 mb-2"
+            >
+              <div
+                class="skeleton rounded-full"
+                style="width: 28px; height: 28px;"
+              />
+              <div
+                class="skeleton h-3 w-40"
+              />
+            </div>
+            <div
+              class="skeleton h-7 md:h-8 w-3/4 mb-3"
+            />
+            <div
+              class="flex flex-wrap gap-1.5"
+            >
+              <div
+                class="skeleton h-6 w-14 rounded-md"
+              />
+              <div
+                class="skeleton h-6 w-20 rounded-md"
+              />
+              <div
+                class="skeleton h-6 w-16 rounded-md"
+              />
+              <div
+                class="skeleton h-6 w-12 rounded-md"
+              />
+            </div>
+          </div>
+          <div
+            class="match-actions flex flex-col gap-2 items-end"
+          >
+            <div
+              class="skeleton h-8 w-40 rounded-md"
+            />
+            <div
+              class="skeleton h-8 w-40 rounded-md"
+            />
+            <div
+              class="skeleton h-8 w-40 rounded-md"
+            />
+          </div>
+        </div>
+      </div>
+      <div
+        class="card overflow-hidden"
+      >
+        <div
+          class="match-row p-5 sm:p-6 grid gap-6 items-center"
+          style="grid-template-columns: auto 1fr auto;"
+        >
+          <div
+            class="skeleton rounded-full"
+            style="width: 80px; height: 80px;"
+          />
+          <div
+            class="min-w-0"
+          >
+            <div
+              class="flex items-center gap-2.5 mb-2"
+            >
+              <div
+                class="skeleton rounded-full"
+                style="width: 28px; height: 28px;"
+              />
+              <div
+                class="skeleton h-3 w-40"
+              />
+            </div>
+            <div
+              class="skeleton h-7 md:h-8 w-3/4 mb-3"
+            />
+            <div
+              class="flex flex-wrap gap-1.5"
+            >
+              <div
+                class="skeleton h-6 w-14 rounded-md"
+              />
+              <div
+                class="skeleton h-6 w-20 rounded-md"
+              />
+              <div
+                class="skeleton h-6 w-16 rounded-md"
+              />
+              <div
+                class="skeleton h-6 w-12 rounded-md"
+              />
+            </div>
+          </div>
+          <div
+            class="match-actions flex flex-col gap-2 items-end"
+          >
+            <div
+              class="skeleton h-8 w-40 rounded-md"
+            />
+            <div
+              class="skeleton h-8 w-40 rounded-md"
+            />
+            <div
+              class="skeleton h-8 w-40 rounded-md"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;

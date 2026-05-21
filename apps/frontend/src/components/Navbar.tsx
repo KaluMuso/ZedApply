@@ -8,6 +8,8 @@ import { useTheme } from "@/components/ThemeProvider";
 import { Logo } from "@/components/ui/Logo";
 import { Icon } from "@/components/ui/Icon";
 import { Avatar } from "@/components/ui/Avatar";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -159,10 +161,10 @@ export function Navbar() {
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <Link href="/auth" className="btn btn-ghost btn-sm">
+                <Link href="/auth" className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}>
                   Sign In
                 </Link>
-                <Link href="/auth" className="btn btn-primary btn-sm">
+                <Link href="/auth" className={cn(buttonVariants({ variant: "primary", size: "sm" }))}>
                   Get Started
                 </Link>
               </div>
@@ -207,8 +209,9 @@ export function Navbar() {
 
               <div className="mt-6 flex flex-col gap-3">
                 <button
+                  type="button"
                   onClick={toggle}
-                  className="btn btn-ghost w-full"
+                  className={cn(buttonVariants({ variant: "ghost" }), "w-full")}
                 >
                   <Icon name={dark ? "sun" : "moon"} size={16} />
                   {dark ? "Light Mode" : "Dark Mode"}
@@ -219,16 +222,17 @@ export function Navbar() {
                     <Link
                       href="/profile"
                       onClick={() => setMenuOpen(false)}
-                      className="btn btn-ghost w-full"
+                      className={cn(buttonVariants({ variant: "ghost" }), "w-full")}
                     >
                       Profile
                     </Link>
                     <button
+                      type="button"
                       onClick={() => {
                         logout();
                         setMenuOpen(false);
                       }}
-                      className="btn btn-ghost w-full"
+                      className={cn(buttonVariants({ variant: "ghost" }), "w-full")}
                       style={{ color: "var(--danger)" }}
                     >
                       Sign Out
@@ -238,7 +242,7 @@ export function Navbar() {
                   <Link
                     href="/auth"
                     onClick={() => setMenuOpen(false)}
-                    className="btn btn-primary w-full"
+                    className={cn(buttonVariants({ variant: "primary" }), "w-full")}
                   >
                     Get Started
                   </Link>

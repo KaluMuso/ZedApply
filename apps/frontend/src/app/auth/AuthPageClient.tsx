@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { auth } from "@/lib/api";
@@ -9,7 +9,10 @@ import { z } from "zod";
 import { Icon } from "@/components/ui/Icon";
 import { Logo } from "@/components/ui/Logo";
 import { ChevronMotif } from "@/components/ui/ChevronMotif";
-import { ZambiaFlag } from "@/components/ui/ZambiaFlag";
+import { Button } from "@/components/ui/button";
+import { PhoneField } from "@/components/shared/PhoneField";
+import { OtpField } from "@/components/shared/OtpField";
+import { StepProgress } from "@/components/shared/StepProgress";
 
 const phoneSchema = z
   .string()
@@ -22,12 +25,11 @@ export default function AuthPageClient() {
   const { login, isAuthenticated, isLoading: authLoading } = useAuth();
   const [step, setStep] = useState<"phone" | "otp" | "success">("phone");
   const [phoneDigits, setPhoneDigits] = useState("");
-  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const [otpCode, setOtpCode] = useState("");
   const [resendIn, setResendIn] = useState(30);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [consentChecked, setConsentChecked] = useState(false);
-  const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   const fullPhone = `+260${phoneDigits.replace(/\s/g, "")}`;
 
@@ -70,7 +72,7 @@ export default function AuthPageClient() {
     try {
       await auth.requestOTP(fullPhone);
       setStep("otp");
-      setTimeout(() => otpRefs.current[0]?.focus(), 50);
+      setOtpCode("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send OTP");
     } finally {
@@ -78,16 +80,8 @@ export default function AuthPageClient() {
     }
   };
 
-  const handleOtpChange = async (i: number, value: string) => {
-    const val = value.replace(/\D/g, "").slice(-1);
-    const next = [...otp];
-    next[i] = val;
-    setOtp(next);
-
-    if (val && i < 5) otpRefs.current[i + 1]?.focus();
-
-    if (next.every((d) => d !== "")) {
-      const code = next.join("");
+  const verifyOtp = useCallback(
+    async (code: string) => {
       const result = otpSchema.safeParse(code);
       if (!result.success) return;
 
@@ -102,14 +96,14 @@ export default function AuthPageClient() {
         setError(err instanceof Error ? err.message : "Invalid OTP");
         setLoading(false);
       }
-    }
-  };
+    },
+    [consentChecked, fullPhone, login, router, safeNext]
+  );
 
-  const handleOtpKey = (i: number, e: React.KeyboardEvent) => {
-    if (e.key === "Backspace" && !otp[i] && i > 0) {
-      otpRefs.current[i - 1]?.focus();
-    }
-  };
+  useEffect(() => {
+    if (step !== "otp" || otpCode.length !== 6 || loading) return;
+    void verifyOtp(otpCode);
+  }, [otpCode, step, loading, verifyOtp]);
 
   return (
     <main
@@ -181,7 +175,7 @@ export default function AuthPageClient() {
             your WhatsApp — no email, no password to forget.
           </p>
 
-          <div className="mt-10 flex flex-col gap-3.5">
+          <div className="mt-10 flex flex-col gap-4">
             {[
               ["shield", "End-to-end encrypted"],
               ["whatsapp", "WhatsApp verified — no SMS spam"],
@@ -228,7 +222,7 @@ export default function AuthPageClient() {
 
           {step === "phone" && (
             <div className="fade-up">
-              <div className="eyebrow">Step 01 / 02</div>
+              <StepProgress current={1} total={2} labels={["Phone", "Verify code"]} className="mb-4" />
               <h2
                 className="font-display mt-2 mb-2"
                 style={{ fontSize: 44, letterSpacing: "-0.02em" }}
@@ -243,53 +237,16 @@ export default function AuthPageClient() {
               </p>
 
               <form onSubmit={handlePhoneSubmit}>
-                <label
-                  className="text-sm font-medium block mb-2"
-                  style={{ color: "var(--ink-2)" }}
-                >
+                <label htmlFor="auth-phone" className="mb-2 block text-sm font-medium text-ink-2">
                   Phone number
                 </label>
-                <div
-                  className="flex items-stretch overflow-hidden"
-                  style={{
-                    border: error
-                      ? "1px solid var(--danger)"
-                      : "1px solid var(--line-2)",
-                    borderRadius: "var(--r-sm)",
-                    background: "var(--surface)",
-                  }}
-                >
-                  <div
-                    className="flex items-center gap-2 px-3.5 font-mono text-sm"
-                    style={{
-                      borderRight: "1px solid var(--line-2)",
-                      color: "var(--ink-2)",
-                      background: "var(--bg-2)",
-                    }}
-                  >
-                    <ZambiaFlag />
-                    +260
-                  </div>
-                  <input
-                    type="tel"
-                    value={phoneDigits}
-                    onChange={(e) => setPhoneDigits(e.target.value)}
-                    placeholder="97 123 4567"
-                    className="flex-1 px-3.5 h-[52px] text-base bg-transparent outline-none"
-                    style={{
-                      border: "none",
-                      color: "var(--ink)",
-                    }}
-                  />
-                </div>
-                {error && (
-                  <div
-                    className="mt-2 text-sm"
-                    style={{ color: "var(--danger)" }}
-                  >
-                    {error}
-                  </div>
-                )}
+                <PhoneField
+                  id="auth-phone"
+                  digits={phoneDigits}
+                  onDigitsChange={setPhoneDigits}
+                  error={error}
+                  disabled={loading}
+                />
 
                 <label
                   className="mt-5 flex items-start gap-2.5 text-xs leading-relaxed cursor-pointer"
@@ -327,42 +284,36 @@ export default function AuthPageClient() {
                   </span>
                 </label>
 
-                <button
+                <Button
                   type="submit"
-                  disabled={loading || !consentChecked || !phoneDigits}
-                  className="btn btn-primary btn-lg w-full mt-6"
+                  variant="primary"
+                  size="lg"
+                  className="mt-6 w-full"
+                  loading={loading}
+                  disabled={!consentChecked || phoneDigits.length < 9}
                 >
-                  {loading ? (
-                    <span className="spinner" />
-                  ) : (
-                    <>
-                      Send code <Icon name="arrowRight" size={16} />
-                    </>
-                  )}
-                </button>
+                  Send code <Icon name="arrowRight" size={16} />
+                </Button>
               </form>
             </div>
           )}
 
           {step === "otp" && (
             <div className="fade-up">
-              <button
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="mb-4 h-auto min-h-0 px-0 text-muted-foreground"
                 onClick={() => {
                   setStep("phone");
-                  setOtp(["", "", "", "", "", ""]);
+                  setOtpCode("");
                   setError("");
-                }}
-                className="inline-flex items-center gap-1.5 text-sm mb-4"
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "var(--muted)",
-                  cursor: "pointer",
                 }}
               >
                 <Icon name="arrowLeft" size={13} /> Change number
-              </button>
-              <div className="eyebrow">Step 02 / 02</div>
+              </Button>
+              <StepProgress current={2} total={2} labels={["Phone", "Verify code"]} className="mb-4" />
               <h2
                 className="font-display mt-2 mb-2"
                 style={{ fontSize: 44, letterSpacing: "-0.02em" }}
@@ -380,42 +331,12 @@ export default function AuthPageClient() {
                 on WhatsApp.
               </p>
 
-              <div className="grid grid-cols-6 gap-2.5">
-                {otp.map((d, i) => (
-                  <input
-                    key={i}
-                    ref={(el) => {
-                      otpRefs.current[i] = el;
-                    }}
-                    value={d}
-                    onChange={(e) => handleOtpChange(i, e.target.value)}
-                    onKeyDown={(e) => handleOtpKey(i, e)}
-                    inputMode="numeric"
-                    maxLength={1}
-                    aria-label={`Digit ${i + 1}`}
-                    className="h-16 text-center font-display outline-none"
-                    style={{
-                      fontSize: 32,
-                      border: d
-                        ? "1px solid var(--green-500)"
-                        : "1px solid var(--line-2)",
-                      borderRadius: 12,
-                      background: "var(--surface)",
-                      color: "var(--ink)",
-                      transition: "all 150ms ease",
-                    }}
-                  />
-                ))}
-              </div>
-
-              {error && (
-                <div
-                  className="mt-3 text-sm"
-                  style={{ color: "var(--danger)" }}
-                >
-                  {error}
-                </div>
-              )}
+              <OtpField
+                value={otpCode}
+                onChange={setOtpCode}
+                disabled={loading}
+                error={error}
+              />
 
               <div className="mt-6 flex justify-between items-center">
                 <span className="text-sm" style={{ color: "var(--muted)" }}>
