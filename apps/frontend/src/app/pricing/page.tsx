@@ -7,6 +7,13 @@ import { toast } from "sonner";
 import { subscription, tiers, profile, type TierConfigRow } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Icon } from "@/components/ui/Icon";
+import { Button } from "@/components/ui/button";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import {
   formatMatchesLimit,
   formatPriceLabel,
@@ -184,7 +191,6 @@ export default function PricingPage() {
   const [displayPlans, setDisplayPlans] = useState<Plan[]>(plans);
   const [tierRows, setTierRows] = useState<TierConfigRow[]>([]);
   const [payingTier, setPayingTier] = useState<string | null>(null);
-  const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [currentTier, setCurrentTier] = useState<string>("free");
   const [lencoReady, setLencoReady] = useState(false);
 
@@ -487,32 +493,17 @@ export default function PricingPage() {
                 ))}
               </ul>
 
-              <button
+              <Button
                 type="button"
                 onClick={() => handlePlanClick(plan.tier)}
                 disabled={isCurrent || isPaying || checkoutBlocked}
-                aria-disabled={isCurrent || checkoutBlocked}
-                className={`w-full ${
-                  isCurrent
-                    ? "btn btn-ghost btn-lg"
-                    : plan.highlight
-                    ? "btn btn-accent btn-lg"
-                    : "btn btn-ghost btn-lg"
-                }`}
-                style={
-                  isCurrent || checkoutBlocked
-                    ? { opacity: 0.7, cursor: "not-allowed" }
-                    : undefined
-                }
+                variant={isCurrent ? "outline" : plan.highlight ? "accent" : "outline"}
+                size="lg"
+                className="w-full"
+                loading={isPaying}
               >
-                {isPaying ? (
-                  <span className="spinner" />
-                ) : (
-                  <>
-                    {isCurrent && <Icon name="check" size={14} />} {label}
-                  </>
-                )}
-              </button>
+                {isCurrent && <Icon name="check" size={14} />} {label}
+              </Button>
             </div>
           );
         })}
@@ -605,40 +596,18 @@ export default function PricingPage() {
           </h2>
         </div>
 
-        <div className="space-y-2">
+        <Accordion className="space-y-2">
           {faqs.map((faq, i) => (
-            <div key={i} className="card overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                className="w-full flex items-center justify-between p-5 text-left"
-                style={{ background: "none", border: "none", cursor: "pointer" }}
-              >
-                <span className="font-medium text-sm">{faq.q}</span>
-                <span
-                  className="shrink-0 ml-4 transition-transform duration-200"
-                  style={{
-                    transform: openFaq === i ? "rotate(45deg)" : "rotate(0deg)",
-                    color: "var(--muted)",
-                  }}
-                >
-                  <Icon name="plus" size={16} />
-                </span>
-              </button>
-              <div
-                className="overflow-hidden transition-all duration-300"
-                style={{ maxHeight: openFaq === i ? 200 : 0 }}
-              >
-                <p
-                  className="px-5 pb-5 text-sm leading-relaxed"
-                  style={{ color: "var(--ink-2)" }}
-                >
-                  {faq.a}
-                </p>
-              </div>
-            </div>
+            <AccordionItem key={faq.q} value={`faq-${i}`} className="card border border-line px-0">
+              <AccordionTrigger className="px-5 py-4 text-left text-sm font-medium hover:no-underline">
+                {faq.q}
+              </AccordionTrigger>
+              <AccordionContent className="px-5 pb-5 text-sm leading-relaxed text-ink-2">
+                {faq.a}
+              </AccordionContent>
+            </AccordionItem>
           ))}
-        </div>
+        </Accordion>
       </div>
     </div>
   );

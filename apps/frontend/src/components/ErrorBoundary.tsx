@@ -1,6 +1,9 @@
 "use client";
 
 import React from "react";
+import { AlertCircle } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
 
 interface Props {
   children: React.ReactNode;
@@ -8,17 +11,16 @@ interface Props {
 
 interface State {
   hasError: boolean;
-  error: Error | null;
 }
 
 export class ErrorBoundary extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false };
   }
 
-  static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+  static getDerivedStateFromError(): State {
+    return { hasError: true };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
@@ -28,52 +30,26 @@ export class ErrorBoundary extends React.Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div
-          className="min-h-[60vh] flex items-center justify-center px-6"
-          style={{ background: "var(--bg)" }}
-        >
-          <div className="text-center max-w-md">
-            <div
-              className="w-16 h-16 mx-auto mb-6 rounded-2xl flex items-center justify-center"
-              style={{
-                background: "var(--copper-100)",
-                color: "var(--copper-600)",
-              }}
-            >
-              <svg
-                width={28}
-                height={28}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx={12} cy={12} r={10} />
-                <line x1={12} y1={8} x2={12} y2={12} />
-                <line x1={12} y1={16} x2={12.01} y2={16} />
-              </svg>
+        <div className="flex min-h-[60vh] items-center justify-center bg-background px-6">
+          <div className="max-w-md text-center">
+            <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-md bg-accent/15 text-accent">
+              <AlertCircle className="h-7 w-7" aria-hidden />
             </div>
-            <h2
-              className="font-display text-2xl mb-2"
-              style={{ letterSpacing: "-0.01em" }}
-            >
+            <h2 className="font-display text-2xl font-semibold text-foreground">
               Something went wrong
             </h2>
-            <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>
-              We hit an unexpected error. Try refreshing the page — if it
-              persists, please contact us.
+            <p className="mt-2 text-sm text-muted-foreground">
+              We&apos;re on it. Try reloading the page — if this keeps happening, contact support.
             </p>
-            <button
-              onClick={() => {
-                this.setState({ hasError: false, error: null });
-                window.location.reload();
-              }}
-              className="btn btn-primary"
+            <Button
+              type="button"
+              variant="primary"
+              size="lg"
+              className="mt-6"
+              onClick={() => window.location.reload()}
             >
-              Refresh Page
-            </button>
+              Reload page
+            </Button>
           </div>
         </div>
       );

@@ -37,7 +37,9 @@ export function OfflineBanner() {
     >
       <p className="max-w-7xl mx-auto flex min-h-11 items-center justify-center gap-2 px-4 py-2 text-sm">
         <WifiOff className="h-4 w-4 shrink-0" aria-hidden />
-        <span>You are offline. Some content may be cached. Check your connection to submit forms.</span>
+        <span>
+          You&apos;re offline — pull to refresh when reconnected. Cached pages may still load.
+        </span>
       </p>
     </div>
   );

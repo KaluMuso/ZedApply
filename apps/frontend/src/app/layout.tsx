@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Instrument_Serif, JetBrains_Mono } from "next/font/google";
+import { Inter, Crimson_Pro, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
@@ -9,6 +9,8 @@ import { SavedJobsProvider } from "@/lib/SavedJobsProvider";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PWAProvider } from "@/components/PWAProvider";
+import { OfflineBanner } from "@/components/shared/OfflineBanner";
+import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -16,12 +18,11 @@ const inter = Inter({
   variable: "--font-inter",
 });
 
-const instrumentSerif = Instrument_Serif({
-  weight: "400",
+const crimsonPro = Crimson_Pro({
+  weight: ["400", "600"],
   subsets: ["latin"],
   display: "swap",
-  variable: "--font-instrument-serif",
-  style: ["normal", "italic"],
+  variable: "--font-crimson",
 });
 
 const jetbrainsMono = JetBrains_Mono({
@@ -31,7 +32,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const viewport: Viewport = {
-  themeColor: "#0f5132",
+  themeColor: "#0E5C3A",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -104,7 +105,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable}`}
+      className={`${inter.variable} ${crimsonPro.variable} ${jetbrainsMono.variable}`}
       suppressHydrationWarning
     >
       <body
@@ -116,8 +117,10 @@ export default function RootLayout({
             <AuthProvider>
               <SavedJobsProvider>
                 <PWAProvider>
+                  <OfflineBanner />
                   <Navbar />
                   {children}
+                  <PWAInstallPrompt />
                   <Footer />
                   <MobileTabBar />
                 </PWAProvider>

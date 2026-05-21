@@ -1,46 +1,41 @@
-// ZedApply — Service Worker (cache-first for static, network-first for API)
-const CACHE_VERSION = 'zedcv-v2';
-const STATIC_ASSETS = [
-  '/',
-  '/manifest.json',
-  '/icons/icon-192.svg',
-  '/icons/icon-512.svg',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
+// ZedApply — Service Worker (app shell + stale-while-revalidate HTML)
+const CACHE_VERSION = "zedapply-v3";
+const APP_SHELL = [
+  "/",
+  "/manifest.json",
+  "/icons/icon-192.png",
+  "/icons/icon-512.png",
+  "/icons/icon-mask.svg",
 ];
 
-// Install — pre-cache critical assets
-self.addEventListener('install', (event) => {
+self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches
-      .open(CACHE_VERSION)
-      .then((cache) => cache.addAll(STATIC_ASSETS))
-      .catch(() => {})
+    caches.open(CACHE_VERSION).then((cache) => cache.addAll(APP_SHELL)).catch(() => {})
   );
   self.skipWaiting();
 });
 
-// Activate — clean up old caches
-self.addEventListener('activate', (event) => {
+self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(
-        keys.filter((key) => key !== CACHE_VERSION).map((key) => caches.delete(key))
-      )
+      Promise.all(keys.filter((k) => k !== CACHE_VERSION).map((k) => caches.delete(k)))
     )
   );
   self.clients.claim();
 });
 
-// Fetch — network-first for API, cache-first for static
-self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
+function isNavigation(request) {
+  return (
+    request.mode === "navigate" ||
+    (request.method === "GET" && request.headers.get("accept")?.includes("text/html"))
+  );
+}
+
+self.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET") return;
 
   const url = new URL(event.request.url);
 
-  // Next.js App Router: RSC navigations and prefetch requests must not hit
-  // the cache-first branch below — stale RSC payloads feel like a full
-  // page reload in production (service worker is disabled on localhost).
   if (
     url.searchParams.has("_rsc") ||
     event.request.headers.get("RSC") === "1" ||
@@ -49,18 +44,31 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // API calls — always go to network
-  if (url.pathname.startsWith('/api/') || url.hostname !== self.location.hostname) {
+  if (url.pathname.startsWith("/api/") || url.hostname !== self.location.hostname) {
     return;
   }
 
-  // Next.js data/chunks — network first, cache fallback
-  if (url.pathname.startsWith('/_next/')) {
+  if (url.pathname.startsWith("/_next/static/")) {
+    event.respondWith(
+      caches.match(event.request).then(
+        (cached) =>
+          cached ||
+          fetch(event.request).then((response) => {
+            const clone = response.clone();
+            caches.open(CACHE_VERSION).then((c) => c.put(event.request, clone));
+            return response;
+          })
+      )
+    );
+    return;
+  }
+
+  if (url.pathname.startsWith("/_next/")) {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
           const clone = response.clone();
-          caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, clone));
+          caches.open(CACHE_VERSION).then((c) => c.put(event.request, clone));
           return response;
         })
         .catch(() => caches.match(event.request))
@@ -68,21 +76,31 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets — cache first, network fallback
+  if (isNavigation(event.request)) {
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        const network = fetch(event.request)
+          .then((response) => {
+            const clone = response.clone();
+            caches.open(CACHE_VERSION).then((c) => c.put(event.request, clone));
+            return response;
+          })
+          .catch(() => cached || caches.match("/"));
+        return cached || network;
+      })
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then(
       (cached) =>
         cached ||
-        fetch(event.request)
-          .then((response) => {
-            const clone = response.clone();
-            caches
-              .open(CACHE_VERSION)
-              .then((cache) => cache.put(event.request, clone))
-              .catch(() => {});
-            return response;
-          })
-          .catch(() => caches.match('/'))
+        fetch(event.request).then((response) => {
+          const clone = response.clone();
+          caches.open(CACHE_VERSION).then((c) => c.put(event.request, clone));
+          return response;
+        })
     )
   );
 });

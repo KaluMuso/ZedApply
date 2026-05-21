@@ -7,6 +7,7 @@ import { profile as profileApi, ApiError, type UserProfile } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Icon } from "@/components/ui/Icon";
 import { Avatar } from "@/components/ui/Avatar";
+import { StepProgress } from "@/components/shared/StepProgress";
 
 import { CvSkillsTab } from "./_tabs/CvSkillsTab";
 import { AnalysisTab } from "./_tabs/AnalysisTab";
@@ -215,9 +216,22 @@ export default function ProfilePage() {
   const completeness = Math.round(
     (fields.filter(Boolean).length / fields.length) * 100
   );
+  const onboardingStep = !profileData.cv_uploaded
+    ? 1
+    : skillsList.length === 0
+      ? 2
+      : 3;
 
   return (
     <div className="max-w-[1280px] mx-auto px-6 py-8 md:py-12">
+      {!profileData.cv_uploaded || skillsList.length === 0 ? (
+        <StepProgress
+          current={onboardingStep}
+          total={3}
+          labels={["Upload CV", "Review skills", "Preferences"]}
+          className="mb-6 max-w-md"
+        />
+      ) : null}
       <div className="card p-6 md:p-8 mb-8">
         <div className="flex flex-col md:flex-row md:items-center gap-6">
           <div className="flex items-center gap-5 flex-1">
