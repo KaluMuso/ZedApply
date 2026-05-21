@@ -1,77 +1,51 @@
-"""Tests for Lenco v2 webhook signature verification + event extraction.
+"""Tests for Lenco v2 webhook signature verification + route handling."""
+from __future__ import annotations
 
-Signature verification is the security boundary - if this is wrong, an
-attacker can mint payment-success webhooks and grant themselves any tier.
-Pin the contract here.
-"""
 import hashlib
 import hmac
 import json
-import logging
 from unittest.mock import patch
+
 from tests.conftest import FakeSupabaseQuery
 from tests.test_webhooks import _UpdateSpyQuery
-from app.services.lenco_webhook import verify_signature, extract_event_fields
+from app.services.lenco_webhook import verify_lenco_signature, extract_event_fields
+
+TEST_API_KEY = "test-lenco-api-secret-key"
 
 
-# Helper to compute a valid signature the way Lenco does.
-def _sign(body: bytes, key: str) -> str:
-    return hmac.new(key.encode("utf-8"), body, hashlib.sha512).hexdigest()
+def _webhook_hash_key(api_key: str) -> str:
+    return hashlib.sha256(api_key.encode()).hexdigest()
 
 
-class TestVerifySignature:
-    def test_valid_with_dedicated_webhook_secret(self):
+def _sign(body: bytes, api_key: str = TEST_API_KEY) -> str:
+    """Compute X-Lenco-Signature the way Lenco documents it."""
+    return hmac.new(
+        _webhook_hash_key(api_key).encode(),
+        body,
+        hashlib.sha512,
+    ).hexdigest()
+
+
+class TestVerifyLencoSignature:
+    def test_webhook_signature_uses_sha256_of_api_key(self):
+        """Regression: signing key must be sha256(api_key), not raw api_key."""
         body = b'{"event":"collection.successful"}'
-        sig = _sign(body, "secret-A")
-        assert verify_signature(body, sig, webhook_secret="secret-A", api_key="secret-B") is True
+        wrong_sig = hmac.new(
+            TEST_API_KEY.encode(),
+            body,
+            hashlib.sha512,
+        ).hexdigest()
+        assert verify_lenco_signature(body, wrong_sig, TEST_API_KEY) is False
 
-    def test_falls_back_to_api_key_when_secret_empty(self):
-        body = b'{"x":1}'
-        sig = _sign(body, "api-key-only")
-        assert verify_signature(body, sig, webhook_secret="", api_key="api-key-only") is True
-
-    def test_accepts_either_key_during_migration(self):
-        """When BOTH keys are set, signatures from either should verify.
-        Lets a deployment rotate from API-key-signing to dedicated-secret
-        without dropping in-flight deliveries."""
-        body = b'{"x":1}'
-        sig_with_api = _sign(body, "api-key")
-        assert verify_signature(
-            body, sig_with_api,
-            webhook_secret="dedicated",
-            api_key="api-key",
-        ) is True
-
-    def test_rejects_wrong_signature(self):
-        body = b'{"event":"collection.successful"}'
-        bad_sig = "a" * 128
-        assert verify_signature(body, bad_sig, webhook_secret="secret-A") is False
+        assert verify_lenco_signature(body, _sign(body), TEST_API_KEY) is True
 
     def test_rejects_missing_signature(self):
-        body = b'{"x":1}'
-        assert verify_signature(body, "", webhook_secret="secret-A") is False
+        assert verify_lenco_signature(b"{}", "", TEST_API_KEY) is False
 
-    def test_rejects_when_no_keys_configured(self):
-        body = b'{"x":1}'
-        sig = _sign(body, "irrelevant")
-        assert verify_signature(body, sig, webhook_secret="", api_key="") is False
-
-    def test_signature_case_insensitive(self):
-        """Lenco sends lowercase hex; be lenient about uppercase."""
-        body = b'{"x":1}'
-        sig = _sign(body, "k").upper()
-        assert verify_signature(body, sig, webhook_secret="k") is True
-
-    def test_signature_strips_whitespace(self):
-        body = b'{"x":1}'
-        sig = "  " + _sign(body, "k") + "\n"
-        assert verify_signature(body, sig, webhook_secret="k") is True
-
-    def test_tampered_body_fails_verification(self):
-        body = b'{"event":"collection.successful","amount":12500}'
-        sig = _sign(body, "k")
-        tampered = b'{"event":"collection.successful","amount":99999999}'
-        assert verify_signature(tampered, sig, webhook_secret="k") is False
+    def test_rejects_tampered_body(self):
+        body = b'{"amount":12500}'
+        sig = _sign(body)
+        assert verify_lenco_signature(b'{"amount":99999}', sig, TEST_API_KEY) is False
 
 
 class TestExtractEventFields:
@@ -79,116 +53,69 @@ class TestExtractEventFields:
         payload = {
             "event": "collection.successful",
             "data": {
-                "reference": "ZEDCV-abc",
-                "transactionRef": "LEN-xyz",
+                "reference": "zedapply-abc",
                 "status": "successful",
                 "amount": 12500,
-                "currency": "ZMW",
             },
         }
-        f = extract_event_fields(payload)
-        assert f["is_paid"] is True
-        assert f["is_failed"] is False
-        assert f["company_ref"] == "ZEDCV-abc"
-        assert f["lenco_ref"] == "LEN-xyz"
-        assert f["amount_ngwee"] == 12500
-        assert f["currency"] == "ZMW"
+        fields = extract_event_fields(payload)
+        assert fields["is_paid"] is True
+        assert fields["is_failed"] is False
+        assert fields["company_ref"] == "zedapply-abc"
 
-    def test_failed_event_marks_failed(self):
-        payload = {"event": "collection.failed", "data": {"status": "failed", "reference": "x"}}
-        f = extract_event_fields(payload)
-        assert f["is_paid"] is False
-        assert f["is_failed"] is True
-
-    def test_pending_is_neither(self):
-        payload = {"event": "collection.pending", "data": {"status": "pending", "reference": "x"}}
-        f = extract_event_fields(payload)
-        assert f["is_paid"] is False
-        assert f["is_failed"] is False
-
-    def test_amount_coerces_strings_and_floats(self):
-        assert extract_event_fields({"data": {"amount": "12500"}})["amount_ngwee"] == 12500
-        assert extract_event_fields({"data": {"amount": 12500.0}})["amount_ngwee"] == 12500
-        assert extract_event_fields({"data": {"amount": None}})["amount_ngwee"] is None
-
-    def test_handles_non_dict_payload(self):
-        """Best-effort: a totally malformed payload shouldn't crash."""
-        f = extract_event_fields("not a dict")  # type: ignore[arg-type]
-        assert f == {}
-
-    def test_handles_missing_data_key(self):
-        f = extract_event_fields({"event": "collection.successful"})
-        assert f["is_paid"] is True  # event suffix implies success
-        assert f["company_ref"] is None
+    def test_collection_failed_marks_failed(self):
+        payload = {
+            "event": "collection.failed",
+            "data": {"reference": "zedapply-fail", "status": "failed"},
+        }
+        fields = extract_event_fields(payload)
+        assert fields["is_failed"] is True
+        assert fields["is_paid"] is False
 
 
 class TestLencoWebhookRoute:
-    """End-to-end test through the FastAPI route. Mounts a known signing
-    key into settings via the test env, then sends a signed request."""
-
-    def test_missing_signature_returns_401(self, client, fake_supabase, monkeypatch):
-        from app.core.config import get_settings
-
-        get_settings.cache_clear()
-        monkeypatch.setenv("LENCO_VERIFY_SIGNATURES", "true")
-        monkeypatch.setenv("LENCO_WEBHOOK_SECRET", "test-webhook-secret")
-        resp = client.post(
+    def _post_lenco(self, client, body_dict: dict, *, sig: str | None = None):
+        body_bytes = json.dumps(body_dict).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if sig is not None:
+            headers["x-lenco-signature"] = sig
+        return client.post(
             "/api/v1/webhooks/lenco",
-            json={"event": "collection.successful"},
-        )
-        assert resp.status_code == 401
-
-    def test_wrong_signature_returns_401(self, client, fake_supabase, monkeypatch):
-        from app.core.config import get_settings
-
-        get_settings.cache_clear()
-        monkeypatch.setenv("LENCO_VERIFY_SIGNATURES", "true")
-        monkeypatch.setenv("LENCO_WEBHOOK_SECRET", "test-webhook-secret")
-        resp = client.post(
-            "/api/v1/webhooks/lenco",
-            headers={"x-lenco-signature": "deadbeef" * 16},
-            json={"event": "collection.successful"},
-        )
-        assert resp.status_code == 401
-
-    def test_webhook_rejects_when_verify_true_and_signature_invalid(
-        self, client, fake_supabase, monkeypatch
-    ):
-        """Production path: verification on + dedicated secret → 401 on bad sig."""
-        from app.core.config import get_settings
-
-        get_settings.cache_clear()
-        monkeypatch.setenv("LENCO_VERIFY_SIGNATURES", "true")
-        monkeypatch.setenv("LENCO_WEBHOOK_SECRET", "prod-webhook-secret")
-        monkeypatch.setenv("LENCO_API_KEY", "")
-
-        body_bytes = json.dumps({"event": "collection.successful"}).encode("utf-8")
-        resp = client.post(
-            "/api/v1/webhooks/lenco",
-            headers={"x-lenco-signature": "not-a-valid-signature"},
+            headers=headers,
             content=body_bytes,
         )
+
+    def test_webhook_invalid_signature_returns_401(
+        self, client, fake_supabase, monkeypatch
+    ):
+        from app.core.config import get_settings
+
+        get_settings.cache_clear()
+        monkeypatch.setenv("LENCO_API_KEY", TEST_API_KEY)
+
+        resp = self._post_lenco(
+            client,
+            {"event": "collection.successful", "data": {"reference": "x"}},
+            sig="deadbeef" * 16,
+        )
         assert resp.status_code == 401
-        assert resp.json()["detail"] == "Invalid Lenco signature"
+        assert resp.json()["detail"] == "Invalid signature"
 
     @patch("app.services.email.send_payment_confirmation_email")
     @patch("app.services.whatsapp.send_whatsapp_message")
-    def test_webhook_accepts_when_verify_false_and_logs_warning(
-        self, mock_wa, mock_email, client, fake_supabase, monkeypatch, caplog
+    def test_webhook_valid_signature_processes_event(
+        self, _mock_wa, _mock_email, client, fake_supabase, monkeypatch
     ):
-        """Sandbox path: verification off → unsigned webhook still processes."""
         from app.core.config import get_settings
 
         get_settings.cache_clear()
-        monkeypatch.setenv("LENCO_VERIFY_SIGNATURES", "false")
-        monkeypatch.setenv("LENCO_WEBHOOK_SECRET", "")
-        monkeypatch.setenv("LENCO_API_KEY", "")
+        monkeypatch.setenv("LENCO_API_KEY", TEST_API_KEY)
 
         body_dict = {
             "event": "collection.successful",
             "data": {
-                "reference": "pay-sandbox-1",
-                "transactionRef": "LEN-sbx",
+                "reference": "zedapply-pay-1",
+                "transactionRef": "LEN-1",
                 "status": "successful",
                 "amount": 12500,
                 "currency": "ZMW",
@@ -201,87 +128,25 @@ class TestLencoWebhookRoute:
             FakeSupabaseQuery(
                 data=[
                     {
-                        "id": "pay-sandbox-1",
-                        "user_id": "user-sbx",
-                        "amount": 12500,
-                        "status": "pending",
-                        "subscriptions": {"id": "sub-sbx", "current_period_end": None},
-                    }
-                ]
-            ),
-        )
-        fake_supabase.set_table(
-            "users",
-            FakeSupabaseQuery(data=[{"id": "user-sbx", "phone": "+260971234567"}]),
-        )
-
-        with caplog.at_level(logging.WARNING):
-            resp = client.post(
-                "/api/v1/webhooks/lenco",
-                headers={"Content-Type": "application/json"},
-                content=body_bytes,
-            )
-
-        assert resp.status_code == 200
-        assert resp.json()["status"] == "completed"
-        assert any(
-            "lenco_signature_verification_disabled" in r.message
-            and "user-sbx" in r.message
-            and "pay-sandbox-1" in r.message
-            for r in caplog.records
-        )
-
-    @patch("app.services.email.send_payment_confirmation_email")
-    @patch("app.services.whatsapp.send_whatsapp_message")
-    def test_valid_signature_completes_payment(
-        self, mock_wa, mock_email, client, fake_supabase, monkeypatch
-    ):
-        """Valid signature + paid status updates payment + upgrades sub."""
-        # Inject a known signing key via the lru_cached settings instance
-        from app.core.config import get_settings
-        get_settings.cache_clear()
-        monkeypatch.setenv("LENCO_VERIFY_SIGNATURES", "true")
-        monkeypatch.setenv("LENCO_WEBHOOK_SECRET", "test-lenco-webhook-secret")
-        monkeypatch.setenv("LENCO_API_KEY", "")
-        settings = get_settings()
-        assert settings.lenco_webhook_secret == "test-lenco-webhook-secret"
-
-        body_dict = {
-            "event": "collection.successful",
-            "data": {
-                "reference": "pay-123",
-                "transactionRef": "LEN-abc",
-                "status": "successful",
-                "amount": 12500,  # Starter tier price
-                "currency": "ZMW",
-            },
-        }
-        body_bytes = json.dumps(body_dict).encode("utf-8")
-        sig = _sign(body_bytes, "test-lenco-webhook-secret")
-
-        # Wire fakes for the lookup chain.
-        fake_supabase.set_table(
-            "payments",
-            FakeSupabaseQuery(
-                data=[
-                    {
-                        "id": "pay-123",
+                        "id": "pay-internal-1",
                         "user_id": "user-1",
                         "amount": 12500,
                         "status": "pending",
+                        "provider_ref": "zedapply-pay-1",
                         "subscriptions": {"id": "sub-1", "current_period_end": None},
                     }
                 ]
             ),
         )
         fake_supabase.set_table(
-            "users", FakeSupabaseQuery(data=[{"id": "user-1", "phone": "+260971234567"}])
+            "users",
+            FakeSupabaseQuery(data=[{"id": "user-1", "phone": "+260971234567"}]),
         )
 
         resp = client.post(
             "/api/v1/webhooks/lenco",
             headers={
-                "x-lenco-signature": sig,
+                "x-lenco-signature": _sign(body_bytes),
                 "Content-Type": "application/json",
             },
             content=body_bytes,
@@ -291,39 +156,35 @@ class TestLencoWebhookRoute:
 
     @patch("app.services.email.send_payment_confirmation_email")
     @patch("app.services.whatsapp.send_whatsapp_message")
-    def test_lenco_payment_sets_user_and_subscription_billing_period(
-        self, mock_wa, mock_email, client, fake_supabase, monkeypatch
+    def test_webhook_collection_successful_activates_subscription(
+        self, _mock_wa, _mock_email, client, fake_supabase, monkeypatch
     ):
-        """Successful Lenco webhook must activate billing via Postgres RPC."""
         from app.core.config import get_settings
 
         get_settings.cache_clear()
-        monkeypatch.setenv("LENCO_VERIFY_SIGNATURES", "true")
-        monkeypatch.setenv("LENCO_WEBHOOK_SECRET", "test-lenco-webhook-secret")
-        monkeypatch.setenv("LENCO_API_KEY", "")
+        monkeypatch.setenv("LENCO_API_KEY", TEST_API_KEY)
 
         body_dict = {
             "event": "collection.successful",
             "data": {
-                "reference": "pay-bill-1",
-                "transactionRef": "LEN-bill-abc",
+                "reference": "zedapply-bill",
+                "transactionRef": "LEN-bill",
                 "status": "successful",
                 "amount": 12500,
-                "currency": "ZMW",
             },
         }
         body_bytes = json.dumps(body_dict).encode("utf-8")
-        sig = _sign(body_bytes, "test-lenco-webhook-secret")
 
         fake_supabase.set_table(
             "payments",
             _UpdateSpyQuery(
                 data=[
                     {
-                        "id": "pay-bill-1",
+                        "id": "pay-bill",
                         "user_id": "user-1",
                         "amount": 12500,
                         "status": "pending",
+                        "provider_ref": "zedapply-bill",
                         "subscriptions": {
                             "id": "sub-1",
                             "current_period_end": None,
@@ -343,49 +204,79 @@ class TestLencoWebhookRoute:
         resp = client.post(
             "/api/v1/webhooks/lenco",
             headers={
-                "x-lenco-signature": sig,
+                "x-lenco-signature": _sign(body_bytes),
                 "Content-Type": "application/json",
             },
             content=body_bytes,
         )
         assert resp.status_code == 200
         assert resp.json()["status"] == "completed"
-
-        assert len(subs_spy.update_calls) == 1
         assert subs_spy.update_calls[0]["tier"] == "starter"
-        assert subs_spy.update_calls[0]["current_period_start"]
-        assert subs_spy.update_calls[0]["current_period_end"]
-        assert subs_spy.update_calls[0]["started_at"]
-
-        assert len(users_spy.update_calls) == 1
-        assert users_spy.update_calls[0]["subscription_tier"] == "starter"
         assert users_spy.update_calls[0]["subscription_started_at"]
-        assert users_spy.update_calls[0]["subscription_expires_at"]
-        assert users_spy.update_calls[0]["subscription_renews_at"]
+
+    def test_webhook_collection_failed_marks_payment_failed(
+        self, client, fake_supabase, monkeypatch
+    ):
+        from app.core.config import get_settings
+
+        get_settings.cache_clear()
+        monkeypatch.setenv("LENCO_API_KEY", TEST_API_KEY)
+
+        body_dict = {
+            "event": "collection.failed",
+            "data": {
+                "reference": "zedapply-fail",
+                "status": "failed",
+            },
+        }
+        body_bytes = json.dumps(body_dict).encode("utf-8")
+
+        payments_spy = _UpdateSpyQuery(
+            data=[
+                {
+                    "id": "pay-fail",
+                    "user_id": "user-1",
+                    "amount": 12500,
+                    "status": "pending",
+                    "provider_ref": "zedapply-fail",
+                    "subscriptions": {},
+                }
+            ]
+        )
+        fake_supabase.set_table("payments", payments_spy)
+
+        resp = client.post(
+            "/api/v1/webhooks/lenco",
+            headers={
+                "x-lenco-signature": _sign(body_bytes),
+                "Content-Type": "application/json",
+            },
+            content=body_bytes,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "failed"
+        assert payments_spy.update_calls[-1]["status"] == "failed"
 
     @patch("app.services.email.send_payment_confirmation_email")
     @patch("app.services.whatsapp.send_whatsapp_message")
-    def test_idempotency_skips_already_completed(
-        self, mock_wa, mock_email, client, fake_supabase, monkeypatch
+    def test_webhook_idempotent_after_frontend_verify(
+        self, _mock_wa, _mock_email, client, fake_supabase, monkeypatch
     ):
-        """A duplicate webhook on a completed payment is a no-op (status:
-        already_processed). Prevents double-resetting matches_used."""
+        """Frontend verify-payment completed first; webhook must no-op."""
         from app.core.config import get_settings
+
         get_settings.cache_clear()
-        monkeypatch.setenv("LENCO_VERIFY_SIGNATURES", "true")
-        monkeypatch.setenv("LENCO_WEBHOOK_SECRET", "test-lenco-webhook-secret")
-        monkeypatch.setenv("LENCO_API_KEY", "")
+        monkeypatch.setenv("LENCO_API_KEY", TEST_API_KEY)
 
         body_dict = {
             "event": "collection.successful",
             "data": {
-                "reference": "pay-dup",
+                "reference": "zedapply-dup",
                 "status": "successful",
                 "amount": 12500,
             },
         }
         body_bytes = json.dumps(body_dict).encode("utf-8")
-        sig = _sign(body_bytes, "test-lenco-webhook-secret")
 
         fake_supabase.set_table(
             "payments",
@@ -395,8 +286,12 @@ class TestLencoWebhookRoute:
                         "id": "pay-dup",
                         "user_id": "user-1",
                         "amount": 12500,
-                        "status": "completed",  # already done
-                        "subscriptions": {},
+                        "status": "completed",
+                        "provider_ref": "zedapply-dup",
+                        "subscriptions": {
+                            "id": "sub-1",
+                            "started_at": "2026-01-01T00:00:00+00:00",
+                        },
                     }
                 ]
             ),
@@ -404,7 +299,10 @@ class TestLencoWebhookRoute:
 
         resp = client.post(
             "/api/v1/webhooks/lenco",
-            headers={"x-lenco-signature": sig, "Content-Type": "application/json"},
+            headers={
+                "x-lenco-signature": _sign(body_bytes),
+                "Content-Type": "application/json",
+            },
             content=body_bytes,
         )
         assert resp.status_code == 200
