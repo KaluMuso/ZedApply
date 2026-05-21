@@ -975,8 +975,17 @@ export interface Subscription {
   expires_at: string | null;
 }
 
+export interface PaymentVerifyResult {
+  status: string;
+  tier: string;
+  reference: string;
+  payment_id?: string | null;
+  message: string;
+}
+
 export const subscription = {
   get: (token: string) => apiFetch<Subscription>("/subscription", { token }),
+  /** @deprecated Use verifyPayment after Lenco widget onSuccess */
   pay: (
     token: string,
     data: { tier: string; payment_method: string; phone: string }
@@ -985,6 +994,12 @@ export const subscription = {
       "/subscription/pay",
       { method: "POST", token, body: JSON.stringify(data) }
     ),
+  verifyPayment: (token: string, data: { reference: string; tier: string }) =>
+    apiFetch<PaymentVerifyResult>("/subscription/verify-payment", {
+      method: "POST",
+      token,
+      body: JSON.stringify(data),
+    }),
 };
 
 // ── Health ──

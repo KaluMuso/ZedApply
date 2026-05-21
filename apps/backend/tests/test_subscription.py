@@ -129,79 +129,15 @@ class TestGetSubscription:
 
 
 class TestPaymentInitiate:
-    def test_pay_invalid_tier(self, client, auth_headers, fake_supabase):
-        """Rejects payment for free tier."""
-        resp = client.post(
-            "/api/v1/subscription/pay",
-            headers=auth_headers,
-            json={
-                "tier": "free",
-                "payment_method": "mtn",
-                "phone": "+260971234567",
-            },
-        )
-        # May be 422 or 404 depending on whether subscription router exists
-        assert resp.status_code in (422, 404)
-
-    @patch(
-        "app.services.dpo_pay.create_payment_token", new_callable=AsyncMock
-    )
-    def test_pay_success(
-        self, mock_dpo, client, auth_headers, fake_supabase
-    ):
-        """Payment initiation creates record and returns transaction_id."""
-        fake_supabase.set_table(
-            "subscriptions",
-            _SingleQuery(data=[{"id": "sub-1"}]),
-        )
-        fake_supabase.set_table(
-            "payments", FakeSupabaseQuery(data=[{"id": "pay-001"}])
-        )
-        mock_dpo.return_value = {
-            "token": "DPO-TOKEN-123",
-            "redirect_url": "https://pay.example.com",
-        }
-
-        resp = client.post(
-            "/api/v1/subscription/pay",
-            headers=auth_headers,
-            json={
-                "tier": "starter",
-                "payment_method": "mtn",
-                "phone": "+260971234567",
-            },
-        )
-        # May be 200 or 404 depending on whether subscription router exists
-        assert resp.status_code in (200, 404)
-
-    @patch(
-        "app.services.lenco.create_lenco_payment", new_callable=AsyncMock
-    )
-    def test_initiate_payment_writes_lenco_mtn_money(
-        self, mock_lenco, client, auth_headers, fake_supabase
-    ):
-        """Regression: Lenco pay must store CHECK-valid payment_method."""
-        mock_lenco.return_value = {
-            "transaction_id": "LEN-TX-1",
-            "status": "pending",
-        }
-        fake_supabase.set_table(
-            "subscriptions",
-            _SingleQuery(data=[{"id": "sub-1"}]),
-        )
-        payments_spy = _InsertSpyQuery()
-        fake_supabase.set_table("payments", payments_spy)
-
+    def test_pay_returns_410_gone(self, client, auth_headers):
+        """Legacy server-side initiation removed in favour of Lenco widget."""
         resp = client.post(
             "/api/v1/subscription/pay",
             headers=auth_headers,
             json={
                 "tier": "starter",
                 "payment_method": "lenco_mtn_money",
-                "phone": "+260979370372",
+                "phone": "+260971234567",
             },
         )
-        assert resp.status_code == 200
-        assert payments_spy.inserted
-        assert payments_spy.inserted[0]["payment_method"] == "lenco_mtn_money"
-        assert payments_spy.inserted[0]["provider"] == "lenco"
+        assert resp.status_code == 410

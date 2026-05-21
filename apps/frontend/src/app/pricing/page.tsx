@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { subscription, tiers, type TierConfigRow } from "@/lib/api";
+import Script from "next/script";
+import { toast } from "sonner";
+import { subscription, tiers, profile, type TierConfigRow } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Icon } from "@/components/ui/Icon";
 import {
@@ -11,9 +13,10 @@ import {
   UNLIMITED_MATCHES,
 } from "@/lib/tier-config";
 
-// Tier rank for context-aware pricing CTAs. Higher number = more inclusive
-// tier. A user on super_standard (3) seeing professional (2) or starter (1)
-// should NOT see "Upgrade to …" — that's the bug task #54 is closing.
+const LENCO_WIDGET_URL =
+  process.env.NEXT_PUBLIC_LENCO_WIDGET_URL?.trim() ||
+  "https://pay.sandbox.lenco.co/js/v1/inline.js";
+
 const TIER_RANK: Record<string, number> = {
   free: 0,
   starter: 1,
@@ -96,12 +99,12 @@ const plans: Plan[] = [
 
 const faqs = [
   {
-    q: "How does mobile money payment work?",
-    a: "After selecting a plan, you'll enter your MTN MoMo or Airtel Money number. You'll receive a prompt on your phone to confirm the payment. Once confirmed, your account is upgraded instantly.",
+    q: "How does payment work?",
+    a: "Select a paid plan and the secure Lenco checkout opens. Pay with MTN MoMo, Airtel Money, or card. Once Lenco confirms payment, your account upgrades automatically.",
   },
   {
     q: "Can I switch plans at any time?",
-    a: "Yes! Upgrade or downgrade anytime. When upgrading, you'll be charged the difference. When downgrading, the change takes effect at the end of your billing cycle.",
+    a: "Yes! Upgrade or downgrade anytime. When upgrading, you'll be charged the plan price. When downgrading, the change takes effect at the end of your billing cycle.",
   },
   {
     q: "What counts as a 'match'?",
@@ -133,25 +136,6 @@ const comparisonFeatures: ComparisonFeature[] = [
   { name: "Interview prep notes", free: false, starter: false, pro: false, super_standard: true },
 ];
 
-type PaymentMethod = "mtn" | "airtel" | "card" | "lenco";
-
-/** Map UI choice to payments.payment_method CHECK values (Path A). */
-function paymentMethodForApi(method: PaymentMethod): string {
-  switch (method) {
-    case "mtn":
-      return "lenco_mtn_money";
-    case "airtel":
-      return "lenco_airtel_money";
-    case "card":
-      return "lenco_card";
-    case "lenco":
-      // Generic Lenco brand — server infers network from phone (Path B).
-      return "lenco";
-    default:
-      return method;
-  }
-}
-
 function applyTierConfig(base: Plan[], config: TierConfigRow[]): Plan[] {
   const byTier = Object.fromEntries(config.map((t) => [t.tier, t]));
   return base.map((plan) => {
@@ -173,27 +157,30 @@ function applyTierConfig(base: Plan[], config: TierConfigRow[]): Plan[] {
   });
 }
 
+function splitName(fullName: string | null): { firstName: string; lastName: string } {
+  const full = (fullName || "Zed CV User").trim();
+  const parts = full.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { firstName: "Zed", lastName: "User" };
+  if (parts.length === 1) return { firstName: parts[0], lastName: parts[0] };
+  return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
+}
+
 export default function PricingPage() {
   const router = useRouter();
   const { token, isAuthenticated } = useAuth();
   const [displayPlans, setDisplayPlans] = useState<Plan[]>(plans);
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("mtn");
-  const [payPhone, setPayPhone] = useState("");
-  const [paying, setPaying] = useState(false);
-  const [payMsg, setPayMsg] = useState("");
+  const [tierRows, setTierRows] = useState<TierConfigRow[]>([]);
+  const [payingTier, setPayingTier] = useState<string | null>(null);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
-
-  // Fetch the user's current tier so we can render context-aware CTAs
-  // ("Current plan", "Downgrade", "Upgrade to …") instead of a generic
-  // "Upgrade to X" on every card. Non-fatal if it fails — falls back to
-  // "free" which is the safest default (shows all upgrades as available).
   const [currentTier, setCurrentTier] = useState<string>("free");
 
   useEffect(() => {
     tiers
       .list()
-      .then((r) => setDisplayPlans(applyTierConfig(plans, r.tiers)))
+      .then((r) => {
+        setTierRows(r.tiers);
+        setDisplayPlans(applyTierConfig(plans, r.tiers));
+      })
       .catch(() => setDisplayPlans(plans));
   }, []);
 
@@ -208,10 +195,20 @@ export default function PricingPage() {
       .catch(() => setCurrentTier("free"));
   }, [token]);
 
-  // Compute the action a plan card should offer relative to the user's
-  // current tier: "current" (same tier), "downgrade" (lower), "upgrade"
-  // (higher), or "signup" (not logged in / free). Single source of truth
-  // for both the button label and the click handler.
+  const amountKwacha = useCallback(
+    (tier: string): number => {
+      const row = tierRows.find((t) => t.tier === tier);
+      if (row) return row.price_ngwee / 100;
+      const fallback: Record<string, number> = {
+        starter: 125,
+        professional: 250,
+        super_standard: 500,
+      };
+      return fallback[tier] ?? 0;
+    },
+    [tierRows],
+  );
+
   const planAction = (
     planTier: string,
   ): "current" | "downgrade" | "upgrade" | "signup" => {
@@ -223,42 +220,107 @@ export default function PricingPage() {
     return "upgrade";
   };
 
-  const handlePay = async (tier: string) => {
-    if (!isAuthenticated || !token) {
-      // Client-side navigation preserves SPA state and avoids the
-      // full-page-reload flash that `window.location.href` would cause.
+  const openLencoCheckout = async (tier: string) => {
+    if (!token) {
       router.push("/auth?next=/pricing");
       return;
     }
-    if (tier === "free") return;
-    // No-op for the user's current tier — clicking "Current plan" should
-    // do nothing (the button is also visually disabled below).
-    if (planAction(tier) === "current") return;
-    setSelectedPlan(tier);
+
+    const publicKey = process.env.NEXT_PUBLIC_LENCO_PUBLIC_KEY?.trim();
+    if (!publicKey) {
+      toast.error("Payments are not configured. Please try again later.");
+      return;
+    }
+    if (!window.LencoPay?.getPaid) {
+      toast.error("Payment widget is still loading. Please try again.");
+      return;
+    }
+
+    setPayingTier(tier);
+    try {
+      const prof = await profile.get(token);
+      const email =
+        prof.email?.trim() || `payments+${prof.id.slice(0, 8)}@zedapply.com`;
+      const { firstName, lastName } = splitName(prof.full_name);
+      const reference = `zedapply-${crypto.randomUUID()}`;
+      const amount = amountKwacha(tier);
+      const planName =
+        displayPlans.find((p) => p.tier === tier)?.name ?? tier;
+
+      window.LencoPay.getPaid({
+        key: publicKey,
+        reference,
+        email,
+        amount,
+        currency: "ZMW",
+        label: `Zed CV ${planName}`,
+        channels: ["card", "mobile-money"],
+        customer: {
+          firstName,
+          lastName,
+          phone: prof.phone.replace(/^\+260/, ""),
+        },
+        onSuccess: async (response) => {
+          try {
+            const result = await subscription.verifyPayment(token, {
+              reference: response.reference,
+              tier,
+            });
+            if (result.status === "processing") {
+              toast.info(
+                "Payment processing — you'll be upgraded shortly",
+              );
+            } else {
+              toast.success(
+                "Payment confirmed — your tier has been upgraded",
+              );
+              setCurrentTier(tier);
+              router.push("/matches");
+            }
+          } catch (err) {
+            toast.error(
+              err instanceof Error ? err.message : "Payment verification failed",
+            );
+          } finally {
+            setPayingTier(null);
+          }
+        },
+        onClose: () => {
+          toast.info("Payment cancelled");
+          setPayingTier(null);
+        },
+        onConfirmationPending: () => {
+          toast.info(
+            "Payment processing — you'll be upgraded shortly",
+          );
+        },
+      });
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not start checkout",
+      );
+      setPayingTier(null);
+    }
   };
 
-  const submitPayment = async () => {
-    if (!token || !selectedPlan) return;
-    setPaying(true);
-    setPayMsg("");
-    try {
-      const res = await subscription.pay(token, {
-        tier: selectedPlan,
-        payment_method: paymentMethodForApi(paymentMethod),
-        phone: `+260${payPhone.replace(/\s/g, "")}`,
-      });
-      setPayMsg(`Payment initiated! ${res.message}`);
-      setSelectedPlan(null);
-    } catch (err) {
-      setPayMsg(err instanceof Error ? err.message : "Payment failed");
-    } finally {
-      setPaying(false);
+  const handlePlanClick = (tier: string) => {
+    if (tier === "free") {
+      if (!isAuthenticated) router.push("/auth?next=/pricing");
+      return;
     }
+    const action = planAction(tier);
+    if (action === "current" || action === "downgrade") return;
+    if (!isAuthenticated) {
+      router.push("/auth?next=/pricing");
+      return;
+    }
+    void openLencoCheckout(tier);
   };
 
   return (
     <div className="max-w-[1280px] mx-auto px-6 py-12 md:py-20">
-      {/* Header */}
+      <Script src={LENCO_WIDGET_URL} strategy="afterInteractive" />
+
       <div className="text-center mb-12 md:mb-16">
         <div className="eyebrow mb-3">Pricing</div>
         <h1
@@ -274,111 +336,112 @@ export default function PricingPage() {
           </span>{" "}
           pricing
         </h1>
-        <p className="text-base" style={{ color: "var(--muted)", maxWidth: 480, margin: "0 auto" }}>
-          Pay with MTN Mobile Money or Airtel Money. All prices in Zambian
-          Kwacha. No hidden fees.
+        <p
+          className="text-base"
+          style={{ color: "var(--muted)", maxWidth: 480, margin: "0 auto" }}
+        >
+          Pay with MTN Mobile Money, Airtel Money, or card via our secure
+          Lenco checkout. All prices in Zambian Kwacha.
         </p>
       </div>
 
-      {/* Plan cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto mb-16 md:mb-24">
-        {displayPlans.map((plan) => (
-          <div
-            key={plan.name}
-            className={`card p-6 md:p-8 relative ${plan.highlight ? "lift" : ""}`}
-            style={{
-              borderColor: plan.highlight ? "var(--copper-500)" : undefined,
-              borderWidth: plan.highlight ? 2 : undefined,
-              background: plan.highlight
-                ? "linear-gradient(180deg, var(--copper-100) 0%, var(--surface) 40%)"
-                : undefined,
-            }}
-          >
-            {plan.highlight && (
-              <span
-                className="absolute -top-3 left-1/2 -translate-x-1/2 tag tag-copper font-semibold"
-              >
-                {plan.subtitle}
-              </span>
-            )}
+        {displayPlans.map((plan) => {
+          const action = planAction(plan.tier);
+          const isCurrent = action === "current";
+          const isDowngrade = action === "downgrade";
+          const isPaying = payingTier === plan.tier;
+          const label = isCurrent
+            ? "Current plan"
+            : isDowngrade
+            ? `Downgrade to ${plan.name}`
+            : plan.tier === "free"
+            ? "Get Started"
+            : `Upgrade to ${plan.name}`;
 
-            <h2
-              className="font-display text-2xl"
-              style={{ letterSpacing: "-0.01em" }}
+          return (
+            <div
+              key={plan.name}
+              className={`card p-6 md:p-8 relative ${plan.highlight ? "lift" : ""}`}
+              style={{
+                borderColor: plan.highlight ? "var(--copper-500)" : undefined,
+                borderWidth: plan.highlight ? 2 : undefined,
+                background: plan.highlight
+                  ? "linear-gradient(180deg, var(--copper-100) 0%, var(--surface) 40%)"
+                  : undefined,
+              }}
             >
-              {plan.name}
-            </h2>
-            {!plan.highlight && (
-              <p className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
-                {plan.subtitle}
-              </p>
-            )}
+              {plan.highlight && (
+                <span className="absolute -top-3 left-1/2 -translate-x-1/2 tag tag-copper font-semibold">
+                  {plan.subtitle}
+                </span>
+              )}
 
-            <div className="mt-5 mb-6">
-              <span className="font-display text-5xl">{plan.price}</span>
-              <span className="text-sm ml-1" style={{ color: "var(--muted)" }}>
-                {plan.period}
-              </span>
-            </div>
+              <h2
+                className="font-display text-2xl"
+                style={{ letterSpacing: "-0.01em" }}
+              >
+                {plan.name}
+              </h2>
+              {!plan.highlight && (
+                <p className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
+                  {plan.subtitle}
+                </p>
+              )}
 
-            <ul className="space-y-3 mb-8">
-              {plan.features.map((f) => (
-                <li
-                  key={f}
-                  className="flex items-start gap-2.5 text-sm"
-                  style={{ color: "var(--ink-2)" }}
-                >
-                  <span
-                    className="mt-0.5 shrink-0"
-                    style={{ color: "var(--green-500)" }}
+              <div className="mt-5 mb-6">
+                <span className="font-display text-5xl">{plan.price}</span>
+                <span className="text-sm ml-1" style={{ color: "var(--muted)" }}>
+                  {plan.period}
+                </span>
+              </div>
+
+              <ul className="space-y-3 mb-8">
+                {plan.features.map((f) => (
+                  <li
+                    key={f}
+                    className="flex items-start gap-2.5 text-sm"
+                    style={{ color: "var(--ink-2)" }}
                   >
-                    <Icon name="check" size={14} />
-                  </span>
-                  {f}
-                </li>
-              ))}
-            </ul>
+                    <span
+                      className="mt-0.5 shrink-0"
+                      style={{ color: "var(--green-500)" }}
+                    >
+                      <Icon name="check" size={14} />
+                    </span>
+                    {f}
+                  </li>
+                ))}
+              </ul>
 
-            {/* Context-aware CTA based on the user's current tier vs this
-                plan's tier. A Super Standard user no longer sees "Upgrade
-                to Starter" on the Starter card — they see "Current plan"
-                on Super (disabled) and "Downgrade" on Starter/Professional
-                (ghost). Free + unauthenticated users keep the original
-                "Get Started" / "Upgrade to X" flow. */}
-            {(() => {
-              const action = planAction(plan.tier);
-              const isCurrent = action === "current";
-              const isDowngrade = action === "downgrade";
-              const label = isCurrent
-                ? "Current plan"
-                : isDowngrade
-                ? `Downgrade to ${plan.name}`
-                : plan.tier === "free"
-                ? "Get Started"
-                : `Upgrade to ${plan.name}`;
-              return (
-                <button
-                  onClick={() => handlePay(plan.tier)}
-                  disabled={isCurrent}
-                  aria-disabled={isCurrent}
-                  className={`w-full ${
-                    isCurrent
-                      ? "btn btn-ghost btn-lg"
-                      : plan.highlight
-                      ? "btn btn-accent btn-lg"
-                      : "btn btn-ghost btn-lg"
-                  }`}
-                  style={isCurrent ? { opacity: 0.7, cursor: "not-allowed" } : undefined}
-                >
-                  {isCurrent && <Icon name="check" size={14} />} {label}
-                </button>
-              );
-            })()}
-          </div>
-        ))}
+              <button
+                onClick={() => handlePlanClick(plan.tier)}
+                disabled={isCurrent || isPaying}
+                aria-disabled={isCurrent}
+                className={`w-full ${
+                  isCurrent
+                    ? "btn btn-ghost btn-lg"
+                    : plan.highlight
+                    ? "btn btn-accent btn-lg"
+                    : "btn btn-ghost btn-lg"
+                }`}
+                style={
+                  isCurrent ? { opacity: 0.7, cursor: "not-allowed" } : undefined
+                }
+              >
+                {isPaying ? (
+                  <span className="spinner" />
+                ) : (
+                  <>
+                    {isCurrent && <Icon name="check" size={14} />} {label}
+                  </>
+                )}
+              </button>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Comparison table */}
       <div className="max-w-4xl mx-auto mb-16 md:mb-24">
         <div className="text-center mb-8">
           <div className="eyebrow mb-2">Compare plans</div>
@@ -394,7 +457,10 @@ export default function PricingPage() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--line)" }}>
-                <th className="text-left py-3 pr-4 font-medium" style={{ color: "var(--muted)" }}>
+                <th
+                  className="text-left py-3 pr-4 font-medium"
+                  style={{ color: "var(--muted)" }}
+                >
                   Feature
                 </th>
                 <th className="py-3 px-4 text-center font-medium">Free</th>
@@ -421,28 +487,30 @@ export default function PricingPage() {
                   <td className="py-3 pr-4" style={{ color: "var(--ink-2)" }}>
                     {feat.name}
                   </td>
-                  {(["free", "starter", "pro", "super_standard"] as const).map((tier) => {
-                    const val = feat[tier];
-                    return (
-                      <td key={tier} className="py-3 px-4 text-center">
-                        {typeof val === "boolean" ? (
-                          val ? (
-                            <Icon
-                              name="check"
-                              size={16}
-                              className="mx-auto"
-                            />
+                  {(["free", "starter", "pro", "super_standard"] as const).map(
+                    (tier) => {
+                      const val = feat[tier];
+                      return (
+                        <td key={tier} className="py-3 px-4 text-center">
+                          {typeof val === "boolean" ? (
+                            val ? (
+                              <Icon
+                                name="check"
+                                size={16}
+                                className="mx-auto"
+                              />
+                            ) : (
+                              <span style={{ color: "var(--muted-2)" }}>
+                                &mdash;
+                              </span>
+                            )
                           ) : (
-                            <span style={{ color: "var(--muted-2)" }}>
-                              &mdash;
-                            </span>
-                          )
-                        ) : (
-                          <span className="font-mono text-xs">{val}</span>
-                        )}
-                      </td>
-                    );
-                  })}
+                            <span className="font-mono text-xs">{val}</span>
+                          )}
+                        </td>
+                      );
+                    },
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -450,7 +518,6 @@ export default function PricingPage() {
         </div>
       </div>
 
-      {/* FAQ */}
       <div className="max-w-2xl mx-auto mb-16">
         <div className="text-center mb-8">
           <div className="eyebrow mb-2">FAQ</div>
@@ -464,10 +531,7 @@ export default function PricingPage() {
 
         <div className="space-y-2">
           {faqs.map((faq, i) => (
-            <div
-              key={i}
-              className="card overflow-hidden"
-            >
+            <div key={i} className="card overflow-hidden">
               <button
                 onClick={() => setOpenFaq(openFaq === i ? null : i)}
                 className="w-full flex items-center justify-between p-5 text-left"
@@ -477,8 +541,7 @@ export default function PricingPage() {
                 <span
                   className="shrink-0 ml-4 transition-transform duration-200"
                   style={{
-                    transform:
-                      openFaq === i ? "rotate(45deg)" : "rotate(0deg)",
+                    transform: openFaq === i ? "rotate(45deg)" : "rotate(0deg)",
                     color: "var(--muted)",
                   }}
                 >
@@ -487,9 +550,7 @@ export default function PricingPage() {
               </button>
               <div
                 className="overflow-hidden transition-all duration-300"
-                style={{
-                  maxHeight: openFaq === i ? 200 : 0,
-                }}
+                style={{ maxHeight: openFaq === i ? 200 : 0 }}
               >
                 <p
                   className="px-5 pb-5 text-sm leading-relaxed"
@@ -502,164 +563,6 @@ export default function PricingPage() {
           ))}
         </div>
       </div>
-
-      {/* Payment Modal */}
-      {selectedPlan && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-          <div
-            className="fixed inset-0"
-            style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
-            onClick={() => {
-              setSelectedPlan(null);
-              setPayMsg("");
-            }}
-          />
-          <div
-            className="relative z-10 w-full max-w-md rounded-t-2xl sm:rounded-2xl p-6 md:p-8"
-            style={{
-              background: "var(--surface)",
-              boxShadow: "var(--shadow-lg)",
-            }}
-          >
-            <h3
-              className="font-display text-2xl mb-6"
-              style={{ letterSpacing: "-0.01em" }}
-            >
-              Pay for {displayPlans.find((p) => p.tier === selectedPlan)?.name}
-            </h3>
-
-            <div className="space-y-5">
-              {/* Payment methods — 2×2 grid so Lenco fits cleanly with the
-                  three DPO-backed methods. Lenco routes through our signed
-                  /webhooks/lenco handler (new today); the others go via DPO
-                  Pay's hosted redirect. */}
-              <div>
-                <label className="eyebrow block mb-3">Payment method</label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {[
-                    { key: "mtn" as const, label: "MTN MoMo", color: "#ffcc00" },
-                    { key: "airtel" as const, label: "Airtel Money", color: "#e40000" },
-                    { key: "card" as const, label: "Visa / MC", color: "#1a1f71" },
-                    { key: "lenco" as const, label: "Lenco", color: "#00b87c" },
-                  ].map((method) => (
-                    <button
-                      key={method.key}
-                      onClick={() => setPaymentMethod(method.key)}
-                      className="card p-3 text-center text-xs font-medium"
-                      style={{
-                        borderColor:
-                          paymentMethod === method.key
-                            ? method.color
-                            : "var(--line)",
-                        borderWidth: paymentMethod === method.key ? 2 : 1,
-                      }}
-                    >
-                      <div
-                        className="w-5 h-5 rounded-full mx-auto mb-1.5"
-                        style={{ background: method.color }}
-                      />
-                      {method.label}
-                    </button>
-                  ))}
-                </div>
-                {paymentMethod === "lenco" && (
-                  <p
-                    className="text-xs mt-2.5"
-                    style={{ color: "var(--muted)" }}
-                  >
-                    Lenco supports MTN MoMo and Airtel Money. You&apos;ll get a
-                    prompt on your phone — confirm to complete.
-                  </p>
-                )}
-              </div>
-
-              {/* Phone input */}
-              <div>
-                <label className="text-sm font-medium block mb-2" style={{ color: "var(--ink-2)" }}>
-                  {paymentMethod === "card"
-                    ? "Card number"
-                    : "Mobile Money Number"}
-                </label>
-                <div
-                  className="flex items-center overflow-hidden"
-                  style={{
-                    border: "1px solid var(--line-2)",
-                    borderRadius: "var(--r-sm)",
-                    background: "var(--surface)",
-                  }}
-                >
-                  {paymentMethod !== "card" && (
-                    <span
-                      className="px-3 font-mono text-sm"
-                      style={{
-                        borderRight: "1px solid var(--line-2)",
-                        background: "var(--bg-2)",
-                        color: "var(--ink-2)",
-                        height: 48,
-                        display: "flex",
-                        alignItems: "center",
-                      }}
-                    >
-                      +260
-                    </span>
-                  )}
-                  <input
-                    type="tel"
-                    value={payPhone}
-                    onChange={(e) => setPayPhone(e.target.value)}
-                    placeholder={
-                      paymentMethod === "card"
-                        ? "Card number"
-                        : "97 123 4567"
-                    }
-                    className="flex-1 px-3 h-12 bg-transparent outline-none text-base"
-                    style={{ border: "none", color: "var(--ink)" }}
-                  />
-                </div>
-              </div>
-
-              {payMsg && (
-                <p
-                  className="text-sm"
-                  style={{
-                    color: payMsg.includes("failed")
-                      ? "var(--danger)"
-                      : "var(--success)",
-                  }}
-                >
-                  {payMsg}
-                </p>
-              )}
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setSelectedPlan(null);
-                    setPayMsg("");
-                  }}
-                  className="btn btn-ghost flex-1"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={submitPayment}
-                  disabled={paying}
-                  className="btn btn-primary flex-1"
-                >
-                  {paying ? (
-                    <span className="spinner" />
-                  ) : (
-                    <>
-                      Pay{" "}
-                      {displayPlans.find((p) => p.tier === selectedPlan)?.price}
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

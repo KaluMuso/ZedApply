@@ -396,45 +396,33 @@ async def dpo_webhook(request: Request, supabase=Depends(get_supabase)):
 
 @router.post("/lenco")
 async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
-    """Process Lenco v2 webhook with optional HMAC-SHA512 signature verification.
+    """Process Lenco v2 webhooks with mandatory HMAC-SHA512 signature verification.
 
-    When `lenco_verify_signatures` is True (production default), requires
-    `lenco_webhook_secret` and rejects missing/invalid signatures (401).
-    When False (sandbox), skips verification and logs a warning — use only
-    while Lenco sandbox does not issue signing secrets.
-
-    On valid delivery + paid status, mirrors the DPO upgrade flow including
-    idempotency + period-end stacking safety.
+    Signature key: sha256(LENCO_API_KEY).hexdigest() per Lenco docs.
+    Handles collection.successful, collection.failed, and collection.settled.
     """
     from fastapi import HTTPException
     from datetime import datetime, timezone
     from app.core.config import get_settings
-    from app.services.lenco_webhook import verify_signature, extract_event_fields
+    from app.services.lenco_webhook import (
+        verify_lenco_signature,
+        extract_event_fields,
+    )
 
     settings = get_settings()
     raw_body = await request.body()
     signature = request.headers.get("x-lenco-signature", "")
 
-    if settings.lenco_verify_signatures:
-        if not settings.lenco_webhook_secret:
-            logging.error(
-                "Lenco webhook: LENCO_WEBHOOK_SECRET missing but "
-                "LENCO_VERIFY_SIGNATURES=True"
-            )
-            raise HTTPException(
-                status_code=500,
-                detail=(
-                    "LENCO_WEBHOOK_SECRET missing but LENCO_VERIFY_SIGNATURES=True"
-                ),
-            )
-        if not verify_signature(
-            raw_body=raw_body,
-            provided_signature=signature,
-            webhook_secret=settings.lenco_webhook_secret,
-            api_key="",
-        ):
-            logging.warning("Lenco webhook: signature verification failed")
-            raise HTTPException(status_code=401, detail="Invalid Lenco signature")
+    if not settings.lenco_api_key:
+        logging.error("Lenco webhook: LENCO_API_KEY not configured")
+        raise HTTPException(
+            status_code=500,
+            detail="Lenco webhook verification not configured",
+        )
+
+    if not verify_lenco_signature(raw_body, signature, settings.lenco_api_key):
+        logging.warning("lenco_webhook_invalid_signature")
+        raise HTTPException(status_code=401, detail="Invalid signature")
 
     # Safe to parse JSON.
     import json
@@ -456,24 +444,31 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
         # Lenco stops retrying.
         return {"status": "no_company_ref"}
 
-    # Look up the payment by company_ref (which we set when initiating).
+    # Widget flow stores the widget reference on provider_ref; legacy rows
+    # used payment id as company_ref.
     payment_result = (
         supabase.table("payments")
         .select("*, subscriptions(id, user_id, tier, current_period_end)")
-        .eq("id", company_ref)
+        .eq("provider_ref", company_ref)
         .limit(1)
         .execute()
     )
     if not payment_result.data:
-        # Try by provider_ref as a fallback (in case we used Lenco's ref).
-        if fields.get("lenco_ref"):
-            payment_result = (
-                supabase.table("payments")
-                .select("*, subscriptions(id, user_id, tier, current_period_end)")
-                .eq("provider_ref", fields["lenco_ref"])
-                .limit(1)
-                .execute()
-            )
+        payment_result = (
+            supabase.table("payments")
+            .select("*, subscriptions(id, user_id, tier, current_period_end)")
+            .eq("id", company_ref)
+            .limit(1)
+            .execute()
+        )
+    if not payment_result.data and fields.get("lenco_ref"):
+        payment_result = (
+            supabase.table("payments")
+            .select("*, subscriptions(id, user_id, tier, current_period_end)")
+            .eq("provider_ref", fields["lenco_ref"])
+            .limit(1)
+            .execute()
+        )
 
     if not payment_result.data:
         logging.warning("Lenco webhook: no matching payment for ref=%s", company_ref)
@@ -483,13 +478,12 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
     payment_id = payment["id"]
     user_id = payment["user_id"]
 
-    if not settings.lenco_verify_signatures:
-        logging.warning(
-            "lenco_signature_verification_disabled user_id=%s payment_id=%s — "
-            "set LENCO_VERIFY_SIGNATURES=True before production traffic",
-            user_id,
-            payment_id,
-        )
+    if fields.get("is_settled"):
+        supabase.table("payments").update({
+            "webhook_data": payload,
+        }).eq("id", payment_id).execute()
+        logging.info("Lenco webhook: collection.settled for payment %s", payment_id)
+        return {"status": "settled"}
 
     # Idempotency: a webhook for a completed payment must not re-upgrade.
     # Lenco can replay deliveries, and without this guard a duplicate

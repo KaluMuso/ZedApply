@@ -331,20 +331,27 @@ class TestRouterRegistered:
     again, this test catches it before merge.
     """
 
-    def test_public_route_in_openapi_schema(self, client):
+    def test_public_route_in_openapi_schema(self, debug_app):
         """`GET /api/v1/legal/{slug}` must appear on the OpenAPI schema.
 
         We assert on the schema (not by hitting the route) so this stays
         green even if every behavioural test happens to be skipped.
+        OpenAPI is only exposed when DEBUG=true (prod returns 404).
         """
-        schema = client.get("/openapi.json").json()
+        from fastapi.testclient import TestClient
+
+        with TestClient(debug_app, headers={"Host": "api.zedapply.com"}) as client:
+            schema = client.get("/openapi.json").json()
         assert "/api/v1/legal/{slug}" in schema["paths"]
         assert "get" in schema["paths"]["/api/v1/legal/{slug}"]
 
-    def test_admin_routes_in_openapi_schema(self, client):
+    def test_admin_routes_in_openapi_schema(self, debug_app):
         """Both admin verbs must be registered. PATCH is the WYSIWYG
         editor's write path; GET is the editor's load path."""
-        schema = client.get("/openapi.json").json()
+        from fastapi.testclient import TestClient
+
+        with TestClient(debug_app, headers={"Host": "api.zedapply.com"}) as client:
+            schema = client.get("/openapi.json").json()
         admin_path = "/api/v1/admin/legal/{slug}"
         assert admin_path in schema["paths"]
         assert "get" in schema["paths"][admin_path]
