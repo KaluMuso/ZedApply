@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     # verifyToken callback for authenticity. See dpo_webhook.py.
     dpo_pay_webhook_secret: str = ""
     lenco_api_key: str = ""
+    lenco_public_key: str = ""
     # Default to v2 sandbox so a fresh dev env points at the right URL. Prod
     # overrides via .env on OCI. Lenco v2 deprecates the v1 path; the email
     # received 2026-05-12 only ships v2 sandbox URLs.

@@ -296,7 +296,7 @@ def admin_client(jobs_fake):
     except Exception:
         pass
 
-    with TestClient(app) as c:
+    with TestClient(app, headers={"Host": "api.zedapply.com"}) as c:
         yield c
 
     app.dependency_overrides.clear()
@@ -317,7 +317,7 @@ def regular_client(regular_user_fake):
     except Exception:
         pass
 
-    with TestClient(app) as c:
+    with TestClient(app, headers={"Host": "api.zedapply.com"}) as c:
         yield c
 
     app.dependency_overrides.clear()

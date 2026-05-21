@@ -229,20 +229,8 @@ def test_dpo_webhook_tier_mapping_unknown_amount_logs_warning(
 # ── 4. Subscription/pay now accepts lenco method (Lenco-frontend slice) ──
 
 
-def test_subscription_pay_accepts_lenco_method(client, auth_headers, fake_supabase):
-    """Lenco initiation was re-enabled when the signed webhook handler
-    shipped. The /pay route should now create a pending payment row with
-    provider='lenco' and return 200 even when LENCO_API_KEY isn't set
-    (the service degrades gracefully and the row stays pending until
-    manual intervention)."""
-    fake_supabase.set_table(
-        "subscriptions",
-        _UpdateSpyQuery(data=[{"id": "sub-1"}]),
-    )
-    fake_supabase.set_table(
-        "payments",
-        FakeSupabaseQuery(data=[{"id": "pay-lenco-1"}]),
-    )
+def test_subscription_pay_returns_410_gone(client, auth_headers):
+    """Server-side Lenco initiation removed — widget + verify-payment."""
     resp = client.post(
         "/api/v1/subscription/pay",
         headers=auth_headers,
@@ -252,9 +240,7 @@ def test_subscription_pay_accepts_lenco_method(client, auth_headers, fake_supaba
             "phone": "+260979370372",
         },
     )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["transaction_id"] == "pay-lenco-1"
+    assert resp.status_code == 410
 
 
 # ── Slice F: WhatsApp channel ingest ─────────────────────────────────────

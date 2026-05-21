@@ -56,3 +56,21 @@ class PaymentInitiate(BaseModel):
 class PaymentInitiateResponse(BaseModel):
     message: str
     transaction_id: str
+
+
+class PaymentVerifyRequest(BaseModel):
+    reference: str = Field(
+        ...,
+        min_length=8,
+        max_length=128,
+        description="Lenco widget reference (e.g. zedapply-<uuid>).",
+    )
+    tier: SubscriptionTier
+
+
+class PaymentVerifyResponse(BaseModel):
+    status: str
+    tier: str
+    reference: str
+    payment_id: str | None = None
+    message: str

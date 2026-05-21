@@ -340,7 +340,7 @@ class TestRouterRegistered:
         """
         from fastapi.testclient import TestClient
 
-        with TestClient(debug_app) as client:
+        with TestClient(debug_app, headers={"Host": "api.zedapply.com"}) as client:
             schema = client.get("/openapi.json").json()
         assert "/api/v1/legal/{slug}" in schema["paths"]
         assert "get" in schema["paths"]["/api/v1/legal/{slug}"]
@@ -350,7 +350,7 @@ class TestRouterRegistered:
         editor's write path; GET is the editor's load path."""
         from fastapi.testclient import TestClient
 
-        with TestClient(debug_app) as client:
+        with TestClient(debug_app, headers={"Host": "api.zedapply.com"}) as client:
             schema = client.get("/openapi.json").json()
         admin_path = "/api/v1/admin/legal/{slug}"
         assert admin_path in schema["paths"]

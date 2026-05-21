@@ -1,13 +1,8 @@
-"""Lenco payment integration — stub ready for activation.
+"""Lenco v2 collections — status verification for the inline payment widget."""
+from __future__ import annotations
 
-Lenco provides mobile money collections in Zambia (MTN, Airtel).
-API docs: https://docs.lenco.co
-
-This stub is wired into config but returns graceful errors until
-LENCO_API_KEY is set.
-"""
 import logging
-from typing import Optional
+from typing import Any
 
 import httpx
 
@@ -16,90 +11,103 @@ from app.core.config import get_settings
 logger = logging.getLogger(__name__)
 
 
-async def create_lenco_payment(
-    amount_zmw: float,
-    phone: str,
-    description: str,
-    payment_ref: str,
-) -> dict:
-    """Initiate a mobile money collection via Lenco.
+class LencoApiError(Exception):
+    """Lenco API returned an unexpected HTTP status."""
 
-    Returns: {"transaction_id": str, "status": str}
-    Raises ValueError if Lenco is not configured or API fails.
-    """
-    settings = get_settings()
+    def __init__(self, status_code: int, message: str = ""):
+        self.status_code = status_code
+        self.message = message
+        super().__init__(message or f"Lenco API error {status_code}")
 
-    if not settings.lenco_api_key:
-        raise ValueError(
-            "Lenco payments are not yet configured. "
-            "Please use DPO Pay or contact support."
+
+def map_lenco_payment_method(data: dict[str, Any]) -> str:
+    """Map Lenco collection payload to payments.payment_method CHECK values."""
+    ptype = (data.get("type") or "").lower()
+    if ptype == "card":
+        return "lenco_card"
+    if ptype == "mobile-money":
+        details = data.get("mobileMoneyDetails") or {}
+        operator = (details.get("operator") or "").lower()
+        if operator == "mtn":
+            return "lenco_mtn_money"
+        if operator == "airtel":
+            return "lenco_airtel_money"
+        logger.warning(
+            "Lenco mobile-money operator %r unmapped; defaulting to lenco_card",
+            operator,
         )
-
-    url = f"{settings.lenco_api_url}/collections"
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        try:
-            response = await client.post(
-                url,
-                headers={
-                    "Authorization": f"Bearer {settings.lenco_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "amount": amount_zmw,
-                    "currency": "ZMW",
-                    "phone_number": phone,
-                    "description": description,
-                    "reference": payment_ref,
-                },
-            )
-
-            if response.status_code == 401:
-                logger.error("Lenco API key is invalid")
-                raise ValueError("Payment service configuration error.")
-
-            if response.status_code not in (200, 201):
-                logger.error(f"Lenco API error {response.status_code}: {response.text[:200]}")
-                raise ValueError("Payment service temporarily unavailable.")
-
-            data = response.json()
-            return {
-                "transaction_id": data.get("id") or data.get("transaction_id", ""),
-                "status": data.get("status", "pending"),
-            }
-
-        except httpx.TimeoutException:
-            logger.error("Lenco payment request timed out")
-            raise ValueError("Payment service timed out. Please try again.")
-        except httpx.HTTPError as e:
-            logger.error(f"HTTP error during Lenco payment: {e}")
-            raise ValueError("Payment service is temporarily unavailable.")
+        return "lenco_card"
+    logger.warning(
+        "Lenco collection type %r unmapped; defaulting to lenco_card", ptype
+    )
+    return "lenco_card"
 
 
-async def verify_lenco_payment(transaction_id: str) -> dict:
-    """Check the status of a Lenco transaction.
+def amount_to_ngwee(data: dict[str, Any]) -> int | None:
+    """Widget/status API amounts are decimal kwacha strings (e.g. '125.00')."""
+    raw = data.get("amount")
+    if raw is None:
+        return None
+    try:
+        return int(round(float(raw) * 100))
+    except (TypeError, ValueError):
+        return None
 
-    Returns: {"status": str, "amount": float, "reference": str}
-    """
+
+def normalize_collection_status(data: dict[str, Any]) -> str:
+    """Return canonical status: successful | failed | processing."""
+    status = (data.get("status") or "").lower()
+    if status in {"successful", "success", "completed", "paid"}:
+        return "successful"
+    if status in {"failed", "declined", "reversed"}:
+        return "failed"
+    return "processing"
+
+
+async def fetch_collection_status(reference: str) -> dict[str, Any]:
+    """GET /collections/status/:reference — widget verification step."""
     settings = get_settings()
-
     if not settings.lenco_api_key:
         raise ValueError("Lenco is not configured.")
 
-    url = f"{settings.lenco_api_url}/collections/{transaction_id}"
+    base = settings.lenco_api_url.rstrip("/")
+    url = f"{base}/collections/status/{reference}"
 
-    async with httpx.AsyncClient(timeout=15) as client:
-        response = await client.get(
-            url,
-            headers={"Authorization": f"Bearer {settings.lenco_api_key}"},
+    async with httpx.AsyncClient(timeout=30) as client:
+        try:
+            response = await client.get(
+                url,
+                headers={"Authorization": f"Bearer {settings.lenco_api_key}"},
+            )
+        except httpx.TimeoutException as exc:
+            logger.error("Lenco status request timed out ref=%s", reference)
+            raise LencoApiError(504, "Lenco status request timed out") from exc
+        except httpx.HTTPError as exc:
+            logger.error("Lenco status HTTP error ref=%s: %s", reference, exc)
+            raise LencoApiError(502, "Lenco status request failed") from exc
+
+    if response.status_code == 404:
+        raise LencoApiError(404, "Collection not found")
+
+    if response.status_code != 200:
+        logger.error(
+            "Lenco status %s ref=%s body=%s",
+            response.status_code,
+            reference,
+            response.text[:300],
         )
+        raise LencoApiError(response.status_code, "Lenco status request failed")
 
-        if response.status_code != 200:
-            raise ValueError(f"Could not verify Lenco payment: {response.status_code}")
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise LencoApiError(502, "Invalid Lenco response")
 
-        data = response.json()
-        return {
-            "status": data.get("status", "unknown"),
-            "amount": data.get("amount", 0),
-            "reference": data.get("reference", ""),
-        }
+    if payload.get("status") is False:
+        message = payload.get("message") or "Lenco rejected status lookup"
+        raise LencoApiError(502, message)
+
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        raise LencoApiError(502, "Missing Lenco collection data")
+
+    return data

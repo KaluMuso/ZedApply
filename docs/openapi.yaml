@@ -893,9 +893,28 @@ components:
     PaymentInitiateResponse:
       type: object
       properties:
-        transaction_token: { type: string }
-        payment_url: { type: string, format: uri }
-        status: { type: string, enum: [pending, redirect] }
+        message: { type: string }
+        transaction_id: { type: string }
+
+    PaymentVerifyRequest:
+      type: object
+      required: [reference, tier]
+      properties:
+        reference:
+          type: string
+          description: Lenco widget reference (e.g. zedapply-uuid)
+        tier:
+          type: string
+          enum: [starter, professional, super_standard]
+
+    PaymentVerifyResponse:
+      type: object
+      properties:
+        status: { type: string, enum: [completed, processing, failed] }
+        tier: { type: string }
+        reference: { type: string }
+        payment_id: { type: string, format: uuid, nullable: true }
+        message: { type: string }
 
     CoverLetterRequest:
       type: object
@@ -1717,6 +1736,8 @@ paths:
   /subscription/pay:
     post:
       operationId: initiatePayment
+      deprecated: true
+      summary: Deprecated — use Lenco widget + verify-payment
       tags: [Subscription]
       security: [{ bearerAuth: [] }]
       requestBody:
@@ -1724,10 +1745,34 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/PaymentInitiate' }
       responses:
+        '410':
+          description: Server-side initiation removed; use Lenco widget on /pricing
+
+  /subscription/verify-payment:
+    post:
+      operationId: verifyLencoPayment
+      summary: Verify Lenco widget payment and activate subscription
+      tags: [Subscription]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PaymentVerifyRequest' }
+      responses:
         '200':
+          description: Payment successful and subscription activated
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/PaymentInitiateResponse' }
+              schema: { $ref: '#/components/schemas/PaymentVerifyResponse' }
+        '202':
+          description: Payment still processing at Lenco
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentVerifyResponse' }
+        '402':
+          description: Payment failed at Lenco
+        '502':
+          description: Lenco upstream error
 
   /webhooks/dpo:
     post:
