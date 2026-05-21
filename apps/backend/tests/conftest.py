@@ -267,8 +267,26 @@ def client(fake_supabase):
     except (ImportError, AttributeError):
         pass
 
-    with TestClient(app) as c:
+    # TrustedHostMiddleware rejects TestClient's default host without this.
+    default_headers = {"Host": "api.zedapply.com"}
+    with TestClient(app, headers=default_headers) as c:
         yield c
 
+    app.dependency_overrides.clear()
+    get_settings.cache_clear()
+
+
+@pytest.fixture
+def debug_app(fake_supabase, monkeypatch):
+    """Fresh app with DEBUG=true (OpenAPI + /docs enabled)."""
+    from app.core.config import get_settings
+    from app.core.deps import get_supabase
+    from main import create_app
+
+    monkeypatch.setenv("DEBUG", "true")
+    get_settings.cache_clear()
+    app = create_app()
+    app.dependency_overrides[get_supabase] = lambda: fake_supabase
+    yield app
     app.dependency_overrides.clear()
     get_settings.cache_clear()
