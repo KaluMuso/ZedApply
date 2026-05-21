@@ -1,4 +1,4 @@
--- 043_ai_cache_classifier_metadata.sql
+-- 044_ai_cache_classifier_metadata.sql
 -- Store WhatsApp classifier decision telemetry on ai_cache rows.
 
 ALTER TABLE public.ai_cache
