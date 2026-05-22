@@ -192,8 +192,8 @@ describe("Auto-trigger", () => {
   });
 });
 
-describe("Apply button fallback", () => {
-  it("shows source fallback when apply links null", async () => {
+describe("Apply modal", () => {
+  it("opens the apply modal instead of an external apply link", async () => {
     const noApply = {
       ...MATCH_OBJ,
       job: {
@@ -205,12 +205,14 @@ describe("Apply button fallback", () => {
     };
     withHandlers({ matches: [noApply] });
     renderWithProviders(<MatchesPageClient />);
-    const link = await screen.findByRole("link", { name: /apply via source/i }, { timeout: 5000 });
-    expect(link).toHaveAttribute("href", "https://example.com/jobs/123");
-    expect(link).toHaveAttribute("target", "_blank");
+    const applyBtn = await screen.findByRole("button", { name: /^apply$/i }, { timeout: 5000 });
+    await userEvent.click(applyBtn);
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText(/how to apply/i)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /apply via source/i })).not.toBeInTheDocument();
   });
 
-  it("shows support mailto when all apply paths null", async () => {
+  it("shows guidance when no contact methods are available", async () => {
     const deadEnd = {
       ...MATCH_OBJ,
       job: {
@@ -218,16 +220,16 @@ describe("Apply button fallback", () => {
         apply_url: null,
         apply_email: null,
         source_url: null,
+        description: "Plain role with no contact lines.",
       },
     };
     withHandlers({ matches: [deadEnd] });
     renderWithProviders(<MatchesPageClient />);
-    const link = await screen.findByRole(
-      "link",
-      { name: /contact support/i },
-      { timeout: 5000 }
-    );
-    expect(link.getAttribute("href")).toMatch(/^mailto:support@zedapply\.com/);
+    const applyBtn = await screen.findByRole("button", { name: /^apply$/i }, { timeout: 5000 });
+    await userEvent.click(applyBtn);
+    expect(
+      await screen.findByText(/no direct contact details were listed/i),
+    ).toBeInTheDocument();
   });
 });
 

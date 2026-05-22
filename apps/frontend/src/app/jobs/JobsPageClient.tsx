@@ -14,6 +14,7 @@ import { useAuth } from "@/lib/auth";
 import { JobCard } from "@/components/JobCard";
 import { JobDetailBody } from "@/components/JobDetailBody";
 import { Icon } from "@/components/ui/Icon";
+import { isJobHiddenFromUserFeed } from "@/lib/isJobHiddenFromUserFeed";
 import { Counter } from "@/components/ui/Counter";
 import { Pagination } from "@/components/ui/Pagination";
 
@@ -218,7 +219,7 @@ export default function JobsPageClient() {
         employment_type: employmentType ? [employmentType] : undefined,
         work_arrangement: workArrangement ? [workArrangement] : undefined,
       });
-      setJobsList(res.jobs);
+      setJobsList(res.jobs.filter((j) => !isJobHiddenFromUserFeed(j.closing_date)));
       setTotalPages(res.pages);
       setTotal(res.total);
     } catch {
@@ -356,7 +357,7 @@ export default function JobsPageClient() {
       {/* Filter bar */}
       {/* Filter bar — search is debounced (300ms); no submit button. */}
       <div
-        className="sticky top-[65px] z-30 -mx-6 px-6 py-4 mb-6 flex flex-col md:flex-row gap-3 items-stretch md:items-center"
+        className="sticky top-[65px] z-30 -mx-6 px-6 py-4 mb-6 flex flex-col md:flex-row gap-3 items-stretch md:items-center dark:bg-background/90 dark:border-border"
         style={{
           background: "rgba(250,247,242,0.9)",
           backdropFilter: "blur(12px)",
@@ -467,7 +468,7 @@ export default function JobsPageClient() {
 
         <button
           type="button"
-          className="btn btn-ghost"
+          className="btn btn-ghost dark:text-foreground dark:border-border dark:hover:bg-muted"
           disabled={!hasActiveFilters}
           onClick={resetFilters}
         >
@@ -578,8 +579,6 @@ export default function JobsPageClient() {
                 postedAt={job.posted_at}
                 salaryMin={job.salary_min}
                 salaryMax={job.salary_max}
-                source={job.source}
-                sourceUrl={job.source_url}
                 saveToken={token}
                 jobSaved={savedJobIds.has(job.id)}
                 onSaveChange={(jobId, next) => {

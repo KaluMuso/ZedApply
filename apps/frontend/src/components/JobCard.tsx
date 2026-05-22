@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useCallback } from "react";
 import { SaveJobButton } from "@/components/SaveJobButton";
 import { Icon } from "@/components/ui/Icon";
 import { Avatar } from "@/components/ui/Avatar";
-import { formatJobSource } from "@/lib/jobSource";
 import { DeadlineBadge } from "@/components/jobs/DeadlineBadge";
+import { SITE_URL } from "@/lib/constants";
+import { notifyError, notifySuccess } from "@/components/Toast";
 
 interface JobCardProps {
   /**
@@ -115,8 +117,6 @@ export function JobCard({
   postedAt,
   salaryMin,
   salaryMax,
-  source,
-  sourceUrl,
   matchScore,
   matchedSkills = [],
   onClick,
@@ -128,14 +128,18 @@ export function JobCard({
 
   const postedLabel = formatRelativeTime(postedAt);
   const salaryLabel = formatSalary(salaryMin, salaryMax);
-  const sourceLabel = formatJobSource(source, sourceUrl);
 
-  // role="button" + tabIndex pattern instead of a real <button>: HTML
-  // forbids nesting a <Link> (which renders <a>) inside <button>, and we
-  // need the inner "View full details" link to be a real anchor for
-  // middle-click / cmd-click / right-click-copy-url to work. Keyboard
-  // a11y is preserved: Enter/Space on the card fires onClick when focus
-  // is on the card itself (not on the inner link).
+  const shareJob = useCallback(async () => {
+    if (!id) return;
+    const url = `${SITE_URL}/jobs/${id}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      notifySuccess("Link copied to clipboard");
+    } catch {
+      notifyError("Could not copy link");
+    }
+  }, [id]);
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget) return;
     if (e.key === "Enter" || e.key === " ") {
@@ -200,8 +204,6 @@ export function JobCard({
         </div>
       )}
 
-      {/* Metadata row — posted, salary, closing, source. Replaces the
-          old misleading "quality_score%" badge. */}
       <div
         className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs"
         style={{ color: "var(--muted)" }}
@@ -220,28 +222,40 @@ export function JobCard({
           </span>
         )}
         <DeadlineBadge closingDate={closingDate} />
-        <span className="ml-auto text-[10px] opacity-60">{sourceLabel}</span>
       </div>
 
       {id && (
         <div
-          className="mt-4 pt-3 flex items-center justify-between gap-2"
+          className="mt-4 pt-3 flex flex-wrap items-center justify-between gap-2"
           style={{ borderTop: "1px solid var(--line)" }}
         >
-          {saveToken !== undefined && (
-            <SaveJobButton
-              jobId={id}
-              saved={jobSaved}
-              token={saveToken}
-              className="btn btn-ghost btn-sm shrink-0"
-              onChange={onSaveChange}
-            />
-          )}
+          <div className="flex items-center gap-2">
+            {saveToken !== undefined && (
+              <SaveJobButton
+                jobId={id}
+                saved={jobSaved}
+                token={saveToken}
+                onChange={onSaveChange}
+              />
+            )}
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm dark:text-foreground dark:hover:bg-muted"
+              aria-label="Share job link"
+              title="Copy link to this job"
+              onClick={(e) => {
+                e.stopPropagation();
+                void shareJob();
+              }}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              <Icon name="external" size={13} />
+              Share
+            </button>
+          </div>
           <Link
             href={`/jobs/${id}`}
             onClick={(e) => e.stopPropagation()}
-            // Same stop pattern for keyboard: don't let Enter on the link
-            // bubble up and re-trigger the card's drawer-open handler.
             onKeyDown={(e) => e.stopPropagation()}
             className="text-sm font-medium inline-flex items-center gap-1 hover:underline ml-auto"
             style={{ color: "var(--copper-500)" }}

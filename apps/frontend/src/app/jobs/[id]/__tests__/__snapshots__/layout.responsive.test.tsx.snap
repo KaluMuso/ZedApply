@@ -103,15 +103,9 @@ exports[`Job detail responsive layout > matches 380px mobile snapshot 1`] = `
         2w ago
       </span>
       <span
-        class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium flex items-center gap-1"
-        style="background: var(--green-100); color: var(--green-700);"
+        class="rounded-full px-2.5 py-0.5 text-xs font-medium text-green-500 dark:text-green-400 flex items-center gap-1"
       >
         Closes in 194 days
-      </span>
-      <span
-        class="ml-auto text-[10px] opacity-60"
-      >
-        Listed externally
       </span>
     </div>
     <div
@@ -146,15 +140,13 @@ exports[`Job detail responsive layout > matches 380px mobile snapshot 1`] = `
         Description
       </div>
       <div
-        class="job-description-markdown prose prose-sm max-w-none text-sm"
-        style="color: var(--ink-2);"
+        class="job-description-markdown prose prose-sm max-w-none text-sm text-foreground/90 dark:text-foreground/90 dark:prose-invert"
       >
-        <h2
-          class="font-display text-lg mt-6 mb-2"
-          style="letter-spacing: -0.01em; color: var(--ink);"
+        <h3
+          class="font-bold mt-6 mb-2 text-sm text-foreground dark:text-foreground"
         >
           Role
-        </h2>
+        </h3>
         
 
         <p
@@ -168,36 +160,15 @@ exports[`Job detail responsive layout > matches 380px mobile snapshot 1`] = `
       class="flex gap-3 sticky py-3"
       style="background: linear-gradient(to top, var(--surface) 70%, transparent); bottom: calc(var(--mobile-tabbar-offset, 0px));"
     >
-      <div
-        class="flex flex-col flex-1 gap-2"
+      <button
+        class="btn btn-primary flex-1"
+        type="button"
       >
-        <a
-          class="btn btn-primary w-full"
-          href="https://example.com/apply"
-          rel="noopener noreferrer"
-          target="_blank"
-        >
-          Apply now
-          <svg
-            class=""
-            fill="none"
-            height="14"
-            stroke="currentColor"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="1.75"
-            viewBox="0 0 24 24"
-            width="14"
-          >
-            <path
-              d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"
-            />
-          </svg>
-        </a>
-      </div>
+        Apply
+      </button>
       <button
         aria-label="Save job"
-        class="btn btn-ghost"
+        class="btn btn-outline btn-sm gap-1.5"
         style="opacity: 1;"
         title="Save this job"
         type="button"
@@ -217,6 +188,9 @@ exports[`Job detail responsive layout > matches 380px mobile snapshot 1`] = `
             d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"
           />
         </svg>
+        <span>
+          Save job
+        </span>
       </button>
     </div>
   </div>
@@ -326,15 +300,9 @@ exports[`Job detail responsive layout > matches 1024px desktop snapshot 1`] = `
         2w ago
       </span>
       <span
-        class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium flex items-center gap-1"
-        style="background: var(--green-100); color: var(--green-700);"
+        class="rounded-full px-2.5 py-0.5 text-xs font-medium text-green-500 dark:text-green-400 flex items-center gap-1"
       >
         Closes in 194 days
-      </span>
-      <span
-        class="ml-auto text-[10px] opacity-60"
-      >
-        Listed externally
       </span>
     </div>
     <div
@@ -369,15 +337,13 @@ exports[`Job detail responsive layout > matches 1024px desktop snapshot 1`] = `
         Description
       </div>
       <div
-        class="job-description-markdown prose prose-sm max-w-none text-sm"
-        style="color: var(--ink-2);"
+        class="job-description-markdown prose prose-sm max-w-none text-sm text-foreground/90 dark:text-foreground/90 dark:prose-invert"
       >
-        <h2
-          class="font-display text-lg mt-6 mb-2"
-          style="letter-spacing: -0.01em; color: var(--ink);"
+        <h3
+          class="font-bold mt-6 mb-2 text-sm text-foreground dark:text-foreground"
         >
           Role
-        </h2>
+        </h3>
         
 
         <p
@@ -391,36 +357,15 @@ exports[`Job detail responsive layout > matches 1024px desktop snapshot 1`] = `
       class="flex gap-3 sticky py-3"
       style="background: linear-gradient(to top, var(--surface) 70%, transparent); bottom: calc(var(--mobile-tabbar-offset, 0px));"
     >
-      <div
-        class="flex flex-col flex-1 gap-2"
+      <button
+        class="btn btn-primary flex-1"
+        type="button"
       >
-        <a
-          class="btn btn-primary w-full"
-          href="https://example.com/apply"
-          rel="noopener noreferrer"
-          target="_blank"
-        >
-          Apply now
-          <svg
-            class=""
-            fill="none"
-            height="14"
-            stroke="currentColor"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="1.75"
-            viewBox="0 0 24 24"
-            width="14"
-          >
-            <path
-              d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"
-            />
-          </svg>
-        </a>
-      </div>
+        Apply
+      </button>
       <button
         aria-label="Save job"
-        class="btn btn-ghost"
+        class="btn btn-outline btn-sm gap-1.5"
         style="opacity: 1;"
         title="Save this job"
         type="button"
@@ -440,6 +385,9 @@ exports[`Job detail responsive layout > matches 1024px desktop snapshot 1`] = `
             d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"
           />
         </svg>
+        <span>
+          Save job
+        </span>
       </button>
     </div>
   </div>

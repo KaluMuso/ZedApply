@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
 import { savedJobs, ApiError } from "@/lib/api";
 import { Icon } from "@/components/ui/Icon";
+import { notifyError, notifySuccess } from "@/components/Toast";
+import { cn } from "@/lib/utils";
 
 export interface SaveJobButtonProps {
   jobId: string;
@@ -12,6 +13,8 @@ export interface SaveJobButtonProps {
   disabled?: boolean;
   /** Optional extra classes for the outer button */
   className?: string;
+  /** Show text label beside the bookmark icon */
+  showLabel?: boolean;
   onChange?: (jobId: string, nextSaved: boolean) => void;
 }
 
@@ -21,6 +24,7 @@ export function SaveJobButton({
   token,
   disabled,
   className,
+  showLabel = false,
   onChange,
 }: SaveJobButtonProps) {
   const [busy, setBusy] = useState(false);
@@ -32,9 +36,7 @@ export function SaveJobButton({
 
   const toggle = useCallback(async () => {
     if (!token) {
-      toast.message("Sign in to save jobs.", {
-        description: "Use Sign In in the header, then try again.",
-      });
+      notifyError("Sign in to save jobs.");
       return;
     }
     if (disabled || busy) return;
@@ -45,19 +47,19 @@ export function SaveJobButton({
         await savedJobs.unsave(token, jobId);
         setInnerSaved(false);
         onChange?.(jobId, false);
-        toast.success("Removed from saved.");
+        notifyError("Job unsaved");
       } else {
         await savedJobs.save(token, jobId);
         setInnerSaved(true);
         onChange?.(jobId, true);
-        toast.success("Saved.");
+        notifySuccess("Job saved successfully");
       }
     } catch (e: unknown) {
       setInnerSaved(wasSaved);
       if (e instanceof ApiError) {
-        toast.error(e.detail || "Could not update saved jobs.");
+        notifyError(e.detail || "Could not update saved jobs.");
       } else {
-        toast.error("Could not update saved jobs.");
+        notifyError("Could not update saved jobs.");
       }
     } finally {
       setBusy(false);
@@ -69,17 +71,19 @@ export function SaveJobButton({
   return (
     <button
       type="button"
-      className={className ?? "btn btn-ghost"}
+      className={cn(
+        innerSaved ? "btn btn-primary" : "btn btn-outline",
+        showLabel ? "btn-sm gap-1.5" : "btn-sm",
+        className,
+      )}
       aria-label={label}
       title={innerSaved ? "Remove from saved" : "Save this job"}
       disabled={Boolean(disabled) || busy}
       onClick={toggle}
-      style={{
-        opacity: busy ? 0.65 : 1,
-        color: innerSaved ? "var(--green-700)" : undefined,
-      }}
+      style={{ opacity: busy ? 0.65 : 1 }}
     >
       <Icon name="bookmark" size={16} />
+      {showLabel ? <span>{innerSaved ? "Saved" : "Save job"}</span> : null}
     </button>
   );
 }

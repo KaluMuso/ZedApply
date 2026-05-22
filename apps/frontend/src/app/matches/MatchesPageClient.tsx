@@ -32,8 +32,9 @@ import { InterviewPrepModal } from "./_components/InterviewPrepModal";
 import { CountdownRing } from "@/components/CountdownRing";
 import { formatMatchedRelative } from "@/lib/formatMatchedRelative";
 import { isJobPastClosing } from "@/lib/isJobPastClosing";
-import { resolveApplyAction } from "@/lib/applyLink";
+import { isJobHiddenFromUserFeed } from "@/lib/isJobHiddenFromUserFeed";
 import { trackApplyClick } from "@/lib/trackApplyClick";
+import { ApplyModal } from "@/components/jobs/ApplyModal";
 
 // Human-friendly tier label. Free → "Free", super_standard → "Super",
 // etc. Falls back to the raw key if we don't recognize it so we don't
@@ -63,6 +64,7 @@ export default function MatchesPageClient() {
   const [scoreFilter, setScoreFilter] = useState(0);
   const [sort, setSort] = useState<"score" | "closing">("score");
   const [prepFor, setPrepFor] = useState<MatchData | null>(null);
+  const [applyJob, setApplyJob] = useState<MatchData["job"] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshCooldown, setRefreshCooldown] = useState(false);
   const [savedJobIds, setSavedJobIds] = useState<Set<string>>(() => new Set());
@@ -458,7 +460,11 @@ export default function MatchesPageClient() {
 
   if (!data) return null;
 
-  let filtered = data.matches.filter((m) => m.score >= scoreFilter);
+  let filtered = data.matches.filter(
+    (m) =>
+      m.score >= scoreFilter &&
+      !isJobHiddenFromUserFeed(m.job.closing_date),
+  );
   if (sort === "score") {
     filtered = [...filtered].sort((a, b) => b.score - a.score);
   } else {
@@ -897,49 +903,23 @@ export default function MatchesPageClient() {
                       Application closed
                     </button>
                   ) : (
-                    (() => {
-                      const action = resolveApplyAction(match.job);
-                      if (!action) return null;
-                      return (
-                        <div className="flex flex-col items-end gap-1 w-40">
-                          <a
-                            href={action.href}
-                            target={action.external ? "_blank" : undefined}
-                            rel={action.external ? "noopener noreferrer" : undefined}
-                            className="btn btn-primary btn-sm w-full"
-                            onClick={() => {
-                              if (token) {
-                                trackApplyClick(
-                                  token,
-                                  match.job.id,
-                                  action.applySource
-                                );
-                              }
-                            }}
-                          >
-                            {action.label}
-                            {action.external ? (
-                              <Icon name="external" size={13} />
-                            ) : null}
-                          </a>
-                          {action.secondary ? (
-                            <a
-                              href={action.secondary.href}
-                              className="text-[11px] underline"
-                              style={{ color: "var(--copper-600)" }}
-                            >
-                              {action.secondary.label}
-                            </a>
-                          ) : null}
-                        </div>
-                      );
-                    })()
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm w-40"
+                      onClick={() => {
+                        setApplyJob(match.job);
+                        if (token) {
+                          void trackApplyClick(token, match.job.id, "direct");
+                        }
+                      }}
+                    >
+                      Apply
+                    </button>
                   )}
                   <SaveJobButton
                     jobId={match.job.id}
                     saved={savedJobIds.has(match.job.id)}
                     token={token}
-                    className="btn btn-ghost btn-sm w-40"
                     onChange={(jobId, next) => {
                       setSavedJobIds((prev) => {
                         const n = new Set(prev);
@@ -1085,6 +1065,14 @@ export default function MatchesPageClient() {
           })}
         </div>
       )}
+
+      <ApplyModal
+        job={applyJob}
+        open={applyJob !== null}
+        onOpenChange={(open) => {
+          if (!open) setApplyJob(null);
+        }}
+      />
 
       {token && prepFor && (
         <InterviewPrepModal

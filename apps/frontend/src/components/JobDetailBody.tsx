@@ -5,10 +5,9 @@ import { Icon } from "@/components/ui/Icon";
 import { SaveJobButton } from "@/components/SaveJobButton";
 import { Avatar } from "@/components/ui/Avatar";
 import type { Job } from "@/lib/api";
-import { formatJobSource } from "@/lib/jobSource";
-import { resolveApplyAction } from "@/lib/applyLink";
 import { JobDescription } from "@/components/jobs/JobDescription";
 import { DeadlineBadge } from "@/components/jobs/DeadlineBadge";
+import { ApplyModal } from "@/components/jobs/ApplyModal";
 
 // ── task #60: small formatters for structured field display ───────────
 // Convert wire-format enum strings ("full_time", "on_site") into the
@@ -140,7 +139,7 @@ export function JobDetailBody({
 }: JobDetailBodyProps) {
   const postedRel = formatRelativeTime(job.posted_at);
   const salary = formatSalary(job.salary_min, job.salary_max);
-  const applyAction = resolveApplyAction(job);
+  const [applyOpen, setApplyOpen] = useState(false);
 
   // task #60: "More about this role" collapses the long-form structured
   // fields (reporting structure, manages_others, interview process,
@@ -243,9 +242,6 @@ export function JobDetailBody({
           </span>
         )}
         <DeadlineBadge closingDate={job.closing_date} className="flex items-center gap-1" />
-        <span className="ml-auto text-[10px] opacity-60">
-          {formatJobSource(job.source, job.source_url)}
-        </span>
       </div>
 
       {/* Skills */}
@@ -407,34 +403,23 @@ export function JobDetailBody({
           bottom: "calc(var(--mobile-tabbar-offset, 0px))",
         }}
       >
-        <div className="flex flex-col flex-1 gap-2">
-          <a
-            href={applyAction.href}
-            target={applyAction.external ? "_blank" : undefined}
-            rel={applyAction.external ? "noopener noreferrer" : undefined}
-            className="btn btn-primary w-full"
-          >
-            {applyAction.label}
-            {applyAction.external ? <Icon name="external" size={14} /> : null}
-          </a>
-          {applyAction.secondary ? (
-            <a
-              href={applyAction.secondary.href}
-              className="text-xs text-center underline"
-              style={{ color: "var(--copper-600)" }}
-            >
-              {applyAction.secondary.label}
-            </a>
-          ) : null}
-        </div>
+        <button
+          type="button"
+          className="btn btn-primary flex-1"
+          onClick={() => setApplyOpen(true)}
+        >
+          Apply
+        </button>
         <SaveJobButton
           jobId={job.id}
           saved={jobSaved}
           token={authToken ?? null}
-          className="btn btn-ghost"
+          showLabel
           onChange={(_id, next) => onSavedChange?.(next)}
         />
       </div>
+
+      <ApplyModal job={job} open={applyOpen} onOpenChange={setApplyOpen} />
     </div>
   );
 }
