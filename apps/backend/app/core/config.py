@@ -1,6 +1,10 @@
 """Application configuration from environment variables."""
-from pydantic_settings import BaseSettings
 from functools import lru_cache
+
+from pydantic import field_validator
+from pydantic_settings import BaseSettings
+
+from app.core.phone import normalize_zambian_e164_phone
 
 
 class Settings(BaseSettings):
@@ -138,6 +142,13 @@ class Settings(BaseSettings):
     sentry_environment: str = "production"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+
+    @field_validator("admin_alert_phone", mode="before")
+    @classmethod
+    def _normalize_admin_alert_phone(cls, value: object) -> str:
+        if value is None:
+            return "+260761359005"
+        return normalize_zambian_e164_phone(str(value))
 
 
 @lru_cache

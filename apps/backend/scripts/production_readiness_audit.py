@@ -10,12 +10,28 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+_BACKEND_ROOT = Path(__file__).resolve().parents[1]
 # Allow `app.*` imports when executed as a script.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(_BACKEND_ROOT))
 
 Status = Literal["green", "yellow", "red"]
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+_REPO_MARKERS = ("CLAUDE.md", "docs/openapi.yaml", "AGENTS.md")
+
+
+def _find_repo_root(start: Path | None = None) -> Path:
+    """Walk upward from this script until the monorepo root is found."""
+    anchor = (start or Path(__file__)).resolve()
+    for directory in (anchor.parent, *anchor.parents):
+        if any((directory / marker).is_file() for marker in _REPO_MARKERS):
+            return directory
+    raise RuntimeError(
+        f"Could not locate repo root from {anchor} "
+        f"(expected one of {_REPO_MARKERS})"
+    )
+
+
+REPO_ROOT = _find_repo_root()
 MIGRATIONS_DIR = REPO_ROOT / "infra" / "supabase" / "migrations"
 EXPECTED_TIERS = ("free", "starter", "professional", "super_standard")
 RLS_TABLES = (
@@ -225,7 +241,7 @@ async def check_waha() -> CheckResult:
 
 
 def _load_settings() -> Any | None:
-    env_path = Path(__file__).resolve().parents[1] / ".env"
+    env_path = _BACKEND_ROOT / ".env"
     if env_path.is_file():
         for line in env_path.read_text(encoding="utf-8").splitlines():
             line = line.strip()
