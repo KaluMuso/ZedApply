@@ -40,7 +40,7 @@ export function CoverLetterModal({
     setLetter(null);
     try {
       const res = await coverLetter.generate(token, jobId);
-      setLetter(res.letter);
+      setLetter(res.content);
       notify.custom.success("Cover letter ready");
     } catch (e: unknown) {
       if (e instanceof ApiError && e.status === 403) {

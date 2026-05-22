@@ -1095,13 +1095,12 @@ export const health = {
 
 // ── Cover letter ──
 export const coverLetter = {
-  generate: (token: string, jobId: string, tone?: "formal" | "friendly" | "confident") =>
-    apiFetch<{ letter: string; word_count: number; tone: string; document_id: string }>(
-      "/cover-letter/generate",
+  generate: (token: string, jobId: string) =>
+    apiFetch<{ content: string; word_count: number; document_id: string }>(
+      `/jobs/${jobId}/generate-cover-letter`,
       {
         method: "POST",
         token,
-        body: JSON.stringify({ job_id: jobId, tone: tone || "formal" }),
       }
     ),
 };

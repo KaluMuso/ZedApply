@@ -84,6 +84,9 @@ def create_app() -> FastAPI:
 
     application.include_router(auth.router, prefix="/api/v1")
     application.include_router(jobs.router, prefix="/api/v1")
+    from app.api.v1 import job_cover_letter
+
+    application.include_router(job_cover_letter.router, prefix="/api/v1")
     application.include_router(matches.router, prefix="/api/v1")
     application.include_router(cv.router, prefix="/api/v1")
     application.include_router(profile.router, prefix="/api/v1")
