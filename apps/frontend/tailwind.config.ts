@@ -109,6 +109,7 @@ const config: Config = {
         "fade-up": "fadeUp 600ms ease-out both",
         "page-enter": "pageEnter 420ms ease-out both",
         shimmer: "shimmer 1.6s linear infinite",
+        float: "float 5s ease-in-out infinite",
       },
       keyframes: {
         fadeUp: {
@@ -122,6 +123,10 @@ const config: Config = {
         shimmer: {
           "0%": { backgroundPosition: "-400px 0" },
           "100%": { backgroundPosition: "400px 0" },
+        },
+        float: {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-10px)" },
         },
       },
     },
