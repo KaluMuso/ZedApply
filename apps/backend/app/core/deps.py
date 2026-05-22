@@ -1,12 +1,13 @@
 """Shared FastAPI dependencies."""
 from functools import lru_cache
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from supabase import create_client, Client
 from app.core.config import get_settings, Settings
 
 security = HTTPBearer()
+security_optional = HTTPBearer(auto_error=False)
 
 
 @lru_cache(maxsize=1)
@@ -73,3 +74,57 @@ async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
     if not is_admin_or_superadmin(current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
     return current_user
+
+
+def _ingest_key_matches(
+    settings: Settings,
+    ingest_api_key: str | None,
+    x_ingest_api_key: str | None,
+) -> bool:
+    supplied = ingest_api_key or x_ingest_api_key
+    return bool(settings.ingest_api_key and supplied == settings.ingest_api_key)
+
+
+async def require_admin_or_ingest_key(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security_optional),
+    ingest_api_key: str | None = Header(None, alias="INGEST_API_KEY"),
+    x_ingest_api_key: str | None = Header(None, alias="X-INGEST-API-KEY"),
+    settings: Settings = Depends(get_settings),
+    supabase: Client = Depends(get_supabase),
+) -> dict:
+    """Admin JWT (Bearer) or n8n/service ingest key (INGEST_API_KEY header)."""
+    if _ingest_key_matches(settings, ingest_api_key, x_ingest_api_key):
+        return {"auth": "ingest", "role": "service"}
+
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Admin token or ingest API key required",
+        )
+
+    try:
+        payload = jwt.decode(
+            credentials.credentials,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+        )
+        user_id: str | None = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+            )
+    except JWTError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {str(e)}"
+        )
+
+    result = (
+        supabase.table("users").select("id, phone, role").eq("id", user_id).limit(1).execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+
+    user = result.data[0]
+    if not is_admin_or_superadmin(user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
+    return user

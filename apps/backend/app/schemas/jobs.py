@@ -266,6 +266,14 @@ class JobCreate(BaseModel):
     whatsapp_message_id: Optional[str] = Field(None, max_length=256)
     ocr_source_text: Optional[str] = Field(None, max_length=20000)
 
+    # Deep-scrape enrichment (migration 045) — optional on create/ingest.
+    source_platform: Optional[str] = Field(None, max_length=64)
+    original_source_url: Optional[str] = Field(None, max_length=2000)
+    contact_email: Optional[str] = Field(None, max_length=255)
+    contact_phone: Optional[str] = Field(None, max_length=20)
+    contact_whatsapp: Optional[str] = Field(None, max_length=64)
+    is_enriched: Optional[bool] = None
+
     # INPUT-ONLY (not stored). When the scraper emits a free-text salary
     # string and leaves salary_min/max null, the ingest pipeline runs
     # _parse_salary_to_ngwee on this to derive the integer fields. After
@@ -341,6 +349,42 @@ class JobCreate(BaseModel):
             out.append(s[:80])
         return out[:30]
 
+    @field_validator("source_platform", mode="before")
+    @classmethod
+    def _normalize_source_platform(cls, v: Any) -> Optional[str]:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            s = v.strip().lower()
+            return s or None
+        return str(v).strip().lower() or None
+
+    @field_validator("contact_phone", "contact_whatsapp", mode="before")
+    @classmethod
+    def _normalize_contact_phone_fields(cls, v: Any) -> Optional[str]:
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            return None
+        s = v.strip()
+        if not s:
+            return None
+        if s.lower().startswith(("http://", "https://", "wa.me/", "whatsapp.com/")):
+            return s[:64]
+        from app.services.description_body_extractor import normalize_zambian_phone
+
+        return normalize_zambian_phone(s) or s[:64]
+
+    @field_validator("contact_email", mode="before")
+    @classmethod
+    def _normalize_contact_email(cls, v: Any) -> Optional[str]:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            s = v.strip().lower()
+            return s or None
+        return v
+
     @field_validator("currency", mode="before")
     @classmethod
     def _normalize_currency(cls, v: Any) -> Any:
@@ -395,6 +439,12 @@ class Job(BaseModel):
     pay_frequency: Optional[PayFrequency] = None
     bonus_structure: Optional[str] = None
     equity_offered: Optional[bool] = None
+    contact_phone: Optional[str] = None
+    source_platform: Optional[str] = None
+    original_source_url: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_whatsapp: Optional[str] = None
+    is_enriched: bool = False
 
     @field_validator("benefits", "tools_tech_stack", mode="before")
     @classmethod
@@ -406,6 +456,50 @@ class Job(BaseModel):
         if isinstance(v, list):
             return [str(x) for x in v if x is not None and str(x).strip()]
         return []
+
+
+class JobEnrichPatch(BaseModel):
+    """PATCH /jobs/{job_id}/enrich — n8n deep-scrape callback payload."""
+
+    source_platform: Optional[str] = Field(None, max_length=64)
+    original_source_url: Optional[str] = Field(None, max_length=2000)
+    contact_email: Optional[str] = Field(None, max_length=255)
+    contact_phone: Optional[str] = Field(None, max_length=20)
+    contact_whatsapp: Optional[str] = Field(None, max_length=64)
+    apply_url: Optional[str] = Field(None, max_length=2000)
+    apply_email: Optional[str] = Field(None, max_length=255)
+    is_enriched: Optional[bool] = True
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("source_platform", mode="before")
+    @classmethod
+    def _normalize_source_platform(cls, v: Any) -> Optional[str]:
+        return JobCreate._normalize_source_platform(v)
+
+    @field_validator("contact_phone", "contact_whatsapp", mode="before")
+    @classmethod
+    def _normalize_contact_phone_fields(cls, v: Any) -> Optional[str]:
+        return JobCreate._normalize_contact_phone_fields(v)
+
+    @field_validator("contact_email", "apply_email", mode="before")
+    @classmethod
+    def _normalize_email_fields(cls, v: Any) -> Optional[str]:
+        return JobCreate._normalize_contact_email(v)
+
+    @model_validator(mode="after")
+    def _require_at_least_one_field(self) -> "JobEnrichPatch":
+        if not self.model_fields_set:
+            raise ValueError("At least one enrichment field is required")
+        meaningful = {
+            k
+            for k in self.model_fields_set
+            if getattr(self, k) is not None and k != "is_enriched"
+        }
+        if not meaningful and self.is_enriched is not True:
+            raise ValueError("At least one enrichment field is required")
+        return self
+
 
 class JobList(BaseModel):
     jobs: list[Job]
@@ -535,8 +629,29 @@ class AdminJobUpdate(BaseModel):
     # second endpoint. DELETE handles deactivation; PATCH handles the
     # reverse and any other ad-hoc state change.
     is_active: Optional[bool] = None
+    source_platform: Optional[str] = Field(None, max_length=64)
+    original_source_url: Optional[str] = Field(None, max_length=2000)
+    contact_email: Optional[str] = Field(None, max_length=255)
+    contact_phone: Optional[str] = Field(None, max_length=20)
+    contact_whatsapp: Optional[str] = Field(None, max_length=64)
+    is_enriched: Optional[bool] = None
 
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("source_platform", mode="before")
+    @classmethod
+    def _normalize_source_platform(cls, v: Any) -> Optional[str]:
+        return JobCreate._normalize_source_platform(v)
+
+    @field_validator("contact_phone", "contact_whatsapp", mode="before")
+    @classmethod
+    def _normalize_contact_phone_fields(cls, v: Any) -> Optional[str]:
+        return JobCreate._normalize_contact_phone_fields(v)
+
+    @field_validator("contact_email", mode="before")
+    @classmethod
+    def _normalize_contact_email(cls, v: Any) -> Optional[str]:
+        return JobCreate._normalize_contact_email(v)
 
     @field_validator("requirements", "skills_required", mode="after")
     @classmethod

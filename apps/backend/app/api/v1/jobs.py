@@ -5,7 +5,12 @@ import logging
 import re as _re
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from app.core.config import Settings, get_settings
-from app.core.deps import get_current_user_id, get_supabase, require_admin
+from app.core.deps import (
+    get_current_user_id,
+    get_supabase,
+    require_admin,
+    require_admin_or_ingest_key,
+)
 from app.core.rate_limit import limiter
 from app.schemas.jobs import (
     Job,
@@ -14,6 +19,7 @@ from app.schemas.jobs import (
     JobIngestRequest,
     JobIngestResponse,
     JobIngestErrorItem,
+    JobEnrichPatch,
     _parse_salary_to_ngwee,
 )
 from app.schemas.saved_jobs import SaveJobResponse
@@ -469,6 +475,59 @@ async def get_job(job_id: str, supabase=Depends(get_supabase)):
     if not result.data:
         raise HTTPException(status_code=404, detail="Job not found")
     return hydrate_job_row(result.data)
+
+
+@router.patch("/{job_id}/enrich", response_model=Job)
+@limiter.limit("60/minute")
+async def enrich_job_listing(
+    request: Request,
+    job_id: str,
+    body: JobEnrichPatch,
+    _auth: dict = Depends(require_admin_or_ingest_key),
+    supabase=Depends(get_supabase),
+):
+    """Apply deep-scrape enrichment from n8n (employer contacts + original URL).
+
+    Auth: admin Bearer JWT or ``X-INGEST-API-KEY`` / ``INGEST_API_KEY`` header
+    (same secret as bulk ingest — suitable for service-role automation).
+    """
+    existing = (
+        supabase.table("jobs")
+        .select("id, apply_url, apply_email")
+        .eq("id", job_id)
+        .limit(1)
+        .execute()
+    )
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    patch = body.model_dump(exclude_unset=True, mode="json")
+    if not patch:
+        raise HTTPException(status_code=422, detail="No fields to update")
+
+    if body.is_enriched is not False:
+        patch["is_enriched"] = True
+
+    if patch.get("original_source_url") and not patch.get("apply_url"):
+        row = existing.data[0]
+        if not row.get("apply_url"):
+            patch["apply_url"] = patch["original_source_url"]
+
+    if patch.get("apply_url") or patch.get("apply_email"):
+        patch["apply_source"] = "enriched"
+
+    supabase.table("jobs").update(patch).eq("id", job_id).execute()
+
+    refreshed = (
+        supabase.table("jobs")
+        .select("*, job_skills(skills(name))")
+        .eq("id", job_id)
+        .single()
+        .execute()
+    )
+    if not refreshed.data:
+        raise HTTPException(status_code=500, detail="Failed to load updated job")
+    return hydrate_job_row(refreshed.data)
 
 
 @router.post("", response_model=Job, status_code=status.HTTP_201_CREATED)
