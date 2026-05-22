@@ -3,6 +3,48 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { plainTextToMarkdown } from "@/lib/markdownNormalizer";
+import { cn } from "@/lib/utils";
+
+const MAIN_SUBTITLE_HEADINGS = new Set([
+  "requirements",
+  "location",
+  "method of application",
+  "how to apply",
+  "qualifications",
+  "key responsibilities",
+  "job purpose",
+]);
+
+function headingText(children: React.ReactNode): string {
+  if (typeof children === "string") return children.trim();
+  if (Array.isArray(children)) {
+    return children
+      .map((c) => (typeof c === "string" ? c : ""))
+      .join("")
+      .trim();
+  }
+  return "";
+}
+
+function isMainSubtitle(text: string): boolean {
+  const key = text.replace(/:$/, "").trim().toLowerCase();
+  return MAIN_SUBTITLE_HEADINGS.has(key);
+}
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  const text = headingText(children);
+  const main = isMainSubtitle(text);
+  return (
+    <h3
+      className={cn(
+        "font-bold mt-6 mb-2",
+        main ? "text-base text-foreground dark:text-foreground" : "text-sm text-foreground dark:text-foreground",
+      )}
+    >
+      {children}
+    </h3>
+  );
+}
 
 export function JobDescription({
   description,
@@ -17,35 +59,26 @@ export function JobDescription({
 
   if (!md) {
     return (
-      <p className="text-sm" style={{ color: "var(--muted)" }}>
+      <p className="text-sm text-muted-foreground dark:text-muted-foreground">
         No description provided.
       </p>
     );
   }
 
   return (
-    <div
-      className="job-description-markdown prose prose-sm max-w-none text-sm"
-      style={{ color: "var(--ink-2)" }}
-    >
+    <div className="job-description-markdown prose prose-sm max-w-none text-sm text-foreground/90 dark:text-foreground/90 dark:prose-invert">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          h2: ({ children }) => (
-            <h2
-              className="font-display text-lg mt-6 mb-2"
-              style={{ letterSpacing: "-0.01em", color: "var(--ink)" }}
-            >
-              {children}
-            </h2>
-          ),
+          h1: ({ children }) => <SectionHeading>{children}</SectionHeading>,
+          h2: ({ children }) => <SectionHeading>{children}</SectionHeading>,
+          h3: ({ children }) => <SectionHeading>{children}</SectionHeading>,
           a: ({ href, children }) => (
             <a
               href={href}
               target={href?.startsWith("http") ? "_blank" : undefined}
               rel={href?.startsWith("http") ? "noopener noreferrer" : undefined}
-              className="underline"
-              style={{ color: "var(--copper-600)" }}
+              className="underline text-primary dark:text-primary"
             >
               {children}
             </a>
