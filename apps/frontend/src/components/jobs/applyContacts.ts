@@ -1,4 +1,13 @@
-import type { Job } from "@/lib/api";
+/** Minimal job fields needed by the Apply modal (matches list + full job detail). */
+export interface ApplyModalJob {
+  title: string;
+  company?: string | null;
+  apply_url?: string | null;
+  apply_email?: string | null;
+  description?: string | null;
+  application_instructions?: string | null;
+  contact_phone?: string | null;
+}
 
 export type ApplyContactKind = "email" | "whatsapp" | "phone" | "website";
 
@@ -39,12 +48,8 @@ function extractPhoneFromText(text: string): string | null {
   return null;
 }
 
-function jobRow(job: Job): Job & { contact_phone?: string | null } {
-  return job as Job & { contact_phone?: string | null };
-}
-
 /** Build deduplicated apply contact rows for the Apply modal. */
-export function buildApplyContactMethods(job: Job): ApplyContactMethod[] {
+export function buildApplyContactMethods(job: ApplyModalJob): ApplyContactMethod[] {
   const methods: ApplyContactMethod[] = [];
   const seen = new Set<string>();
 
@@ -77,9 +82,8 @@ export function buildApplyContactMethods(job: Job): ApplyContactMethod[] {
     });
   }
 
-  const row = jobRow(job);
   const phone =
-    (row.contact_phone && normalizeZambianPhone(row.contact_phone)) ||
+    (job.contact_phone && normalizeZambianPhone(job.contact_phone)) ||
     extractPhoneFromText(
       [job.description, job.application_instructions].filter(Boolean).join("\n"),
     );

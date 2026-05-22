@@ -35,7 +35,6 @@ import { isJobPastClosing } from "@/lib/isJobPastClosing";
 import { isJobHiddenFromUserFeed } from "@/lib/isJobHiddenFromUserFeed";
 import { trackApplyClick } from "@/lib/trackApplyClick";
 import { ApplyModal } from "@/components/jobs/ApplyModal";
-import type { Job } from "@/lib/api";
 
 // Human-friendly tier label. Free → "Free", super_standard → "Super",
 // etc. Falls back to the raw key if we don't recognize it so we don't
@@ -65,7 +64,7 @@ export default function MatchesPageClient() {
   const [scoreFilter, setScoreFilter] = useState(0);
   const [sort, setSort] = useState<"score" | "closing">("score");
   const [prepFor, setPrepFor] = useState<MatchData | null>(null);
-  const [applyJob, setApplyJob] = useState<Job | null>(null);
+  const [applyJob, setApplyJob] = useState<MatchData["job"] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshCooldown, setRefreshCooldown] = useState(false);
   const [savedJobIds, setSavedJobIds] = useState<Set<string>>(() => new Set());

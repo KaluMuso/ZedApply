@@ -2,7 +2,6 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { Copy } from "lucide-react";
-import type { Job } from "@/lib/api";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +15,7 @@ import { notifyError, notifySuccess } from "@/components/Toast";
 import {
   buildApplyContactMethods,
   type ApplyContactKind,
+  type ApplyModalJob,
 } from "@/components/jobs/applyContacts";
 
 const KIND_ICON: Record<ApplyContactKind, string> = {
@@ -26,7 +26,7 @@ const KIND_ICON: Record<ApplyContactKind, string> = {
 };
 
 export interface ApplyModalProps {
-  job: Job | null;
+  job: ApplyModalJob | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
