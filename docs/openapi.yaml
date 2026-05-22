@@ -688,6 +688,46 @@ components:
           nullable: true
         bonus_structure: { type: string, nullable: true }
         equity_offered: { type: boolean, nullable: true }
+        source_platform:
+          type: string
+          maxLength: 64
+          nullable: true
+          description: Listing site id (e.g. gozambiajobs, linkedin).
+        original_source_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Employer-direct URL after deep scrape.
+        contact_email: { type: string, format: email, nullable: true }
+        contact_phone:
+          type: string
+          nullable: true
+          description: E.164 +260XXXXXXXXX when Zambian mobile.
+        contact_whatsapp:
+          type: string
+          nullable: true
+          description: WhatsApp apply contact (E.164 or wa.me link).
+        is_enriched:
+          type: boolean
+          default: false
+          description: True after deep-scrape enrichment was applied.
+
+    JobEnrichPatch:
+      type: object
+      description: |
+        PATCH /jobs/{job_id}/enrich payload (n8n deep scrape). extra=forbid on
+        Python side. At least one enrichment field required. Sets is_enriched=true
+        unless explicitly set false.
+      additionalProperties: false
+      properties:
+        source_platform: { type: string, maxLength: 64 }
+        original_source_url: { type: string, format: uri }
+        contact_email: { type: string, format: email }
+        contact_phone: { type: string, maxLength: 20 }
+        contact_whatsapp: { type: string, maxLength: 64 }
+        apply_url: { type: string, format: uri }
+        apply_email: { type: string, format: email }
+        is_enriched: { type: boolean, default: true }
 
     JobCreate:
       type: object
@@ -705,6 +745,12 @@ components:
         apply_email: { type: string, format: email }
         source: { type: string, enum: [manual, scraper, ocr, partner] }
         closing_date: { type: string, format: date }
+        source_platform: { type: string, maxLength: 64 }
+        original_source_url: { type: string, format: uri }
+        contact_email: { type: string, format: email }
+        contact_phone: { type: string, maxLength: 20 }
+        contact_whatsapp: { type: string, maxLength: 64 }
+        is_enriched: { type: boolean }
 
     AdminJobCreate:
       type: object
@@ -792,6 +838,12 @@ components:
         equity_offered: { type: boolean }
         salary_text: { type: string, maxLength: 500 }
         is_active: { type: boolean, description: "Re-activate a soft-deleted job by PATCHing true" }
+        source_platform: { type: string, maxLength: 64 }
+        original_source_url: { type: string, format: uri }
+        contact_email: { type: string, format: email }
+        contact_phone: { type: string, maxLength: 20 }
+        contact_whatsapp: { type: string, maxLength: 64 }
+        is_enriched: { type: boolean }
 
     JobList:
       type: object
@@ -1733,6 +1785,35 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Job' }
+
+  /jobs/{job_id}/enrich:
+    patch:
+      operationId: enrichJobListing
+      tags: [Jobs]
+      description: |
+        Deep-scrape enrichment callback (n8n). Requires admin Bearer JWT or
+        X-INGEST-API-KEY / INGEST_API_KEY header (same secret as bulk ingest).
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - { name: job_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: X-INGEST-API-KEY, in: header, schema: { type: string } }
+        - { name: INGEST_API_KEY, in: header, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JobEnrichPatch' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '401': { description: Missing or invalid admin / ingest credentials }
+        '403': { description: Authenticated user is not admin }
+        '404': { description: Job not found }
+        '422': { description: Validation error or empty patch }
 
   /jobs/{job_id}/save:
     post:

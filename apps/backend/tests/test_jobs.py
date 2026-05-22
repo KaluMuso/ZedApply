@@ -815,3 +815,119 @@ class TestJobIngestRicherFields:
         assert resp.status_code == 200
         assert captured_inserts[0]["salary_min"] == 999
         assert captured_inserts[0]["salary_max"] == 9999
+
+
+class _EnrichableJobsQuery(FakeSupabaseQuery):
+    """Jobs table mock that applies update() to the stored row."""
+
+    def __init__(self, row: dict):
+        super().__init__(data=[dict(row)])
+        self._row = dict(row)
+        self.last_patch: dict | None = None
+        self._single = False
+
+    def update(self, data):
+        self.last_patch = dict(data)
+        self._row.update(data)
+        self._data = [dict(self._row)]
+        return self
+
+    def single(self):
+        self._single = True
+        return self
+
+    def execute(self):
+        from unittest.mock import MagicMock
+
+        result = MagicMock()
+        if self._single and self._data:
+            result.data = self._data[0]
+        else:
+            result.data = self._data
+        result.count = self._count
+        return result
+
+
+class TestJobEnrich:
+    JOB_ID = "00000000-0000-0000-0000-000000000099"
+    BASE_ROW = {
+        "id": JOB_ID,
+        "title": "Accountant",
+        "description": "Manage books for a Lusaka firm with five years experience.",
+        "source": "scraper",
+        "posted_at": "2025-01-01T00:00:00Z",
+        "is_active": True,
+        "quality_score": 40,
+        "is_enriched": False,
+    }
+
+    def test_enrich_rejects_without_credentials(self, client, fake_supabase):
+        fake_supabase.set_table("jobs", _EnrichableJobsQuery(self.BASE_ROW))
+        resp = client.patch(
+            f"/api/v1/jobs/{self.JOB_ID}/enrich",
+            json={"contact_email": "hr@employer.co.zm"},
+        )
+        assert resp.status_code == 401
+
+    def test_enrich_rejects_wrong_ingest_key(self, client, fake_supabase):
+        fake_supabase.set_table("jobs", _EnrichableJobsQuery(self.BASE_ROW))
+        resp = client.patch(
+            f"/api/v1/jobs/{self.JOB_ID}/enrich",
+            json={"contact_email": "hr@employer.co.zm"},
+            headers={"X-INGEST-API-KEY": "wrong-key"},
+        )
+        assert resp.status_code == 401
+
+    def test_enrich_with_ingest_key(self, client, fake_supabase):
+        jobs_q = _EnrichableJobsQuery(self.BASE_ROW)
+        fake_supabase.set_table("jobs", jobs_q)
+        resp = client.patch(
+            f"/api/v1/jobs/{self.JOB_ID}/enrich",
+            json={
+                "source_platform": "gozambiajobs",
+                "original_source_url": "https://employer.example/jobs/42",
+                "contact_whatsapp": "+260971234567",
+            },
+            headers={"X-INGEST-API-KEY": "test-ingest-key"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["is_enriched"] is True
+        assert body["source_platform"] == "gozambiajobs"
+        assert body["contact_whatsapp"] == "+260971234567"
+        assert jobs_q.last_patch is not None
+        assert jobs_q.last_patch["is_enriched"] is True
+        assert jobs_q.last_patch["apply_source"] == "enriched"
+
+    def test_enrich_404_when_job_missing(self, client, fake_supabase):
+        fake_supabase.set_table("jobs", FakeSupabaseQuery(data=[]))
+        resp = client.patch(
+            f"/api/v1/jobs/{self.JOB_ID}/enrich",
+            json={"contact_email": "hr@employer.co.zm"},
+            headers={"X-INGEST-API-KEY": "test-ingest-key"},
+        )
+        assert resp.status_code == 404
+
+    def test_enrich_with_admin_jwt(self, client, fake_supabase, admin_headers):
+        jobs_q = _EnrichableJobsQuery(self.BASE_ROW)
+        fake_supabase.set_table("jobs", jobs_q)
+        fake_supabase.set_table(
+            "users",
+            FakeSupabaseQuery(
+                data=[
+                    {
+                        "id": "admin-user-id",
+                        "phone": "+260971111111",
+                        "role": "admin",
+                    }
+                ]
+            ),
+        )
+        resp = client.patch(
+            f"/api/v1/jobs/{self.JOB_ID}/enrich",
+            json={"contact_email": "careers@company.co.zm"},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["contact_email"] == "careers@company.co.zm"
+        assert jobs_q.last_patch["is_enriched"] is True
