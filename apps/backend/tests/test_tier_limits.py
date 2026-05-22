@@ -9,20 +9,18 @@ from app.schemas.subscription import TIER_LIMITS, TIER_PRICES
 
 def test_tier_limits_canonical_values():
     assert TIER_LIMITS == {
-        "free": 10,
-        "starter": 50,
-        "professional": 125,
-        "super_standard": 99999,
+        "mwana": 5,
+        "mwizi": 25,
+        "wino": 99999,
     }
 
 
 def test_tier_prices_canonical_values():
-    """Prices in ngwee — K125 / K250 / K500 on the public pricing page."""
+    """Prices in ngwee — K79 / K199 on the public pricing page."""
     assert TIER_PRICES == {
-        "free": 0,
-        "starter": 12500,
-        "professional": 25000,
-        "super_standard": 50000,
+        "mwana": 0,
+        "mwizi": 7900,
+        "wino": 19900,
     }
 
 

@@ -4,7 +4,13 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, BackgroundTasks, Header
 from app.core.config import Settings, get_settings
-from app.core.deps import get_supabase, get_current_user_id, get_current_user, is_superadmin
+from app.core.deps import (
+    get_supabase,
+    get_current_user_id,
+    get_current_user,
+    is_superadmin,
+)
+from app.core.tier_gating import FEATURE_JOB_MATCHES, verify_tier_access
 from app.core.rate_limit import limiter
 from app.schemas.matching import MatchResult, MatchList, CronTickResponse, NotificationDigestResponse
 from app.schemas.jobs import Job
@@ -26,9 +32,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/matches", tags=["Matching"])
 
 _AUTO_MATCH_CADENCE_HOURS: dict[str, int | None] = {
+    "mwana": None,
     "free": None,
+    "mwizi": 24,
     "starter": 24,
-    "professional": 24,
+    "wino": 12,
+    "professional": 12,
     "super_standard": 12,
 }
 
@@ -235,11 +244,19 @@ async def get_matches_for_user(
     min_score: float = Query(50, ge=0, le=100),
     limit: int = Query(10, ge=1, le=50),
     current_user_id: str = Depends(get_current_user_id),
+    current_user: dict = Depends(get_current_user),
     supabase=Depends(get_supabase),
 ):
     """Live hybrid scores from match_jobs_for_user RPC (60/30/10 breakdown)."""
     if user_id != current_user_id:
         raise HTTPException(status_code=403, detail="Cannot view another user's matches")
+
+    await verify_tier_access(
+        FEATURE_JOB_MATCHES,
+        user_id,
+        supabase,
+        is_superadmin=is_superadmin(current_user),
+    )
 
     _, remaining = await check_match_quota(user_id, supabase)
     _, matches_limit, _ = await get_user_tier_limit(user_id, supabase)
@@ -333,8 +350,16 @@ async def get_matches_for_user(
         )
 
     matches.sort(key=lambda mr: mr.score, reverse=True)
+    delivered = matches[:limit]
+    await verify_tier_access(
+        FEATURE_JOB_MATCHES,
+        user_id,
+        supabase,
+        increment_match_views=len(delivered),
+        is_superadmin=is_superadmin(current_user),
+    )
     return MatchList(
-        matches=matches[:limit],
+        matches=delivered,
         remaining_quota=remaining,
         credited_count=credited_count,
         matches_limit=matches_limit,

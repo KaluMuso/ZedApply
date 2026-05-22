@@ -71,19 +71,19 @@ async def update_admin_tier_config(
         if item.tier in seen:
             raise HTTPException(status_code=422, detail=f"Duplicate tier: {item.tier}")
         seen.add(item.tier)
-        if item.tier == "free" and item.price_ngwee != 0:
+        if item.tier == "mwana" and item.price_ngwee != 0:
             raise HTTPException(
                 status_code=422,
-                detail="Free tier price must be K0 (price_ngwee=0).",
+                detail="Mwana tier price must be K0 (price_ngwee=0).",
             )
 
     if seen != VALID_TIERS:
         raise HTTPException(
             status_code=422,
-            detail="Request must include all four tiers: free, starter, professional, super_standard.",
+            detail="Request must include all three tiers: mwana, mwizi, wino.",
         )
 
-    order = {"free": 0, "starter": 1, "professional": 2, "super_standard": 3}
+    order = {"mwana": 0, "mwizi": 1, "wino": 2}
     for item in sorted(body.tiers, key=lambda t: order[t.tier]):
         supabase.table("tier_config").upsert(
             {

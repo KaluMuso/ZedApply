@@ -1,10 +1,14 @@
 """Shared FastAPI dependencies."""
 from functools import lru_cache
+from typing import Callable
+
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
-from supabase import create_client, Client
-from app.core.config import get_settings, Settings
+from supabase import Client, create_client
+
+from app.core.config import Settings, get_settings
+from app.core.tier_gating import verify_tier_access
 
 security = HTTPBearer()
 security_optional = HTTPBearer(auto_error=False)
@@ -128,3 +132,25 @@ async def require_admin_or_ingest_key(
     if not is_admin_or_superadmin(user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
     return user
+
+
+def require_tier_access(required_feature: str) -> Callable:
+    """FastAPI dependency factory for subscription tier gates.
+
+    Usage:
+        @router.get("/...", dependencies=[Depends(require_tier_access("job_matches"))])
+    """
+
+    async def _dependency(
+        user_id: str = Depends(get_current_user_id),
+        supabase: Client = Depends(get_supabase),
+        current_user: dict = Depends(get_current_user),
+    ) -> str:
+        return await verify_tier_access(
+            required_feature,
+            user_id,
+            supabase,
+            is_superadmin=is_superadmin(current_user),
+        )
+
+    return _dependency

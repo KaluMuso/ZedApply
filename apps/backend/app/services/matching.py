@@ -36,7 +36,7 @@ def _month_start(now: datetime | None = None) -> datetime:
 async def get_user_tier_limit(user_id: str, supabase: Client) -> tuple[str, int, bool]:
     """Return (tier, monthly quota, active). Quotas come from tier_config."""
     tier_limits = await get_tier_limits(supabase)
-    default_quota = tier_limits["free"]
+    default_quota = tier_limits.get("mwana", tier_limits.get("free", 5))
     sub_res = (
         supabase.table("subscriptions")
         .select("tier, status")
@@ -47,7 +47,7 @@ async def get_user_tier_limit(user_id: str, supabase: Client) -> tuple[str, int,
     sub = _first_row(sub_res.data)
     if sub:
         active = sub.get("status") == "active"
-        tier = sub.get("tier") or "free"
+        tier = sub.get("tier") or "mwana"
         return tier, tier_limits.get(tier, default_quota), active
 
     user_res = (
@@ -58,7 +58,7 @@ async def get_user_tier_limit(user_id: str, supabase: Client) -> tuple[str, int,
         .execute()
     )
     user = _first_row(user_res.data) or {}
-    tier = user.get("subscription_tier") or "free"
+    tier = user.get("subscription_tier") or "mwana"
     return tier, tier_limits.get(tier, default_quota), True
 
 
