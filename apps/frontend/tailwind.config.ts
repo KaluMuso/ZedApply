@@ -57,11 +57,14 @@ const config: Config = {
           900: "#042117",
         },
         surface: "var(--surface)",
+        "surface-elevated": "var(--surface-elevated)",
+        "surface-dark-elevated": "var(--surface-dark-elevated)",
         "bg-2": "var(--bg-2)",
         line: "var(--line)",
         ink: {
           DEFAULT: "var(--ink)",
           2: "var(--ink-2)",
+          dark: "var(--ink-dark)",
         },
         cream: {
           50: "#FAFAF7",
@@ -83,6 +86,8 @@ const config: Config = {
       fontSize: {
         body: ["0.9375rem", { lineHeight: "1.6" }],
         "body-lg": ["1rem", { lineHeight: "1.6" }],
+        "display-md": ["clamp(2rem, 4vw, 2.75rem)", { lineHeight: "1.08", letterSpacing: "-0.02em" }],
+        "display-lg": ["clamp(2.25rem, 5vw, 3.5rem)", { lineHeight: "1.05", letterSpacing: "-0.02em" }],
       },
       borderRadius: {
         xs: "6px",
@@ -111,6 +116,8 @@ const config: Config = {
         "page-enter": "pageEnter 420ms ease-out both",
         shimmer: "shimmer 1.6s linear infinite",
         float: "float 5s ease-in-out infinite",
+        "float-delayed": "float 5s ease-in-out 0.5s infinite",
+        "float-delay-2": "float 5s ease-in-out 1s infinite",
       },
       keyframes: {
         fadeUp: {
