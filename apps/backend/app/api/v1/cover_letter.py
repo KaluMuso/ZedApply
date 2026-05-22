@@ -2,7 +2,8 @@
 from typing import Literal, Optional
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException, Request
-from app.core.deps import get_supabase, get_current_user, is_superadmin
+from app.core.deps import get_supabase, get_current_user, require_tier_access
+from app.core.tier_gating import FEATURE_COVER_LETTER
 from app.core.rate_limit import limiter
 from app.services.cover_letter import generate_cover_letter
 
@@ -21,7 +22,11 @@ class CoverLetterResponse(BaseModel):
     document_id: str
 
 
-@router.post("/generate", response_model=CoverLetterResponse)
+@router.post(
+    "/generate",
+    response_model=CoverLetterResponse,
+    dependencies=[Depends(require_tier_access(FEATURE_COVER_LETTER))],
+)
 @limiter.limit("5/minute")
 async def generate(
     request: Request,
@@ -30,23 +35,6 @@ async def generate(
     supabase=Depends(get_supabase),
 ):
     user_id = current_user["id"]
-
-    # Superadmin bypasses tier check
-    if not is_superadmin(current_user):
-        sub = (
-            supabase.table("subscriptions")
-            .select("tier, status")
-            .eq("user_id", user_id)
-            .eq("status", "active")
-            .single()
-            .execute()
-        )
-        if not sub.data or sub.data["tier"] not in ("professional", "super_standard"):
-            raise HTTPException(
-                status_code=403,
-                detail="Cover letter generation requires the Professional plan (K250/mo). "
-                       "Upgrade at zedcv.com/pricing",
-            )
 
     # Get user's primary CV text
     cv_result = (

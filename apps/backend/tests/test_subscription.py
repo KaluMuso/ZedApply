@@ -57,7 +57,7 @@ class TestGetSubscription:
                     {
                         "id": "sub-1",
                         "user_id": "test-user-id",
-                        "tier": "free",
+                        "tier": "mwana",
                         "matches_used": 2,
                         "matches_limit": 5,
                         "status": "active",
@@ -86,7 +86,7 @@ class TestGetSubscription:
                     {
                         "id": "sub-1",
                         "user_id": "test-user-id",
-                        "tier": "starter",
+                        "tier": "mwizi",
                         "status": "active",
                         "current_period_end": None,
                     }
@@ -96,9 +96,9 @@ class TestGetSubscription:
         resp = client.get("/api/v1/subscription", headers=auth_headers)
         assert resp.status_code == 200
         body = resp.json()
-        assert body["matches_limit"] == 50
+        assert body["matches_limit"] == 25
         assert body["matches_used"] == 3
-        assert body["tier"] == "starter"
+        assert body["tier"] == "mwizi"
 
     @patch(
         "app.api.v1.subscription.get_credited_match_count",
@@ -108,7 +108,7 @@ class TestGetSubscription:
     def test_get_subscription_free_tier_limit_is_10(
         self, _mock_credited, client, auth_headers, fake_supabase
     ):
-        """Free tier quota matches zedapply.com/pricing (10 matches/month)."""
+        """Mwana tier quota (5 matches/month)."""
         fake_supabase.set_table(
             "subscriptions",
             _SingleQuery(
@@ -116,7 +116,7 @@ class TestGetSubscription:
                     {
                         "id": "sub-free",
                         "user_id": "test-user-id",
-                        "tier": "free",
+                        "tier": "mwana",
                         "status": "active",
                         "current_period_end": None,
                     }
@@ -125,7 +125,7 @@ class TestGetSubscription:
         )
         resp = client.get("/api/v1/subscription", headers=auth_headers)
         assert resp.status_code == 200
-        assert resp.json()["matches_limit"] == 10
+        assert resp.json()["matches_limit"] == 5
 
 
 class TestPaymentInitiate:
@@ -135,7 +135,7 @@ class TestPaymentInitiate:
             "/api/v1/subscription/pay",
             headers=auth_headers,
             json={
-                "tier": "starter",
+                "tier": "mwizi",
                 "payment_method": "lenco_mtn_money",
                 "phone": "+260971234567",
             },

@@ -24,11 +24,11 @@ class TierConfigList(BaseModel):
 
 
 class TierConfigUpdateItem(BaseModel):
-    tier: str = Field(..., pattern="^(free|starter|professional|super_standard)$")
+    tier: str = Field(..., pattern="^(mwana|mwizi|wino)$")
     display_name: str = Field(..., min_length=1, max_length=64)
     price_ngwee: int = Field(..., ge=0)
     matches_limit: int = Field(..., ge=0, le=999999)
 
 
 class TierConfigBulkUpdate(BaseModel):
-    tiers: list[TierConfigUpdateItem] = Field(..., min_length=1, max_length=4)
+    tiers: list[TierConfigUpdateItem] = Field(..., min_length=1, max_length=3)

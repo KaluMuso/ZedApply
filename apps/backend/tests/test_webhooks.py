@@ -169,9 +169,8 @@ def test_dpo_webhook_period_end_safety(client, fake_supabase):
 @pytest.mark.parametrize(
     "amount,expected_tier",
     [
-        (12500, "starter"),
-        (25000, "professional"),
-        (50000, "super_standard"),
+        (7900, "mwizi"),
+        (19900, "wino"),
     ],
 )
 def test_dpo_webhook_tier_mapping_exact_price(
@@ -204,7 +203,7 @@ def test_dpo_webhook_tier_mapping_unknown_amount_logs_warning(
     client, fake_supabase, caplog
 ):
     """An off-price amount logs a warning and falls back defensively to the
-    highest tier whose price is <= amount (17500 → starter)."""
+    highest tier whose price is <= amount (17500 → mwizi)."""
     fake_supabase.set_table(
         "payments", _UpdateSpyQuery(data=[_payment_row(amount=17500)])
     )
@@ -223,7 +222,7 @@ def test_dpo_webhook_tier_mapping_unknown_amount_logs_warning(
 
     assert resp.status_code == 200
     assert "unknown amount 17500" in caplog.text
-    assert activate.call_args.kwargs["new_tier"] == "starter"
+    assert activate.call_args.kwargs["new_tier"] == "mwizi"
 
 
 # ── 4. Subscription/pay now accepts lenco method (Lenco-frontend slice) ──
@@ -235,7 +234,7 @@ def test_subscription_pay_returns_410_gone(client, auth_headers):
         "/api/v1/subscription/pay",
         headers=auth_headers,
         json={
-            "tier": "starter",
+            "tier": "mwizi",
             "payment_method": "lenco_mtn_money",
             "phone": "+260979370372",
         },

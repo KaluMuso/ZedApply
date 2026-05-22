@@ -307,7 +307,11 @@ async def dpo_webhook(request: Request, supabase=Depends(get_supabase)):
         # so the audit-trail flags land in the same write.
         amount_ngwee = payment["amount"]
         tier_prices = await get_tier_prices(supabase)
-        paid_tiers = {price: tier for tier, price in tier_prices.items() if tier != "free"}
+        paid_tiers = {
+            price: tier
+            for tier, price in tier_prices.items()
+            if tier not in ("free", "mwana")
+        }
         new_tier = paid_tiers.get(amount_ngwee)
         if new_tier is None:
             logging.warning(
@@ -317,7 +321,7 @@ async def dpo_webhook(request: Request, supabase=Depends(get_supabase)):
             sorted_paid = sorted(paid_tiers.items())  # ascending by price
             new_tier = next(
                 (tier for price, tier in reversed(sorted_paid) if price <= amount_ngwee),
-                "starter",
+                "mwizi",
             )
             # Cheap audit trail — preserved by the webhook_data update below.
             parsed["_inexact_amount_match"] = True
@@ -501,7 +505,11 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
         # for audit. Resolved here so the audit fields land in the same
         # write as the claim.
         tier_prices = await get_tier_prices(supabase)
-        paid_tiers = {price: tier for tier, price in tier_prices.items() if tier != "free"}
+        paid_tiers = {
+            price: tier
+            for tier, price in tier_prices.items()
+            if tier not in ("free", "mwana")
+        }
         new_tier = paid_tiers.get(amount_ngwee)
         if new_tier is None:
             logging.warning(
@@ -511,7 +519,7 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
             sorted_paid = sorted(paid_tiers.items())
             new_tier = next(
                 (tier for price, tier in reversed(sorted_paid) if price <= amount_ngwee),
-                "starter",
+                "mwizi",
             )
         # Atomic idempotency — see DPO handler for the full reasoning. The
         # SELECT-time check above catches the easy replay case; this

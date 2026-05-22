@@ -143,6 +143,21 @@ class TestGetMatchesForUser:
         auth_headers,
         fake_supabase,
     ):
+        fake_supabase.set_table(
+            "users",
+            FakeSupabaseQuery(
+                data=[
+                    {
+                        "id": "test-user-id",
+                        "phone": "+260971234567",
+                        "role": "user",
+                        "subscription_tier": "wino",
+                        "matches_viewed_this_month": 0,
+                        "billing_cycle_reset": "2099-06-01",
+                    }
+                ]
+            ),
+        )
         fake_supabase.set_table("matches", FakeSupabaseQuery(data=[]))
         fake_supabase.set_table("user_preferences", FakeSupabaseQuery(data=[]))
         resp = client.get(
@@ -158,7 +173,24 @@ class TestGetMatchesForUser:
         assert match["skills_score"] == 24.0
         assert match["bonus_score"] == 10.0
 
-    def test_get_matches_for_user_forbidden_other_user(self, client, auth_headers):
+    def test_get_matches_for_user_forbidden_other_user(
+        self, client, auth_headers, fake_supabase
+    ):
+        fake_supabase.set_table(
+            "users",
+            FakeSupabaseQuery(
+                data=[
+                    {
+                        "id": "test-user-id",
+                        "phone": "+260971234567",
+                        "role": "user",
+                        "subscription_tier": "mwana",
+                        "matches_viewed_this_month": 0,
+                        "billing_cycle_reset": "2099-06-01",
+                    }
+                ]
+            ),
+        )
         resp = client.get(
             "/api/v1/matches/other-user-id",
             headers=auth_headers,

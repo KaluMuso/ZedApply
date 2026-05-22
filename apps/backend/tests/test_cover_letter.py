@@ -32,30 +32,29 @@ class _SingleQuery(FakeSupabaseQuery):
         return result
 
 
-def _seed_user(fake_supabase, role="user"):
-    """get_current_user looks up users table for id/phone/role."""
+def _seed_user(fake_supabase, role="user", subscription_tier="mwana"):
+    """get_current_user and tier gate read users.subscription_tier."""
     fake_supabase.set_table(
         "users",
         FakeSupabaseQuery(
-            data=[{"id": "test-user-id", "phone": "+260971234567", "role": role}]
-        ),
-    )
-
-
-def _seed_subscription(fake_supabase, tier):
-    fake_supabase.set_table(
-        "subscriptions",
-        _SingleQuery(
-            data=[{"tier": tier, "status": "active"}]
+            data=[
+                {
+                    "id": "test-user-id",
+                    "phone": "+260971234567",
+                    "role": role,
+                    "subscription_tier": subscription_tier,
+                    "matches_viewed_this_month": 0,
+                    "billing_cycle_reset": "2099-06-01",
+                }
+            ]
         ),
     )
 
 
 class TestCoverLetterTierGate:
-    def test_free_tier_blocked(self, client, auth_headers, fake_supabase):
-        """Free users get 403 with the upgrade message."""
-        _seed_user(fake_supabase)
-        _seed_subscription(fake_supabase, "free")
+    def test_mwana_tier_blocked(self, client, auth_headers, fake_supabase):
+        """Mwana (free) users cannot generate cover letters."""
+        _seed_user(fake_supabase, subscription_tier="mwana")
 
         resp = client.post(
             "/api/v1/cover-letter/generate",
@@ -63,12 +62,11 @@ class TestCoverLetterTierGate:
             json={"job_id": "job-1", "tone": "formal"},
         )
         assert resp.status_code == 403
-        assert "Professional" in resp.json()["detail"]
+        assert "Mwizi or Wino" in resp.json()["detail"]
 
-    def test_starter_tier_blocked(self, client, auth_headers, fake_supabase):
-        """Starter (K125/mo) is below the cover-letter tier — also 403."""
-        _seed_user(fake_supabase)
-        _seed_subscription(fake_supabase, "starter")
+    def test_mwizi_tier_blocked(self, client, auth_headers, fake_supabase):
+        """Mwizi has CV generation but not cover letters."""
+        _seed_user(fake_supabase, subscription_tier="mwizi")
 
         resp = client.post(
             "/api/v1/cover-letter/generate",
@@ -76,14 +74,11 @@ class TestCoverLetterTierGate:
             json={"job_id": "job-1", "tone": "formal"},
         )
         assert resp.status_code == 403
+        assert "Wino" in resp.json()["detail"]
 
-    def test_professional_passes_gate(
-        self, client, auth_headers, fake_supabase
-    ):
-        """Professional clears the tier gate; next failure is missing CV (422)."""
-        _seed_user(fake_supabase)
-        _seed_subscription(fake_supabase, "professional")
-        # cvs lookup returns no rows → 422 "Upload a CV first"
+    def test_wino_passes_gate(self, client, auth_headers, fake_supabase):
+        """Wino clears the tier gate; next failure is missing CV (422)."""
+        _seed_user(fake_supabase, subscription_tier="wino")
         fake_supabase.set_table("cvs", FakeSupabaseQuery(data=[]))
 
         resp = client.post(
@@ -91,16 +86,14 @@ class TestCoverLetterTierGate:
             headers=auth_headers,
             json={"job_id": "job-1", "tone": "formal"},
         )
-        # Did NOT 403 on the tier gate.
         assert resp.status_code != 403
         assert resp.status_code == 422
 
-    def test_super_standard_passes_gate(
+    def test_legacy_professional_alias_passes_gate(
         self, client, auth_headers, fake_supabase
     ):
-        """super_standard (K500/mo) MUST clear the tier gate. Regression fix."""
-        _seed_user(fake_supabase)
-        _seed_subscription(fake_supabase, "super_standard")
+        """Legacy professional tier normalizes to wino."""
+        _seed_user(fake_supabase, subscription_tier="professional")
         fake_supabase.set_table("cvs", FakeSupabaseQuery(data=[]))
 
         resp = client.post(
@@ -108,6 +101,5 @@ class TestCoverLetterTierGate:
             headers=auth_headers,
             json={"job_id": "job-1", "tone": "formal"},
         )
-        # The regression: this used to 403. Must now pass the gate.
         assert resp.status_code != 403
         assert resp.status_code == 422
