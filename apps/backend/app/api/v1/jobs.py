@@ -452,6 +452,30 @@ async def list_jobs_for_sitemap(supabase=Depends(get_supabase)):
     }
 
 
+@router.post("/deep-enrich-tick", response_model=DeepEnrichTickResponse)
+@limiter.limit("30/minute")
+async def deep_enrich_tick(
+    request: Request,
+    limit: int = Query(25, ge=1, le=100),
+    ingest_api_key: str | None = Header(None, alias="INGEST_API_KEY"),
+    x_ingest_api_key: str | None = Header(None, alias="X-INGEST-API-KEY"),
+    supabase=Depends(get_supabase),
+    settings: Settings = Depends(get_settings),
+):
+    """Secondary scrape batch: fetch HTTP source_url pages and set apply contacts.
+
+    Intended for n8n cron (every 6h). Complements fire-and-forget
+    ``schedule_deep_link_enrichment`` on ingest and manual PATCH
+    ``/jobs/{job_id}/enrich`` callbacks from browser-based scrapers.
+
+    Declared before ``/{job_id}`` so FastAPI does not treat
+    ``deep-enrich-tick`` as a job UUID (which would yield HTTP 405 on POST).
+    """
+    _require_ingest_header(settings, ingest_api_key, x_ingest_api_key)
+    stats = await run_deep_enrich_tick(supabase, limit=limit)
+    return DeepEnrichTickResponse(**stats)
+
+
 @router.post("/{job_id}/save", response_model=SaveJobResponse)
 async def save_job(
     job_id: str,
@@ -799,24 +823,3 @@ async def ingest_jobs(
         skipped=skipped,
         errors=errors[:50],  # cap to keep response size bounded
     )
-
-
-@router.post("/deep-enrich-tick", response_model=DeepEnrichTickResponse)
-@limiter.limit("30/minute")
-async def deep_enrich_tick(
-    request: Request,
-    limit: int = Query(25, ge=1, le=100),
-    ingest_api_key: str | None = Header(None, alias="INGEST_API_KEY"),
-    x_ingest_api_key: str | None = Header(None, alias="X-INGEST-API-KEY"),
-    supabase=Depends(get_supabase),
-    settings: Settings = Depends(get_settings),
-):
-    """Secondary scrape batch: fetch HTTP source_url pages and set apply contacts.
-
-    Intended for n8n cron (every 6h). Complements fire-and-forget
-    ``schedule_deep_link_enrichment`` on ingest and manual PATCH
-    ``/jobs/{job_id}/enrich`` callbacks from browser-based scrapers.
-    """
-    _require_ingest_header(settings, ingest_api_key, x_ingest_api_key)
-    stats = await run_deep_enrich_tick(supabase, limit=limit)
-    return DeepEnrichTickResponse(**stats)
