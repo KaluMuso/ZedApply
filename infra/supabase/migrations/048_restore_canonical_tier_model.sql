@@ -14,29 +14,39 @@ UPDATE public.users
 SET promotion_applied_until = created_at + INTERVAL '2 months'
 WHERE promotion_applied_until IS NULL;
 
--- Drop tier CHECK constraints before renaming keys (047 only allows mwana/mwizi/wino).
-ALTER TABLE public.tier_config DROP CONSTRAINT IF EXISTS tier_config_tier_check;
+-- Drop every tier CHECK on tier_config (inline 037 checks may not be named tier_config_tier_check).
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN
+        SELECT c.conname
+        FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        WHERE n.nspname = 'public'
+          AND t.relname = 'tier_config'
+          AND c.contype = 'c'
+    LOOP
+        EXECUTE format(
+            'ALTER TABLE public.tier_config DROP CONSTRAINT %I',
+            r.conname
+        );
+    END LOOP;
+END $$;
+
 ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_subscription_tier_check;
 ALTER TABLE public.subscriptions DROP CONSTRAINT IF EXISTS subscriptions_tier_check;
 
--- Restore tier_config rows (rename mwana/mwizi/wino keys back to canonical).
-UPDATE public.tier_config SET tier = 'free', display_name = 'Free', price_ngwee = 0, matches_limit = 10, sort_order = 1
-WHERE tier = 'mwana';
-
-UPDATE public.tier_config SET tier = 'starter', display_name = 'Starter', price_ngwee = 12500, matches_limit = 50, sort_order = 2
-WHERE tier = 'mwizi';
-
-UPDATE public.tier_config SET tier = 'professional', display_name = 'Professional', price_ngwee = 25000, matches_limit = 125, sort_order = 3
-WHERE tier = 'wino';
+-- Rebuild tier_config (avoid UPDATE on tier PK while old checks may still exist).
+DELETE FROM public.tier_config;
 
 INSERT INTO public.tier_config (tier, display_name, price_ngwee, matches_limit, sort_order)
-VALUES ('super_standard', 'Super Standard', 50000, 99999, 4)
-ON CONFLICT (tier) DO UPDATE SET
-    display_name = EXCLUDED.display_name,
-    price_ngwee = EXCLUDED.price_ngwee,
-    matches_limit = EXCLUDED.matches_limit,
-    sort_order = EXCLUDED.sort_order,
-    updated_at = NOW();
+VALUES
+    ('free', 'Free', 0, 10, 1),
+    ('starter', 'Starter', 12500, 50, 2),
+    ('professional', 'Professional', 25000, 125, 3),
+    ('super_standard', 'Super Standard', 50000, 99999, 4);
 
 -- Reverse-migrate users and subscriptions that were auto-flipped in 047.
 UPDATE public.users SET subscription_tier = 'free' WHERE subscription_tier = 'mwana';
