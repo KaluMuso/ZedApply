@@ -45,6 +45,7 @@ export function sentryBeforeSend(
 export function getSentryInitOptions() {
   return {
     dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+    enabled: process.env.NODE_ENV === "production",
     environment:
       process.env.SENTRY_ENVIRONMENT ||
       process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT ||
