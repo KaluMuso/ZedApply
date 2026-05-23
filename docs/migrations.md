@@ -21,7 +21,9 @@ Several features landed with conflicting `043_*` / `046_*` / `047_*` filenames. 
 | `053_restore_canonical_tier_model.sql` | Revert to free/starter/professional/super_standard |
 | `054_tier_config_check_recovery.sql` | Recovery when tier_config CHECK blocks 053 |
 | `055_free_tier_promo.sql` | Free tier 3 matches + welcome 7/mo bonus |
+| `057_interview_prep.sql` | Bwana Interview: mock sessions, aptitude bank, scores |
 | `059_audit_idempotent.sql` | **Verification only** — assertions, no DDL |
+| `060_match_jobs_v2_weighted.sql` | Weighted v2 hybrid matching (50/20/15/10/5) + 35 floor |
 
 ### Renamed (old → new)
 
@@ -39,6 +41,9 @@ Several features landed with conflicting `043_*` / `046_*` / `047_*` filenames. 
 | `048_restore_canonical_tier_model.sql` | `053_restore_canonical_tier_model.sql` |
 | `049_tier_config_check_recovery.sql` | `054_tier_config_check_recovery.sql` |
 | `053_free_tier_promo.sql` | `055_free_tier_promo.sql` |
+| `060_interview_prep.sql` | `057_interview_prep.sql` |
+
+Slots **056** and **058** remain reserved for future migrations. After PR #101 renumbered 043–055, **057** is the first open slot; interview prep was moved here so **060** is exclusively `match_jobs_v2_weighted`.
 
 ## Verifying prod (Supabase SQL Editor)
 
@@ -66,3 +71,11 @@ For drift repair on `supabase_migrations.schema_migrations`, see comments at the
 - Tier keys: `free`, `starter`, `professional`, `super_standard` only.
 - `tier_config` free tier: `matches_limit = 3`.
 - `users.welcome_match_bonus` / `welcome_match_bonus_until` + `trg_set_welcome_bonus` on insert.
+
+## Apply order after 055
+
+| Order | File | Notes |
+|-------|------|-------|
+| 1 | `057_interview_prep.sql` | DDL — apply once on fresh DBs; prod may already have this schema under the old `060_interview_prep` filename |
+| 2 | `059_audit_idempotent.sql` | Safe to re-run — verification only |
+| 3 | `060_match_jobs_v2_weighted.sql` | DDL — weighted matching RPC |
