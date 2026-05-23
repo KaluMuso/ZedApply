@@ -13,8 +13,9 @@ from app.schemas.subscription import (
     PaymentVerifyRequest,
     PaymentVerifyResponse,
 )
+from app.core.tier_gating import get_effective_match_limit, welcome_bonus_active
 from app.services.matching import get_credited_match_count
-from app.services.tier_config import get_tier_limits
+from app.services.pricing import load_user_promotion_until
 
 router = APIRouter(prefix="/subscription", tags=["Subscription"])
 
@@ -37,14 +38,31 @@ async def get_subscription(
     sub = result.data
     matches_used = await get_credited_match_count(user_id, supabase)
     tier = sub["tier"]
-    tier_limits = await get_tier_limits(supabase)
-    matches_limit = tier_limits.get(tier, tier_limits.get("free", 10))
+    matches_limit = await get_effective_match_limit(user_id, supabase)
+
+    user_row = (
+        supabase.table("users")
+        .select("welcome_match_bonus, welcome_match_bonus_until")
+        .eq("id", user_id)
+        .limit(1)
+        .execute()
+    )
+    user_data = (user_row.data or [{}])[0]
+    welcome_until = user_data.get("welcome_match_bonus_until")
+    promo_until = await load_user_promotion_until(supabase, user_id)
+
     return Subscription(
         tier=tier,
         matches_used=matches_used,
         matches_limit=matches_limit,
         active=sub["status"] == "active",
         expires_at=sub.get("current_period_end"),
+        welcome_match_bonus=user_data.get("welcome_match_bonus"),
+        welcome_match_bonus_until=welcome_until,
+        promo_until=promo_until,
+        welcome_bonus_active=welcome_bonus_active(welcome_until)
+        if tier == "free"
+        else False,
     )
 
 

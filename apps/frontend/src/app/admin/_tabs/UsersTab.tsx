@@ -52,6 +52,30 @@ export function UsersTab({ token }: { token: string }) {
     }
   };
 
+  const onWelcomeUntilChange = async (userId: string, value: string) => {
+    if (!value) return;
+    setBusyId(userId);
+    try {
+      const until = new Date(`${value}T23:59:59Z`).toISOString();
+      await admin.updateWelcomeBonus(token, userId, { welcome_match_bonus_until: until });
+      notify.custom.success("Welcome bonus extended.");
+      load();
+    } catch (e) {
+      notify.error(e instanceof Error ? e.message : "Update failed");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const welcomeDateInputValue = (iso: string | null | undefined): string => {
+    if (!iso) return "";
+    try {
+      return new Date(iso).toISOString().slice(0, 10);
+    } catch {
+      return "";
+    }
+  };
+
   return (
     <Card>
       <CardContent className="p-0">
@@ -79,6 +103,7 @@ export function UsersTab({ token }: { token: string }) {
                 <TableHead>Phone</TableHead>
                 <TableHead>Tier</TableHead>
                 <TableHead>Matches</TableHead>
+                <TableHead>Welcome bonus until</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Joined</TableHead>
               </TableRow>
@@ -87,12 +112,12 @@ export function UsersTab({ token }: { token: string }) {
               {loading && (
                 <SkeletonTableRows
                   rows={5}
-                  widths={["w-32", "w-28", "w-20", "w-12", "w-12", "w-20"]}
+                  widths={["w-32", "w-28", "w-20", "w-12", "w-36", "w-12", "w-20"]}
                 />
               )}
               {!loading && data.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-sm text-muted-foreground">No users found.</TableCell>
+                  <TableCell colSpan={7} className="text-sm text-muted-foreground">No users found.</TableCell>
                 </TableRow>
               )}
               {!loading &&
@@ -114,6 +139,20 @@ export function UsersTab({ token }: { token: string }) {
                       </select>
                     </TableCell>
                     <TableCell className="tabular-nums">{u.matches_used}/{u.matches_limit}</TableCell>
+                    <TableCell>
+                      {u.subscription_tier === "free" ? (
+                        <input
+                          type="date"
+                          className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                          disabled={busyId === u.id}
+                          value={welcomeDateInputValue(u.welcome_match_bonus_until)}
+                          onChange={(e) => onWelcomeUntilChange(u.id, e.target.value)}
+                          aria-label={`Welcome bonus until for ${u.phone}`}
+                        />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       {u.role === "superadmin" ? (
                         <Badge variant="destructive">admin</Badge>

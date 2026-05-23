@@ -7,9 +7,12 @@ from typing import Any
 from fastapi import HTTPException, status
 from supabase import Client
 
+from app.services.pricing import _parse_promotion_until
+from app.services.tier_config import get_tier_limits
+
 # Monthly match views per tier (99999 = unlimited).
 TIER_MATCH_LIMITS: dict[str, int] = {
-    "free": 10,
+    "free": 3,
     "starter": 50,
     "professional": 125,
     "super_standard": 99999,
@@ -67,11 +70,87 @@ def _first_row(data: Any) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+def welcome_bonus_active(
+    welcome_match_bonus_until: Any,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    """True when a free-tier user is still in the welcome match bonus window."""
+    until = _parse_promotion_until(welcome_match_bonus_until)
+    if until is None:
+        return False
+    current = now or datetime.now(timezone.utc)
+    return current < until
+
+
+def effective_free_match_limit(
+    *,
+    tier_config_limit: int,
+    welcome_match_bonus: Any,
+    welcome_match_bonus_until: Any,
+    now: datetime | None = None,
+) -> int:
+    """Apply welcome bonus override for free tier when the window is active."""
+    if welcome_bonus_active(welcome_match_bonus_until, now=now):
+        bonus = welcome_match_bonus
+        if bonus is None:
+            return 7
+        try:
+            return max(0, int(bonus))
+        except (TypeError, ValueError):
+            return 7
+    return tier_config_limit
+
+
+async def load_user_welcome_fields(user_id: str, supabase: Client) -> dict[str, Any]:
+    result = (
+        supabase.table("users")
+        .select(
+            "subscription_tier, welcome_match_bonus, welcome_match_bonus_until, "
+            "promotion_applied_until"
+        )
+        .eq("id", user_id)
+        .limit(1)
+        .execute()
+    )
+    return _first_row(result.data) or {}
+
+
+async def get_effective_match_limit(user_id: str, supabase: Client) -> int:
+    """Monthly match quota: welcome bonus (free) or tier_config matches_limit."""
+    welcome_row = await load_user_welcome_fields(user_id, supabase)
+    tier_limits = await get_tier_limits(supabase)
+
+    sub_res = (
+        supabase.table("subscriptions")
+        .select("tier, status")
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    sub = _first_row(sub_res.data)
+    if sub and sub.get("status") == "active":
+        tier = normalize_tier(sub.get("tier"))
+    else:
+        tier = normalize_tier(welcome_row.get("subscription_tier") or "free")
+
+    base_limit = tier_limits.get(tier, tier_limits.get("free", TIER_MATCH_LIMITS["free"]))
+    if tier != "free":
+        return base_limit
+
+    return effective_free_match_limit(
+        tier_config_limit=base_limit,
+        welcome_match_bonus=welcome_row.get("welcome_match_bonus"),
+        welcome_match_bonus_until=welcome_row.get("welcome_match_bonus_until"),
+    )
+
+
 async def load_user_gating_row(user_id: str, supabase: Client) -> dict[str, Any]:
     result = (
         supabase.table("users")
         .select(
-            "id, subscription_tier, matches_viewed_this_month, billing_cycle_reset, role"
+            "id, subscription_tier, matches_viewed_this_month, billing_cycle_reset, role, "
+            "welcome_match_bonus, welcome_match_bonus_until"
         )
         .eq("id", user_id)
         .limit(1)
@@ -127,13 +206,6 @@ def _cover_letter_allowed(canonical: str) -> bool:
     return canonical in _COVER_LETTER_TIERS
 
 
-def _job_matches_allowed(canonical: str, viewed: int) -> bool:
-    limit = match_limit_for_tier(canonical)
-    if limit >= UNLIMITED_MATCHES:
-        return True
-    return viewed < limit
-
-
 async def verify_tier_access(
     required_feature: str,
     user_id: str,
@@ -163,8 +235,8 @@ async def verify_tier_access(
                 detail=detail,
             )
     elif required_feature == FEATURE_JOB_MATCHES:
-        if not _job_matches_allowed(canonical, viewed):
-            limit = match_limit_for_tier(canonical)
+        limit = await get_effective_match_limit(user_id, supabase)
+        if limit < UNLIMITED_MATCHES and viewed >= limit:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=(
@@ -175,7 +247,6 @@ async def verify_tier_access(
             )
         if increment_match_views > 0:
             new_viewed = viewed + increment_match_views
-            limit = match_limit_for_tier(canonical)
             if limit < UNLIMITED_MATCHES and new_viewed > limit:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,

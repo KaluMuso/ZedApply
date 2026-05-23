@@ -4,7 +4,7 @@ from typing import Any, Optional
 
 from supabase import Client
 from app.core.config import get_settings
-from app.services.tier_config import get_tier_limits
+from app.core.tier_gating import get_effective_match_limit
 
 
 # Phase 2 Initiative #4 — preference-aware re-rank weights.
@@ -34,9 +34,8 @@ def _month_start(now: datetime | None = None) -> datetime:
 
 
 async def get_user_tier_limit(user_id: str, supabase: Client) -> tuple[str, int, bool]:
-    """Return (tier, monthly quota, active). Quotas come from tier_config."""
-    tier_limits = await get_tier_limits(supabase)
-    default_quota = tier_limits.get("free", 10)
+    """Return (tier, monthly quota, active). Quota respects welcome bonus on free."""
+    quota = await get_effective_match_limit(user_id, supabase)
     sub_res = (
         supabase.table("subscriptions")
         .select("tier, status")
@@ -48,7 +47,7 @@ async def get_user_tier_limit(user_id: str, supabase: Client) -> tuple[str, int,
     if sub:
         active = sub.get("status") == "active"
         tier = sub.get("tier") or "free"
-        return tier, tier_limits.get(tier, default_quota), active
+        return tier, quota, active
 
     user_res = (
         supabase.table("users")
@@ -59,7 +58,7 @@ async def get_user_tier_limit(user_id: str, supabase: Client) -> tuple[str, int,
     )
     user = _first_row(user_res.data) or {}
     tier = user.get("subscription_tier") or "free"
-    return tier, tier_limits.get(tier, default_quota), True
+    return tier, quota, True
 
 
 async def _billing_period_start(

@@ -1,7 +1,22 @@
 """Smoke tests for subscription and payment routes."""
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from tests.conftest import FakeSupabaseQuery
+
+
+def _default_user_row(**overrides):
+    row = {
+        "id": "test-user-id",
+        "phone": "+260971234567",
+        "subscription_tier": "free",
+        "welcome_match_bonus": 7,
+        "welcome_match_bonus_until": (
+            datetime.now(timezone.utc) + timedelta(days=30)
+        ).isoformat(),
+    }
+    row.update(overrides)
+    return row
 
 
 class _InsertSpyQuery(FakeSupabaseQuery):
@@ -50,6 +65,7 @@ class TestGetSubscription:
         self, client, auth_headers, fake_supabase
     ):
         """Returns subscription details."""
+        fake_supabase.set_table("users", FakeSupabaseQuery(data=[_default_user_row()]))
         fake_supabase.set_table(
             "subscriptions",
             _SingleQuery(
@@ -84,6 +100,12 @@ class TestGetSubscription:
         tier_config_svc.clear_tier_config_cache()
         fake_supabase.set_table("tier_config", FakeSupabaseQuery(data=[]))
         fake_supabase.set_table(
+            "users",
+            FakeSupabaseQuery(
+                data=[_default_user_row(subscription_tier="starter")]
+            ),
+        )
+        fake_supabase.set_table(
             "subscriptions",
             _SingleQuery(
                 data=[
@@ -109,10 +131,28 @@ class TestGetSubscription:
         new_callable=AsyncMock,
         return_value=0,
     )
-    def test_get_subscription_free_tier_limit_is_10(
+    def test_get_subscription_free_tier_welcome_limit(
         self, _mock_credited, client, auth_headers, fake_supabase
     ):
-        """Free tier quota (10 matches/month)."""
+        """Free tier returns welcome bonus quota while window is active."""
+        fake_supabase.set_table("users", FakeSupabaseQuery(data=[_default_user_row()]))
+        fake_supabase.set_table(
+            "tier_config",
+            FakeSupabaseQuery(
+                data=[
+                    {
+                        "tier": "free",
+                        "display_name": "Free",
+                        "price_ngwee": 0,
+                        "matches_limit": 3,
+                        "sort_order": 0,
+                    },
+                ]
+            ),
+        )
+        from app.services import tier_config as tier_config_svc
+
+        tier_config_svc.clear_tier_config_cache()
         fake_supabase.set_table(
             "subscriptions",
             _SingleQuery(
@@ -129,7 +169,9 @@ class TestGetSubscription:
         )
         resp = client.get("/api/v1/subscription", headers=auth_headers)
         assert resp.status_code == 200
-        assert resp.json()["matches_limit"] == 10
+        body = resp.json()
+        assert body["matches_limit"] == 7
+        assert body["welcome_bonus_active"] is True
 
 
 class TestPaymentInitiate:

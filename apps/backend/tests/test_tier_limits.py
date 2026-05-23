@@ -4,7 +4,7 @@ from app.schemas.subscription import TIER_LIMITS, TIER_PRICES
 
 def test_tier_limits_canonical_values():
     assert TIER_LIMITS == {
-        "free": 10,
+        "free": 3,
         "starter": 50,
         "professional": 125,
         "super_standard": 99999,

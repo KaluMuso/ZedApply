@@ -61,7 +61,7 @@ export interface ProblemDetail { type: string; title: string; status: number; de
 
 /** Canonical tiers — mirrors app/schemas/subscription.py (ngwee + match quota). */
 export const PRICING = {
-  free: { price_zmw: 0, matches_limit: 10, label: "Free" },
+  free: { price_zmw: 0, matches_limit: 3, label: "Free" },
   starter: { price_zmw: 12500, matches_limit: 50, label: "Starter" },
   professional: { price_zmw: 25000, matches_limit: 125, label: "Professional" },
   super_standard: {
