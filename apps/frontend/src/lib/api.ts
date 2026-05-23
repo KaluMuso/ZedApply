@@ -1085,6 +1085,13 @@ export interface MatchListResponse {
   remaining_quota: number;
   credited_count?: number;
   matches_limit?: number;
+  last_batch_run_at?: string | null;
+  from_cache?: boolean;
+}
+
+/** POST /matches/refresh — MatchList plus optional onboarding message. */
+export interface MatchRefreshResponse extends MatchListResponse {
+  message?: string | null;
 }
 
 export const matches = {
@@ -1092,6 +1099,11 @@ export const matches = {
     apiFetch<MatchListResponse>(
       `/matches${minScore ? `?min_score=${minScore}` : ""}`,
       { token }
+    ),
+  refresh: (token: string, minScore?: number) =>
+    apiFetch<MatchRefreshResponse>(
+      `/matches/refresh${minScore ? `?min_score=${minScore}` : ""}`,
+      { method: "POST", token }
     ),
   trigger: (token: string) =>
     apiFetch<{ message: string; estimated_seconds?: number }>("/matches/trigger", {

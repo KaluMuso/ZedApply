@@ -1,4 +1,4 @@
--- 061: Dual-channel notification preference (email default, WhatsApp Starter+).
+-- 062: Dual-channel notification preference (email default, WhatsApp Starter+).
 --
 -- preferred_notification_channel drives daily digest routing in the backend.
 -- Existing paid users with verified WhatsApp keep WhatsApp digests until they
