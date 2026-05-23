@@ -29,6 +29,18 @@ class TierConfigRow(BaseModel):
 
 class TierConfigList(BaseModel):
     tiers: list[TierConfigRow]
+    welcome_match_bonus: Optional[int] = Field(
+        default=None,
+        description="Authenticated free-tier welcome monthly match quota (default 7).",
+    )
+    welcome_match_bonus_until: Optional[datetime] = Field(
+        default=None,
+        description="Welcome bonus window end (UTC).",
+    )
+    promo_until: Optional[datetime] = Field(
+        default=None,
+        description="50% paid-tier checkout discount window end (UTC).",
+    )
 
 
 class TierConfigUpdateItem(BaseModel):

@@ -444,6 +444,8 @@ export interface AdminUserRow {
   role: string;
   matches_used: number;
   matches_limit: number;
+  welcome_match_bonus?: number | null;
+  welcome_match_bonus_until?: string | null;
   created_at: string | null;
 }
 
@@ -740,6 +742,19 @@ export const admin = {
         body: JSON.stringify({ tier }),
       }
     ),
+  updateWelcomeBonus: (
+    token: string,
+    userId: string,
+    body: { welcome_match_bonus?: number; welcome_match_bonus_until?: string }
+  ) =>
+    apiFetch<AdminUserRow>(
+      `/admin/users/${encodeURIComponent(userId)}/welcome-bonus`,
+      {
+        method: "PATCH",
+        token,
+        body: JSON.stringify(body),
+      }
+    ),
   createJob: (token: string, data: AdminJobCreate) =>
     apiFetch<AdminJobRow>("/admin/jobs", {
       method: "POST",
@@ -776,6 +791,9 @@ export interface TierConfigRow {
 
 export interface TierConfigList {
   tiers: TierConfigRow[];
+  welcome_match_bonus?: number | null;
+  welcome_match_bonus_until?: string | null;
+  promo_until?: string | null;
 }
 
 /** Public pricing catalog; pass token for personalized checkout prices. */
@@ -1077,6 +1095,10 @@ export interface Subscription {
   matches_limit: number;
   active: boolean;
   expires_at: string | null;
+  welcome_match_bonus?: number | null;
+  welcome_match_bonus_until?: string | null;
+  promo_until?: string | null;
+  welcome_bonus_active?: boolean | null;
 }
 
 export interface PaymentVerifyResult {

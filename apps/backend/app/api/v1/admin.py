@@ -31,11 +31,13 @@ from app.schemas.admin import (
     AdminSubscriptionRow,
     AdminSubscriptionList,
     AdminSubscriptionUpdate,
+    AdminWelcomeBonusUpdate,
     AdminJobReviewRow,
     AdminJobReviewQueue,
     AdminJobReviewUpdate,
 )
 from app.schemas.jobs import AdminJobCreate, AdminJobUpdate, Job
+from app.core.tier_gating import get_effective_match_limit
 from app.services.tier_config import get_tier_limits
 from app.schemas.db_enums import QueueStatus
 from app.services.embedding import generate_embedding
@@ -554,7 +556,8 @@ async def list_users(
     supabase=Depends(get_supabase),
 ):
     query = supabase.table("users").select(
-        "id, phone, full_name, location, subscription_tier, role, created_at",
+        "id, phone, full_name, location, subscription_tier, role, created_at, "
+        "welcome_match_bonus, welcome_match_bonus_until",
         count="exact",
     ).order("created_at", desc=True)
     if tier:
@@ -584,7 +587,6 @@ async def list_users(
         for s in subs.data or []:
             sub_map[s["user_id"]] = s
 
-    tier_limits = await get_tier_limits(supabase)
     rows = []
     for u in result.data or []:
         sub = sub_map.get(u["id"], {})
@@ -598,11 +600,65 @@ async def list_users(
                 subscription_tier=tier,
                 role=u.get("role") or "user",
                 matches_used=await get_credited_match_count(u["id"], supabase),
-                matches_limit=tier_limits.get(tier, tier_limits["free"]),
+                matches_limit=await get_effective_match_limit(u["id"], supabase),
+                welcome_match_bonus=u.get("welcome_match_bonus"),
+                welcome_match_bonus_until=u.get("welcome_match_bonus_until"),
                 created_at=u.get("created_at"),
             )
         )
     return AdminUserList(users=rows, total=total, page=page, per_page=per_page, pages=pages)
+
+
+@router.patch("/users/{user_id}/welcome-bonus", response_model=AdminUserRow)
+async def update_user_welcome_bonus(
+    user_id: str,
+    body: AdminWelcomeBonusUpdate,
+    supabase=Depends(get_supabase),
+):
+    """Superadmin: extend or override a user's welcome match bonus window."""
+    update_data = body.model_dump(exclude_none=True)
+    if not update_data:
+        raise HTTPException(status_code=422, detail="No fields to update")
+
+    existing = (
+        supabase.table("users")
+        .select(
+            "id, phone, full_name, location, subscription_tier, role, created_at, "
+            "welcome_match_bonus, welcome_match_bonus_until"
+        )
+        .eq("id", user_id)
+        .limit(1)
+        .execute()
+    )
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    supabase.table("users").update(update_data).eq("id", user_id).execute()
+    refreshed = (
+        supabase.table("users")
+        .select(
+            "id, phone, full_name, location, subscription_tier, role, created_at, "
+            "welcome_match_bonus, welcome_match_bonus_until"
+        )
+        .eq("id", user_id)
+        .limit(1)
+        .execute()
+    )
+    u = refreshed.data[0]
+    tier = u.get("subscription_tier") or "free"
+    return AdminUserRow(
+        id=u["id"],
+        phone=u["phone"],
+        full_name=u.get("full_name"),
+        location=u.get("location"),
+        subscription_tier=tier,
+        role=u.get("role") or "user",
+        matches_used=await get_credited_match_count(user_id, supabase),
+        matches_limit=await get_effective_match_limit(user_id, supabase),
+        welcome_match_bonus=u.get("welcome_match_bonus"),
+        welcome_match_bonus_until=u.get("welcome_match_bonus_until"),
+        created_at=u.get("created_at"),
+    )
 
 
 @router.get("/jobs", response_model=AdminJobList)
@@ -1275,7 +1331,7 @@ async def list_subscriptions(
                 tier=tier,
                 status=s.get("status", "active"),
                 matches_used=await get_credited_match_count(s["user_id"], supabase),
-                matches_limit=tier_limits.get(tier, tier_limits["free"]),
+                matches_limit=await get_effective_match_limit(s["user_id"], supabase),
                 current_period_end=s.get("current_period_end"),
                 created_at=s.get("created_at"),
             )
@@ -1329,7 +1385,7 @@ async def update_subscription(
         tier=tier,
         status=sub.get("status", "active"),
         matches_used=await get_credited_match_count(user_id, supabase),
-        matches_limit=tier_limits.get(tier, new_limit),
+        matches_limit=await get_effective_match_limit(user_id, supabase),
         current_period_end=sub.get("current_period_end"),
         created_at=sub.get("created_at"),
     )

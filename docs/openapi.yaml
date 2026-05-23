@@ -375,7 +375,15 @@ components:
         role: { type: string, enum: [user, superadmin] }
         matches_used: { type: integer }
         matches_limit: { type: integer }
+        welcome_match_bonus: { type: integer, nullable: true }
+        welcome_match_bonus_until: { type: string, format: date-time, nullable: true }
         created_at: { type: string, format: date-time }
+
+    AdminWelcomeBonusUpdate:
+      type: object
+      properties:
+        welcome_match_bonus: { type: integer, minimum: 1, maximum: 999 }
+        welcome_match_bonus_until: { type: string, format: date-time }
 
     AdminUserList:
       type: object
@@ -636,6 +644,20 @@ components:
       type: object
       properties:
         tiers: { type: array, items: { $ref: '#/components/schemas/TierConfigRow' } }
+        welcome_match_bonus:
+          type: integer
+          nullable: true
+          description: Authenticated caller welcome monthly match quota on free tier (default 7).
+        welcome_match_bonus_until:
+          type: string
+          format: date-time
+          nullable: true
+          description: Welcome bonus window end for the authenticated user.
+        promo_until:
+          type: string
+          format: date-time
+          nullable: true
+          description: 50% paid-tier checkout discount window end for the authenticated user.
 
     TierConfigUpdateItem:
       type: object
@@ -1032,6 +1054,23 @@ components:
         matches_limit: { type: integer }
         active: { type: boolean }
         expires_at: { type: string, format: date-time, nullable: true }
+        welcome_match_bonus:
+          type: integer
+          nullable: true
+          description: Free-tier welcome quota while welcome_match_bonus_until is active.
+        welcome_match_bonus_until:
+          type: string
+          format: date-time
+          nullable: true
+        promo_until:
+          type: string
+          format: date-time
+          nullable: true
+          description: First-two-months 50% paid-tier checkout discount ends at this instant.
+        welcome_bonus_active:
+          type: boolean
+          nullable: true
+          description: True when free tier and still within welcome_match_bonus_until.
 
     PaymentInitiate:
       type: object
@@ -1484,6 +1523,31 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/AdminUserList' }
         '403': { description: Superadmin only }
+
+  /admin/users/{user_id}/welcome-bonus:
+    patch:
+      operationId: adminUpdateUserWelcomeBonus
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      description: Superadmin override for a user's welcome match bonus quota and end date.
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminWelcomeBonusUpdate' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminUserRow' }
+        '403': { description: Superadmin only }
+        '404': { description: User not found }
+        '422': { description: No fields to update }
 
   /admin/jobs:
     get:

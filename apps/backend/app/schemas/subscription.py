@@ -19,7 +19,7 @@ class PaymentMethod(str, Enum):
 # sentinel so existing quota arithmetic doesn't need a NULL branch (matches
 # migration 005).
 TIER_LIMITS: dict[str, int] = {
-    "free": 10,
+    "free": 3,
     "starter": 50,
     "professional": 125,
     "super_standard": 99999,
@@ -37,9 +37,19 @@ TIER_PRICES: dict[str, int] = {
 class Subscription(BaseModel):
     tier: SubscriptionTier
     matches_used: int = 0
-    matches_limit: int = 10
+    matches_limit: int = 3
     active: bool = True
     expires_at: Optional[datetime] = None
+    welcome_match_bonus: Optional[int] = Field(
+        default=None,
+        description="Free-tier welcome quota while welcome_match_bonus_until is active.",
+    )
+    welcome_match_bonus_until: Optional[datetime] = None
+    promo_until: Optional[datetime] = Field(
+        default=None,
+        description="First-two-months 50% paid-tier checkout discount ends at this instant.",
+    )
+    welcome_bonus_active: Optional[bool] = None
 
 class PaymentInitiate(BaseModel):
     tier: SubscriptionTier

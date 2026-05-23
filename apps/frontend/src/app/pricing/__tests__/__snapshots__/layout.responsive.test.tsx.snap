@@ -37,6 +37,13 @@ exports[`PricingPage responsive layout > matches 380px mobile snapshot 1`] = `
       >
         Pay with MTN Mobile Money, Airtel Money, or card via our secure Lenco checkout. All prices in Zambian Kwacha.
       </p>
+      <div
+        class="mt-6 mx-auto max-w-2xl rounded-lg px-4 py-3 text-sm font-medium"
+        role="status"
+        style="background: color-mix(in srgb, var(--copper-500) 12%, transparent); border: 1px solid var(--copper-500); color: var(--ink);"
+      >
+        First 2 months: 50% off for paid tiers, 7 free matches/month for Free
+      </div>
     </div>
     <div
       class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto mb-16 md:mb-24"
@@ -100,7 +107,7 @@ exports[`PricingPage responsive layout > matches 380px mobile snapshot 1`] = `
                 />
               </svg>
             </span>
-            10 job matches per month
+            3 job matches per month (7/mo welcome bonus for your first 2 months)
           </li>
           <li
             class="flex items-start gap-2.5 text-sm"
@@ -819,7 +826,7 @@ exports[`PricingPage responsive layout > matches 380px mobile snapshot 1`] = `
                 <span
                   class="font-mono text-xs"
                 >
-                  10
+                  3 (7 welcome)
                 </span>
               </td>
               <td
@@ -1719,6 +1726,13 @@ exports[`PricingPage responsive layout > matches 1024px desktop snapshot 1`] = `
       >
         Pay with MTN Mobile Money, Airtel Money, or card via our secure Lenco checkout. All prices in Zambian Kwacha.
       </p>
+      <div
+        class="mt-6 mx-auto max-w-2xl rounded-lg px-4 py-3 text-sm font-medium"
+        role="status"
+        style="background: color-mix(in srgb, var(--copper-500) 12%, transparent); border: 1px solid var(--copper-500); color: var(--ink);"
+      >
+        First 2 months: 50% off for paid tiers, 7 free matches/month for Free
+      </div>
     </div>
     <div
       class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto mb-16 md:mb-24"
@@ -1782,7 +1796,7 @@ exports[`PricingPage responsive layout > matches 1024px desktop snapshot 1`] = `
                 />
               </svg>
             </span>
-            10 job matches per month
+            3 job matches per month (7/mo welcome bonus for your first 2 months)
           </li>
           <li
             class="flex items-start gap-2.5 text-sm"
@@ -2501,7 +2515,7 @@ exports[`PricingPage responsive layout > matches 1024px desktop snapshot 1`] = `
                 <span
                   class="font-mono text-xs"
                 >
-                  10
+                  3 (7 welcome)
                 </span>
               </td>
               <td

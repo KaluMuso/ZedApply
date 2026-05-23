@@ -18,6 +18,7 @@ from app.schemas.tier_config import (
     TierConfigRow,
     VALID_TIERS,
 )
+from app.core.tier_gating import load_user_welcome_fields
 from app.services.pricing import (
     effective_checkout_price_ngwee,
     load_user_promotion_until,
@@ -92,6 +93,24 @@ def _rows_to_response(
     return TierConfigList(tiers=tiers)
 
 
+def _with_user_promo_fields(
+    response: TierConfigList,
+    *,
+    welcome_row: dict | None,
+    promo_until: datetime | None,
+) -> TierConfigList:
+    if welcome_row is None:
+        return response
+    welcome_until = welcome_row.get("welcome_match_bonus_until")
+    return response.model_copy(
+        update={
+            "welcome_match_bonus": welcome_row.get("welcome_match_bonus"),
+            "welcome_match_bonus_until": welcome_until,
+            "promo_until": promo_until,
+        }
+    )
+
+
 @public_router.get("", response_model=TierConfigList)
 async def list_public_tiers(
     supabase=Depends(get_supabase),
@@ -100,9 +119,14 @@ async def list_public_tiers(
     """Public pricing catalog; authenticated callers get checkout_price_ngwee."""
     rows = await fetch_tier_config_rows(supabase)
     promo_until = None
+    welcome_row = None
     if user_id:
         promo_until = await load_user_promotion_until(supabase, user_id)
-    return _rows_to_response(rows, promotion_until=promo_until)
+        welcome_row = await load_user_welcome_fields(user_id, supabase)
+    response = _rows_to_response(rows, promotion_until=promo_until)
+    return _with_user_promo_fields(
+        response, welcome_row=welcome_row, promo_until=promo_until
+    )
 
 
 @admin_tiers_router.get("", response_model=TierConfigList)

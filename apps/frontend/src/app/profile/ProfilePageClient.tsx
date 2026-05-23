@@ -3,7 +3,13 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { profile as profileApi, ApiError, type UserProfile } from "@/lib/api";
+import {
+  profile as profileApi,
+  subscription as subscriptionApi,
+  ApiError,
+  type Subscription,
+  type UserProfile,
+} from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Icon } from "@/components/ui/Icon";
 import { Avatar } from "@/components/ui/Avatar";
@@ -51,11 +57,25 @@ const TIER_LABELS: Record<string, string> = {
   super_standard: "Super Standard (K500/mo)",
 };
 
+function formatWelcomeEnd(iso: string | null | undefined): string {
+  if (!iso) return "soon";
+  try {
+    return new Date(iso).toLocaleDateString("en-ZM", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return "soon";
+  }
+}
+
 export default function ProfilePageClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { token, isAuthenticated, isLoading: authLoading, logout } = useAuth();
   const [profileData, setProfileData] = useState<UserProfile | null>(null);
+  const [subscriptionData, setSubscriptionData] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Initialize the tab from the `?tab=` URL slug so dropdown links like
@@ -90,9 +110,14 @@ export default function ProfilePageClient() {
       router.push("/auth?next=/profile");
       return;
     }
-    profileApi
-      .get(token)
-      .then(setProfileData)
+    Promise.all([
+      profileApi.get(token),
+      subscriptionApi.get(token).catch(() => null),
+    ])
+      .then(([profileRes, subRes]) => {
+        setProfileData(profileRes);
+        setSubscriptionData(subRes);
+      })
       .catch((err) => {
         // 401 = stale JWT (typical: 24h expiry while user was away).
         // Clear and bounce to /auth so the user has a recovery path
@@ -110,6 +135,7 @@ export default function ProfilePageClient() {
   const refresh = () => {
     if (!token) return;
     profileApi.get(token).then(setProfileData).catch(() => {});
+    subscriptionApi.get(token).then(setSubscriptionData).catch(() => setSubscriptionData(null));
   };
 
   if (loading || authLoading) {
@@ -331,6 +357,21 @@ export default function ProfilePageClient() {
             <div className="font-display text-2xl mb-1">
               {TIER_LABELS[profileData.subscription_tier] || profileData.subscription_tier}
             </div>
+            {profileData.subscription_tier === "free" &&
+              subscriptionData?.welcome_bonus_active && (
+                <p className="text-sm mb-3" style={{ color: "var(--muted)" }}>
+                  {subscriptionData.matches_limit} matches/mo (welcome bonus) → 3/mo after{" "}
+                  {formatWelcomeEnd(subscriptionData.welcome_match_bonus_until)}
+                </p>
+              )}
+            {profileData.subscription_tier === "free" &&
+              subscriptionData &&
+              !subscriptionData.welcome_bonus_active && (
+                <p className="text-sm mb-3" style={{ color: "var(--muted)" }}>
+                  {subscriptionData.matches_used}/{subscriptionData.matches_limit} matches used
+                  this month. Upgrade for more matches and tailored CVs.
+                </p>
+              )}
             {/* Tier-aware sidebar — Professional and Super Standard users
                 already have tailored CVs + generous match quotas. Showing
                 "Upgrade to unlock tailored CVs" to them is misleading and
@@ -353,6 +394,18 @@ export default function ProfilePageClient() {
                 <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
                   Tailored CVs and 125 matches/month included. Move to Super
                   Standard for unlimited matches and daily WhatsApp digests.
+                </p>
+                <Link href="/pricing" className="btn btn-accent w-full btn-sm">
+                  Upgrade <Icon name="arrowRight" size={14} />
+                </Link>
+              </>
+            ) : profileData.subscription_tier === "free" &&
+              subscriptionData &&
+              !subscriptionData.welcome_bonus_active ? (
+              <>
+                <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
+                  Your welcome bonus has ended — you have {subscriptionData.matches_limit}{" "}
+                  matches per month on Free. Upgrade for more matches and tailored CVs.
                 </p>
                 <Link href="/pricing" className="btn btn-accent w-full btn-sm">
                   Upgrade <Icon name="arrowRight" size={14} />

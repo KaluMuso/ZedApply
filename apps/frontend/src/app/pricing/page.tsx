@@ -49,7 +49,7 @@ const plans: Plan[] = [
     period: "forever",
     tier: "free",
     features: [
-      "10 job matches per month",
+      "3 job matches per month (7/mo welcome bonus for your first 2 months)",
       "WhatsApp alerts",
       "Basic CV analysis",
       "Job browsing",
@@ -115,7 +115,7 @@ const faqs = [
   },
   {
     q: "What counts as a 'match'?",
-    a: "Each time our AI scores your CV against a job listing and delivers the result to you (via WhatsApp or dashboard), that counts as one match. The Free tier includes 10 per month.",
+    a: "Each time our AI scores your CV against a job listing and delivers the result to you (via WhatsApp or dashboard), that counts as one match. Free includes 7 matches per month for your first 2 months, then 3 per month.",
   },
   {
     q: "Is my CV data secure?",
@@ -132,7 +132,7 @@ interface ComparisonFeature {
 }
 
 const comparisonFeatures: ComparisonFeature[] = [
-  { name: "Job matches / month", free: "10", starter: "50", pro: "125", super_standard: "Unlimited" },
+  { name: "Job matches / month", free: "3 (7 welcome)", starter: "50", pro: "125", super_standard: "Unlimited" },
   { name: "WhatsApp alerts", free: true, starter: true, pro: true, super_standard: true },
   { name: "CV analysis", free: "Basic", starter: "Advanced", pro: "Advanced", super_standard: "Advanced" },
   { name: "Tailored CVs", free: false, starter: true, pro: true, super_standard: true },
@@ -430,6 +430,17 @@ export default function PricingPage() {
           Pay with MTN Mobile Money, Airtel Money, or card via our secure
           Lenco checkout. All prices in Zambian Kwacha.
         </p>
+        <div
+          className="mt-6 mx-auto max-w-2xl rounded-lg px-4 py-3 text-sm font-medium"
+          style={{
+            background: "color-mix(in srgb, var(--copper-500) 12%, transparent)",
+            border: "1px solid var(--copper-500)",
+            color: "var(--ink)",
+          }}
+          role="status"
+        >
+          First 2 months: 50% off for paid tiers, 7 free matches/month for Free
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto mb-16 md:mb-24">

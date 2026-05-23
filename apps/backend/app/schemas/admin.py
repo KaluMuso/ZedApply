@@ -43,7 +43,14 @@ class AdminUserRow(BaseModel):
     role: str = "user"
     matches_used: int = 0
     matches_limit: int = 0
+    welcome_match_bonus: Optional[int] = None
+    welcome_match_bonus_until: Optional[datetime] = None
     created_at: Optional[datetime] = None
+
+
+class AdminWelcomeBonusUpdate(BaseModel):
+    welcome_match_bonus: Optional[int] = Field(None, ge=1, le=999)
+    welcome_match_bonus_until: Optional[datetime] = None
 
 
 class AdminUserList(BaseModel):
