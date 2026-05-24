@@ -5,6 +5,23 @@
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
+/** Trusted-device token from POST /auth/otp/verify (remember_device). */
+export const DEVICE_TOKEN_KEY = "zedapply_device_token";
+
+function getDeviceToken(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem(DEVICE_TOKEN_KEY) || "";
+}
+
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  const headers: Record<string, string> = { ...extra };
+  const device = getDeviceToken();
+  if (device) {
+    headers["X-Device-Token"] = device;
+  }
+  return headers;
+}
+
 /** JSON object bodies are stringified in apiFetch (analytics, admin bulk ops, etc.). */
 type ApiJsonBody = Record<string, unknown>;
 
@@ -81,23 +98,48 @@ function getToken(): string {
 // ── Auth ──
 export interface OTPResponse {
   message: string;
+  tier?: string | null;
+  default_channel?: "email" | "whatsapp" | "both" | null;
 }
 
 export interface AuthTokens {
   access_token: string;
   refresh_token: string;
   user_id: string;
+  device_token?: string | null;
+  trusted_device_login?: boolean;
 }
 
+export type OtpChannel = "email" | "whatsapp";
+
 export const auth = {
-  requestOTP: (phone: string) =>
-    apiFetch<OTPResponse>("/auth/otp/request", {
+  login: (phone: string) =>
+    apiFetch<AuthTokens>("/auth/login", {
       method: "POST",
+      headers: authHeaders(),
       body: JSON.stringify({ phone }),
     }),
-  verifyOTP: (phone: string, code: string, options?: { consentAccepted?: boolean; email?: string }) =>
+  requestOTP: (phone: string, channel?: OtpChannel) =>
+    apiFetch<OTPResponse>("/auth/otp/request", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        phone,
+        ...(channel ? { channel } : {}),
+      }),
+    }),
+  verifyOTP: (
+    phone: string,
+    code: string,
+    options?: {
+      consentAccepted?: boolean;
+      email?: string;
+      rememberDevice?: boolean;
+    }
+  ) =>
     apiFetch<AuthTokens>("/auth/otp/verify", {
       method: "POST",
+      headers: authHeaders(),
       body: JSON.stringify({
         phone,
         code,
@@ -105,6 +147,7 @@ export const auth = {
           consent_accepted: options.consentAccepted,
         }),
         ...(options?.email && { email: options.email }),
+        remember_device: options?.rememberDevice ?? false,
       }),
     }),
 };

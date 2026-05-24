@@ -40,6 +40,10 @@ components:
       required: [phone]
       properties:
         phone: { type: string, pattern: '^\+260[0-9]{9}$', example: "+260971234567" }
+        channel:
+          type: string
+          enum: [email, whatsapp, both]
+          description: Override OTP delivery channel for this request.
 
     OTPVerify:
       type: object
@@ -51,6 +55,26 @@ components:
           type: string
           format: email
           description: Required when creating a new account; stored for match digests.
+        consent_accepted:
+          type: boolean
+          description: Required true when creating a new account.
+        remember_device:
+          type: boolean
+          default: false
+          description: When true, returns device_token to store for trusted-device login.
+
+    LoginRequest:
+      type: object
+      required: [phone]
+      properties:
+        phone: { type: string, pattern: '^\+260[0-9]{9}$', example: "+260971234567" }
+
+    OTPRequestResponse:
+      type: object
+      properties:
+        message: { type: string }
+        tier: { type: string, nullable: true }
+        default_channel: { type: string, enum: [email, whatsapp, both], nullable: true }
 
     AuthTokens:
       type: object
@@ -58,6 +82,14 @@ components:
         access_token: { type: string }
         refresh_token: { type: string }
         user_id: { type: string, format: uuid }
+        device_token:
+          type: string
+          nullable: true
+          description: Issued when remember_device was true on OTP verify.
+        trusted_device_login:
+          type: boolean
+          default: false
+          description: True when /auth/login skipped OTP via trusted device.
 
     UserProfile:
       type: object
@@ -1464,10 +1496,34 @@ paths:
         '429': { description: Rate limited (2 submissions per hour per IP) }
         '503': { description: Email relay unavailable }
 
+  /auth/login:
+    post:
+      operationId: loginWithTrustedDevice
+      summary: Login with trusted device (skip OTP when X-Device-Token is valid)
+      tags: [Auth]
+      parameters:
+        - name: X-Device-Token
+          in: header
+          required: false
+          schema: { type: string }
+          description: Raw device trust token from localStorage (zedapply_device_token)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Trusted device accepted; JWT issued without OTP
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthTokens' }
+        '401': { description: OTP required (unknown user or untrusted device) }
+
   /auth/otp/request:
     post:
       operationId: requestOTP
-      summary: Request OTP via WhatsApp
+      summary: Request OTP via email or WhatsApp
       tags: [Auth]
       requestBody:
         required: true
@@ -1475,8 +1531,13 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/OTPRequest' }
       responses:
-        '200': { description: OTP sent }
+        '200':
+          description: OTP sent
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OTPRequestResponse' }
         '429': { description: Rate limited }
+        '503': { description: Delivery channel unavailable }
 
   /auth/otp/verify:
     post:
