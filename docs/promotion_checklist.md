@@ -1,44 +1,54 @@
-# Promotion checklist (develop → master)
+# Production promotion checklist
 
-Copy this checklist into the body of every `develop → master` PR. Tick each item before merging.
+Copy this section into the **`develop` → `master`** PR description and check each item before merge.
 
-## Pre-merge
+## PR metadata
 
-- [ ] All migrations in this PR have been applied to staging Supabase and verified (`supabase db push` against staging, then spot-check affected tables)
-- [ ] `preview.zedapply.com` smoke test passed:
-  - [ ] Login (email + OTP)
-  - [ ] View `/matches` — at least one match renders
-  - [ ] Send a Bwana (WhatsApp) message — appears in WAHA logs
-  - [ ] Open an admin tab — no console errors
-- [ ] No new Sentry errors on staging in the last 24h (check `staging-backend` and `staging-frontend` projects)
-- [ ] Backend `/v1/health` and `/v1/health/ready` return 200 on staging
-- [ ] If this PR contains a **schema change**:
-  - [ ] Production migration order verified — no prefix collisions with existing prod migrations
-  - [ ] Migration is forward-only OR rollback path is documented in the PR body
-  - [ ] Affected RLS policies re-tested on staging
-- [ ] If this PR contains a **WAHA-affecting change**:
-  - [ ] Tested against staging WAHA instance
-  - [ ] Did NOT spam real users (used test phone numbers only)
-  - [ ] WAHA session is healthy (`GET /api/sessions` on staging)
-- [ ] If this PR contains a **Lenco-affecting change**:
-  - [ ] Re-tested sandbox payment flow on staging end-to-end (init → webhook → DB state)
-  - [ ] Webhook signature verification confirmed working
-  - [ ] Idempotency keys behave correctly on retry
+- **Source branch:** `develop`
+- **Target branch:** `master`
+- **Staging preview:** https://preview.zedapply.com
+- **Staging API:** https://staging-api.zedapply.com/api/v1/health
 
-## Merge
+## Database and schema
 
-- [ ] PR uses a **merge commit** (not squash) — preserves feature commit history in `master`
-- [ ] Tag the merge commit: `git tag -a vYYYY.MM.DD -m "release YYYY-MM-DD"` and `git push origin vYYYY.MM.DD`
+- [ ] Every new migration in this release was applied to **staging Supabase** in numeric order (`001` … latest).
+- [ ] `059_audit_idempotent.sql` (or latest audit migration) passes on staging SQL editor.
+- [ ] `python scripts/production_audit.py --env staging` reports no **red** checks (yellow acceptable for unpaired WAHA).
+- [ ] Production migration filenames were reviewed for **prefix collisions** (no duplicate `NNN_` numbers).
 
-## Post-merge
+## Staging functional smoke test
 
-- [ ] `zedapply.com` smoke test passed (same steps as staging smoke test above)
-- [ ] Backend health endpoints green on production
-- [ ] Sentry quiet for 30 minutes after deploy
-- [ ] If migration ran: spot-check affected production tables for expected row counts / shape
-- [ ] If anything regressed: revert via `revert: ...` PR (see `docs/branching.md` FAQ for the emergency-rollback path)
+- [ ] `preview.zedapply.com` loads marketing/login UI (staging Supabase + staging API env vars).
+- [ ] Login with synthetic staging user `+260971000001` (OTP flow or test bypass per team process).
+- [ ] **Matches** page shows **synthetic** jobs only (not production data).
+- [ ] Bwana chat sends a test message without errors (no spam to real user phones).
+- [ ] No new **Sentry** issues on project `zedapply-staging` in the last 24 hours.
 
-## Notes
+## Backend health
 
-- Production deploys are triggered by merge to `master`. Do not merge outside business hours unless you can monitor for 30 minutes.
-- If staging and production drift (e.g. staging has data prod doesn't), call it out in the PR body — some smoke tests may not be apples-to-apples.
+- [ ] `GET https://staging-api.zedapply.com/api/v1/health` → `200`, overall status acceptable.
+- [ ] `GET https://staging-api.zedapply.com/api/v1/health/ready` → `200` when dependencies configured.
+
+## Integrations (if touched in this release)
+
+- [ ] **WAHA:** tested against **staging** WAHA only; no OTP/digest sent to real production users.
+- [ ] **Lenco:** sandbox payment flow re-tested on staging (never live keys on staging).
+- [ ] **Email:** staging uses separate Resend key/domain or outbound email disabled.
+- [ ] **n8n:** unchanged workflows still target **production** API only ([n8n.md](./n8n.md)).
+
+## CI and contract
+
+- [ ] All required GitHub checks green on the `develop` → `master` PR.
+- [ ] OpenAPI ↔ TypeScript guard passed (`scripts/ci_openapi_ts_guard.py`).
+- [ ] No production URL or production Supabase project ref in staging env configuration (grep diff).
+
+## Post-merge (production)
+
+- [ ] Vercel production deployment succeeded for `master`.
+- [ ] OCI production backend recreated if `requirements.txt` or `.env` changed (`docker compose build` + `up -d --force-recreate`).
+- [ ] `python scripts/production_audit.py --env production` green on OCI.
+- [ ] `GET https://api.zedapply.com/api/v1/health` verified.
+
+## Sign-off
+
+- [ ] Reviewed by: __________________  Date: __________
