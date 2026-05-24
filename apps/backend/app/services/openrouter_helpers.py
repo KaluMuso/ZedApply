@@ -2,17 +2,24 @@
 from __future__ import annotations
 
 import logging
-import time
 from typing import Any
 
-from openai import APIError, OpenAI, RateLimitError
+from openai import OpenAI
 from supabase import Client
 
+from app.lib.retry import (
+    LLMCircuitOpenError,
+    assert_llm_circuit_closed,
+    call_with_llm_retry,
+    circuit_is_open,
+    is_retryable_llm_error,
+)
 from app.services.llm import LlmLogContext, record_openrouter_completion
 
 logger = logging.getLogger(__name__)
 
-RETRY_BACKOFF_SECONDS = (2, 4, 8)
+# Backwards-compatible exports for tests and callers.
+RETRY_BACKOFF_SECONDS = (1, 3, 10)
 MAX_RETRY_ATTEMPTS = 3
 
 
@@ -37,15 +44,7 @@ def get_completion_content(
 
 
 def is_retryable_openrouter_error(exc: BaseException) -> bool:
-    if isinstance(exc, RateLimitError):
-        return True
-    if isinstance(exc, APIError):
-        status = getattr(exc, "status_code", None)
-        if status is None:
-            response = getattr(exc, "response", None)
-            status = getattr(response, "status_code", None) if response else None
-        return status in (429, 500, 502, 503, 504)
-    return False
+    return is_retryable_llm_error(exc)
 
 
 def create_chat_completion_with_retries(
@@ -56,34 +55,35 @@ def create_chat_completion_with_retries(
     supabase: Client | None = None,
     **kwargs: Any,
 ) -> Any:
-    """Call chat.completions.create with up to 3 retries on 429 / 5xx."""
+    """OpenRouter chat.completions.create with retry, circuit breaker, and cost log.
+
+    Cost rows are written only after a successful completion — not on retries
+    that eventually fail.
+    """
     model = str(kwargs.get("model") or "")
-    last_error: BaseException | None = None
-    for attempt in range(MAX_RETRY_ATTEMPTS + 1):
-        try:
-            response = client.chat.completions.create(**kwargs)
-            if model:
-                record_openrouter_completion(
-                    response,
-                    model=model,
-                    context=log_context,
-                    supabase=supabase,
-                )
-            return response
-        except Exception as exc:
-            last_error = exc
-            if attempt >= MAX_RETRY_ATTEMPTS or not is_retryable_openrouter_error(exc):
-                raise
-            delay = RETRY_BACKOFF_SECONDS[attempt]
-            logger.warning(
-                "%s retry %s/%s in %ss: %s",
-                log_prefix,
-                attempt + 1,
-                MAX_RETRY_ATTEMPTS,
-                delay,
-                exc,
-            )
-            time.sleep(delay)
-    if last_error is not None:
-        raise last_error
-    raise RuntimeError("openrouter chat completion failed without error")
+    response = call_with_llm_retry(
+        lambda: client.chat.completions.create(**kwargs),
+        log_prefix=log_prefix,
+    )
+    # Log only when callers pass log_context here; others call
+    # record_openrouter_completion after success to avoid duplicate rows.
+    if model and log_context is not None:
+        record_openrouter_completion(
+            response,
+            model=model,
+            context=log_context,
+            supabase=supabase,
+        )
+    return response
+
+
+__all__ = [
+    "LLMCircuitOpenError",
+    "MAX_RETRY_ATTEMPTS",
+    "RETRY_BACKOFF_SECONDS",
+    "assert_llm_circuit_closed",
+    "circuit_is_open",
+    "create_chat_completion_with_retries",
+    "get_completion_content",
+    "is_retryable_openrouter_error",
+]
