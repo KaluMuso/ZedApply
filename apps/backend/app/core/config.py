@@ -1,10 +1,14 @@
 """Application configuration from environment variables."""
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 from app.core.phone import normalize_zambian_e164_phone
+
+LENCO_SANDBOX_API_URL = "https://sandbox.lenco.co/access/v2"
+LENCO_PRODUCTION_API_URL = "https://api.lenco.co/access/v2/"
 
 
 class Settings(BaseSettings):
@@ -47,10 +51,14 @@ class Settings(BaseSettings):
     dpo_pay_webhook_secret: str = ""
     lenco_api_key: str = ""
     lenco_public_key: str = ""
+    # `sandbox` (default) or `production`. When production, `lenco_api_url`
+    # defaults to api.lenco.co unless LENCO_API_URL is set explicitly (Phase 2
+    # cutover may set both — explicit URL always wins).
+    lenco_env: Literal["sandbox", "production"] = "sandbox"
     # Default to v2 sandbox so a fresh dev env points at the right URL. Prod
     # overrides via .env on OCI. Lenco v2 deprecates the v1 path; the email
     # received 2026-05-12 only ships v2 sandbox URLs.
-    lenco_api_url: str = "https://sandbox.lenco.co/access/v2"
+    lenco_api_url: str = LENCO_SANDBOX_API_URL
 
     # WhatsApp (WAHA)
     waha_api_url: str = "http://localhost:3001"
@@ -170,6 +178,32 @@ class Settings(BaseSettings):
         if value is None:
             return "+260761359005"
         return normalize_zambian_e164_phone(str(value))
+
+    @field_validator("lenco_env", mode="before")
+    @classmethod
+    def _normalize_lenco_env(cls, value: object) -> str:
+        if value is None:
+            return "sandbox"
+        normalized = str(value).strip().lower()
+        if normalized not in ("sandbox", "production"):
+            raise ValueError("lenco_env must be 'sandbox' or 'production'")
+        return normalized
+
+    @property
+    def effective_lenco_api_url(self) -> str:
+        """API base URL used for Lenco HTTP calls (respects LENCO_ENV + LENCO_API_URL)."""
+        if self.lenco_env == "production":
+            sandbox_norm = LENCO_SANDBOX_API_URL.rstrip("/").lower()
+            if self.lenco_api_url.rstrip("/").lower() == sandbox_norm:
+                return LENCO_PRODUCTION_API_URL
+        return self.lenco_api_url
+
+    @property
+    def is_lenco_production(self) -> bool:
+        """True when Lenco API calls target production (env flag or prod host)."""
+        if self.lenco_env == "production":
+            return True
+        return "api.lenco.co" in self.effective_lenco_api_url.lower()
 
 
 def resolve_admin_api_key(settings: Settings) -> str:

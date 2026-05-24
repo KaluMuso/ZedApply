@@ -6,9 +6,15 @@ from typing import Any
 
 import httpx
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
+
+
+def is_lenco_production(settings: Settings | None = None) -> bool:
+    """Whether Lenco collections/status calls use the production API host."""
+    resolved = settings or get_settings()
+    return resolved.is_lenco_production
 
 
 class LencoApiError(Exception):
@@ -70,7 +76,10 @@ async def fetch_collection_status(reference: str) -> dict[str, Any]:
     if not settings.lenco_api_key:
         raise ValueError("Lenco is not configured.")
 
-    base = settings.lenco_api_url.rstrip("/")
+    if is_lenco_production(settings):
+        logger.debug("Lenco status lookup: production API host")
+
+    base = settings.effective_lenco_api_url.rstrip("/")
     url = f"{base}/collections/status/{reference}"
 
     async with httpx.AsyncClient(timeout=30) as client:

@@ -20,9 +20,17 @@ import {
   UNLIMITED_MATCHES,
 } from "@/lib/tier-config";
 
+const LENCO_SANDBOX_WIDGET_URL =
+  "https://pay.sandbox.lenco.co/js/v1/inline.js";
+const LENCO_PRODUCTION_WIDGET_URL =
+  "https://pay.lenco.co/js/v1/inline.js";
+
+const lencoEnv = process.env.NEXT_PUBLIC_LENCO_ENV?.trim().toLowerCase();
 const LENCO_WIDGET_URL =
   process.env.NEXT_PUBLIC_LENCO_WIDGET_URL?.trim() ||
-  "https://pay.sandbox.lenco.co/js/v1/inline.js";
+  (lencoEnv === "production"
+    ? LENCO_PRODUCTION_WIDGET_URL
+    : LENCO_SANDBOX_WIDGET_URL);
 
 const TIER_RANK: Record<string, number> = {
   free: 0,
