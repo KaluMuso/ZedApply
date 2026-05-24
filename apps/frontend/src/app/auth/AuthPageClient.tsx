@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { auth } from "@/lib/api";
+import { auth, DEVICE_TOKEN_KEY, type OtpChannel, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { z } from "zod";
 import { Icon } from "@/components/ui/Icon";
@@ -32,8 +32,14 @@ export default function AuthPageClient() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [consentChecked, setConsentChecked] = useState(false);
+  const [rememberDevice, setRememberDevice] = useState(true);
+  const [otpChannel, setOtpChannel] = useState<OtpChannel>("email");
+  const [userTier, setUserTier] = useState<string | null>(null);
+  const [trustedLogin, setTrustedLogin] = useState(false);
 
   const fullPhone = `+260${phoneDigits.replace(/\s/g, "")}`;
+  const isFreeTier =
+    userTier === null || userTier === "free" || userTier === undefined;
 
   // Where to send the user after sign-in. `?next=/path` (set by pages
   // that redirected here on 401) wins; otherwise we drop them on
@@ -77,7 +83,30 @@ export default function AuthPageClient() {
     setError("");
     setLoading(true);
     try {
-      await auth.requestOTP(fullPhone);
+      try {
+        const tokens = await auth.login(fullPhone);
+        if (tokens.device_token) {
+          localStorage.setItem(DEVICE_TOKEN_KEY, tokens.device_token);
+        }
+        login(tokens.access_token, tokens.user_id);
+        setTrustedLogin(!!tokens.trusted_device_login);
+        setStep("success");
+        setTimeout(() => router.push(safeNext), tokens.trusted_device_login ? 800 : 1400);
+        return;
+      } catch (loginErr) {
+        if (!(loginErr instanceof ApiError) || loginErr.status !== 401) {
+          throw loginErr;
+        }
+      }
+
+      const channel = isFreeTier ? otpChannel : "whatsapp";
+      const otpResp = await auth.requestOTP(fullPhone, channel);
+      if (otpResp.tier) {
+        setUserTier(otpResp.tier);
+      }
+      if (otpResp.default_channel === "email" || otpResp.default_channel === "whatsapp") {
+        setOtpChannel(otpResp.default_channel);
+      }
       setStep("otp");
       setOtpCode("");
     } catch (err) {
@@ -98,7 +127,11 @@ export default function AuthPageClient() {
         const tokens = await auth.verifyOTP(fullPhone, code, {
           consentAccepted: consentChecked,
           email: email.trim(),
+          rememberDevice,
         });
+        if (tokens.device_token) {
+          localStorage.setItem(DEVICE_TOKEN_KEY, tokens.device_token);
+        }
         login(tokens.access_token, tokens.user_id);
         setStep("success");
         setTimeout(() => router.push(safeNext), 1400);
@@ -107,7 +140,7 @@ export default function AuthPageClient() {
         setLoading(false);
       }
     },
-    [consentChecked, email, fullPhone, login, router, safeNext]
+    [consentChecked, email, fullPhone, login, rememberDevice, router, safeNext]
   );
 
   useEffect(() => {
@@ -243,7 +276,7 @@ export default function AuthPageClient() {
                 className="text-sm mb-8"
                 style={{ color: "var(--muted)" }}
               >
-                We&apos;ll WhatsApp you a 6-digit code. Your email receives daily match digests.
+                We&apos;ll send a 6-digit code by email or WhatsApp. Your email receives daily match digests.
               </p>
 
               <form onSubmit={handlePhoneSubmit}>
@@ -272,6 +305,36 @@ export default function AuthPageClient() {
                   placeholder="you@example.com"
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 />
+
+                {isFreeTier && (
+                  <fieldset className="mt-5">
+                    <legend className="mb-2 text-sm font-medium text-ink-2">
+                      Send code via
+                    </legend>
+                    <div className="flex flex-col gap-2 text-sm">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="otp-channel"
+                          checked={otpChannel === "email"}
+                          onChange={() => setOtpChannel("email")}
+                          disabled={loading}
+                        />
+                        Email (default)
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="otp-channel"
+                          checked={otpChannel === "whatsapp"}
+                          onChange={() => setOtpChannel("whatsapp")}
+                          disabled={loading}
+                        />
+                        WhatsApp
+                      </label>
+                    </div>
+                  </fieldset>
+                )}
 
                 <label
                   className="mt-5 flex items-start gap-2.5 text-xs leading-relaxed cursor-pointer"
@@ -349,12 +412,43 @@ export default function AuthPageClient() {
                 className="text-sm mb-8"
                 style={{ color: "var(--muted)" }}
               >
-                Sent to{" "}
-                <span className="font-mono" style={{ color: "var(--ink)" }}>
-                  +260 {phoneDigits}
-                </span>{" "}
-                on WhatsApp.
+                {otpChannel === "email" ? (
+                  <>
+                    Sent to{" "}
+                    <span style={{ color: "var(--ink)" }}>{email.trim()}</span> by
+                    email.
+                  </>
+                ) : (
+                  <>
+                    Sent to{" "}
+                    <span className="font-mono" style={{ color: "var(--ink)" }}>
+                      +260 {phoneDigits}
+                    </span>{" "}
+                    on WhatsApp.
+                  </>
+                )}
               </p>
+
+              <label
+                className="mb-6 flex items-start gap-2.5 text-xs leading-relaxed cursor-pointer"
+                style={{ color: "var(--muted)" }}
+              >
+                <input
+                  type="checkbox"
+                  checked={rememberDevice}
+                  onChange={(e) => setRememberDevice(e.target.checked)}
+                  disabled={loading}
+                  className="cursor-pointer"
+                  style={{
+                    accentColor: "var(--green-700)",
+                    width: 16,
+                    height: 16,
+                    marginTop: 2,
+                    flexShrink: 0,
+                  }}
+                />
+                <span>Remember this device (skip verification code next time)</span>
+              </label>
 
               <OtpField
                 value={otpCode}
@@ -404,10 +498,12 @@ export default function AuthPageClient() {
                 className="font-display mb-2"
                 style={{ fontSize: 44, letterSpacing: "-0.02em" }}
               >
-                Welcome back!
+                {trustedLogin ? "Welcome back!" : "You're in!"}
               </h2>
               <p className="text-sm" style={{ color: "var(--muted)" }}>
-                Loading your matches...
+                {trustedLogin
+                  ? "Signed in on this trusted device — no code needed."
+                  : "Loading your matches..."}
               </p>
             </div>
           )}

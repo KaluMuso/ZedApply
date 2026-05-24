@@ -2,6 +2,10 @@ from pydantic import BaseModel, EmailStr, Field
 
 class OTPRequest(BaseModel):
     phone: str = Field(..., pattern=r"^\+260[0-9]{9}$", examples=["+260971234567"])
+    channel: str | None = Field(
+        None,
+        description="Override OTP delivery: email, whatsapp, or both",
+    )
 
 class OTPVerify(BaseModel):
     phone: str = Field(..., pattern=r"^\+260[0-9]{9}$")
@@ -10,13 +14,28 @@ class OTPVerify(BaseModel):
         None,
         description="Required when creating a new account; used for match digests.",
     )
-    # Optional so missing-consent returns a 400 with our own detail
-    # rather than a generic 422 from Pydantic. Only enforced for new
-    # users in the verify route — existing users already consented at
-    # their original signup.
     consent_accepted: bool | None = None
+    remember_device: bool = False
+
+class LoginRequest(BaseModel):
+    phone: str = Field(..., pattern=r"^\+260[0-9]{9}$", examples=["+260971234567"])
 
 class AuthTokens(BaseModel):
     access_token: str
     refresh_token: str
     user_id: str
+    device_token: str | None = Field(
+        None,
+        description="Present when remember_device was true on verify; store in localStorage",
+    )
+    trusted_device_login: bool = False
+
+class OTPRequestResponse(BaseModel):
+    message: str
+    tier: str | None = None
+    default_channel: str | None = None
+
+class LoginChallengeResponse(BaseModel):
+    needs_otp: bool = True
+    tier: str | None = None
+    default_channel: str | None = None
