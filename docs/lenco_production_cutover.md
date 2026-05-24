@@ -70,6 +70,7 @@ Dashboard → Settings → Environment Variables → **Production** (and Preview
 
 | Variable | Value |
 |----------|-------|
+| `NEXT_PUBLIC_LENCO_ENV` | `production` (optional — selects prod widget URL when widget URL unset) |
 | `NEXT_PUBLIC_LENCO_PUBLIC_KEY` | `<production pub-...>` (replace sandbox key) |
 | `NEXT_PUBLIC_LENCO_WIDGET_URL` | `https://pay.lenco.co/js/v1/inline.js` |
 
@@ -81,11 +82,13 @@ File: `/home/ubuntu/zedcv/apps/backend/.env` (confirm path via pre-flight above)
 
 | Variable | Value |
 |----------|-------|
+| `LENCO_ENV` | `production` (optional convenience — also sets API URL when `LENCO_API_URL` is still sandbox default) |
 | `LENCO_API_KEY` | `<production secret>` |
 | `LENCO_API_URL` | `https://api.lenco.co/access/v2/` |
 | `LENCO_PUBLIC_KEY` | `<production pub-...>` |
 
 > Trailing slash on `LENCO_API_URL` is optional; the client normalises the base URL.
+> Webhook signature uses `sha256(LENCO_API_KEY)` — there is no separate webhook secret.
 
 **Rollback:** restore sandbox values from your password manager / prior `.env` backup:
 

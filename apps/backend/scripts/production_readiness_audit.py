@@ -102,13 +102,26 @@ def check_lenco_url(
         if target_env == "staging"
         else "LENCO_API_URL (production)"
     )
-    url = (
-        (settings.lenco_api_url if settings else None)
-        or os.getenv("LENCO_API_URL", "")
-    ).lower()
-    lenco_display = settings.lenco_api_url if settings else os.getenv("LENCO_API_URL", "")
+    lenco_env = (
+        (settings.lenco_env if settings else None)
+        or os.getenv("LENCO_ENV", "sandbox")
+    ).strip().lower()
+    if settings is not None:
+        raw_url = settings.effective_lenco_api_url
+        lenco_display = raw_url
+    else:
+        raw_url = os.getenv("LENCO_API_URL", "")
+        lenco_display = raw_url
+        if os.getenv("LENCO_ENV", "").strip().lower() == "production":
+            sandbox_norm = "https://sandbox.lenco.co/access/v2"
+            if raw_url.rstrip("/").lower() == sandbox_norm.rstrip("/").lower():
+                raw_url = "https://api.lenco.co/access/v2/"
+                lenco_display = f"{raw_url} (LENCO_ENV=production)"
+    url = raw_url.lower()
     if target_env == "staging" and "sandbox.lenco.co" in url:
         return CheckResult(label, "green", lenco_display)
+    if target_env == "production" and lenco_env == "production" and "api.lenco.co" in url:
+        return CheckResult(label, "green", f"{lenco_display} (LENCO_ENV=production)")
     if "api.lenco.co" in url:
         return CheckResult(label, "green", lenco_display)
     if "sandbox.lenco.co" in url:
