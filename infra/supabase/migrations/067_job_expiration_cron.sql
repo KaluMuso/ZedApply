@@ -1,4 +1,6 @@
--- 064_job_expiration_cron.sql
+-- 067_job_expiration_cron.sql
+-- Renamed from 064_job_expiration_cron.sql (2026-05-25): three files shared prefix 064;
+-- schema already applied in prod under the old registry name.
 --
 -- Problem: jobs past closing_date stayed is_active=true and could surface in
 -- admin views and any path that keys off is_active without the closing_date
@@ -67,7 +69,7 @@ BEGIN
     v_deactivated := public.deactivate_expired_jobs();
 
     RAISE NOTICE
-        '064_job_expiration_cron backfill: pending=%, deactivated=%',
+        '067_job_expiration_cron backfill: pending=%, deactivated=%',
         v_pending,
         v_deactivated;
 END;

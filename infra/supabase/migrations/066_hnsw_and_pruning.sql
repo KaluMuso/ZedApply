@@ -1,4 +1,6 @@
--- 064_hnsw_and_pruning.sql
+-- 066_hnsw_and_pruning.sql
+-- Renamed from 064_hnsw_and_pruning.sql (2026-05-25): three files shared prefix 064;
+-- schema already applied in prod under the old registry name.
 --
 -- 1) HNSW cosine indexes on all vector(768) embedding columns used for matching.
 -- 2) pg_cron daily prune of match_batch_runs + ai_cache (>30 days), 04:00 CAT.
@@ -82,7 +84,7 @@ BEGIN
     );
   ELSE
     RAISE NOTICE
-      '064: pg_cron extension not installed — enable it in Supabase Dashboard, '
+      '066: pg_cron extension not installed — enable it in Supabase Dashboard, '
       'then re-run cron.schedule for job zedcv-prune-match-batch-and-ai-cache.';
   END IF;
 END;
