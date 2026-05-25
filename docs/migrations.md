@@ -82,3 +82,52 @@ For drift repair on `supabase_migrations.schema_migrations`, see comments at the
 | 2 | `057_interview_prep.sql` | DDL — apply once on fresh DBs; prod may already have this schema under the old `060_interview_prep` filename |
 | 3 | `059_audit_idempotent.sql` | Safe to re-run — verification only |
 | 4 | `060_match_jobs_v2_weighted.sql` | DDL — weighted matching RPC |
+
+## Migration 064-067 numbering correction 2026-05-25
+
+Three migrations were committed with the **`064_` prefix** on disk:
+
+| File (on disk) | Status |
+|----------------|--------|
+| `064_deletion_export_consent.sql` | **Canonical 064** — keep this number (prod: `deletion_safety_allowlist`, etc.) |
+| `064_hnsw_and_pruning.sql` | Renamed → `066_hnsw_and_pruning.sql` |
+| `064_job_expiration_cron.sql` | Renamed → `067_job_expiration_cron.sql` |
+
+All three were **already applied to prod** (HNSW indexes, pg_cron jobs `zedcv-prune-match-batch-and-ai-cache` and `zedcv-deactivate-expired-jobs`). This PR is **file/registry alignment only** — do **not** re-run the migration bodies on Supabase.
+
+### Renamed (old → new)
+
+| Old filename | New filename |
+|--------------|--------------|
+| `064_hnsw_and_pruning.sql` | `066_hnsw_and_pruning.sql` |
+| `064_job_expiration_cron.sql` | `067_job_expiration_cron.sql` |
+
+### Expected apply order (06x slot)
+
+| Order | File |
+|-------|------|
+| … | `060_match_jobs_v2_weighted.sql` |
+| … | `061_match_batches.sql` |
+| … | `062_dual_channel_notifications.sql` |
+| … | `063_seed_legal_docs.sql`, `063_trusted_devices_and_sensitive_actions.sql` |
+| … | `064_deletion_export_consent.sql` |
+| … | `065_llm_usage_log.sql` |
+| … | `066_hnsw_and_pruning.sql` |
+| … | `067_job_expiration_cron.sql` |
+
+### Prod registry backfill
+
+After merge, run once in the SQL Editor:
+
+```sql
+-- scripts/backfill_renamed_migrations_in_registry.sql
+```
+
+Then verify:
+
+```sql
+SELECT name FROM supabase_migrations.schema_migrations
+ WHERE name LIKE '06%' ORDER BY name;
+-- Expect: … 064_deletion_export_consent, 065_llm_usage_log,
+--         066_hnsw_and_pruning, 067_job_expiration_cron
+```
