@@ -11,9 +11,13 @@ from supabase import Client
 
 from app.core.config import get_settings
 from app.schemas.db_enums import CacheType, validate_cache_type
+from app.lib.retry import DEGRADED_LLM_USER_MESSAGE, circuit_is_open
 from app.services.bwana_faq import is_escalation_request, match_faq
-from app.services.llm import FEATURE_BWANA, LlmLogContext, record_openrouter_completion
-from app.services.openrouter_helpers import get_completion_content
+from app.services.llm import FEATURE_BWANA, LlmLogContext
+from app.services.openrouter_helpers import (
+    create_chat_completion_with_retries,
+    get_completion_content,
+)
 from app.services.whatsapp import send_whatsapp_message
 
 logger = logging.getLogger(__name__)
@@ -127,6 +131,8 @@ async def _call_openrouter_llm(
     settings = get_settings()
     if not settings.openrouter_api_key:
         raise ValueError("Bwana AI is temporarily unavailable. Try a FAQ question.")
+    if circuit_is_open():
+        return DEGRADED_LLM_USER_MESSAGE
 
     client = OpenAI(
         api_key=settings.openrouter_api_key,
@@ -141,20 +147,18 @@ async def _call_openrouter_llm(
 
     def _sync_call() -> str:
         try:
-            response = client.chat.completions.create(
-                model=settings.llm_model,
-                max_tokens=400,
-                messages=messages,
-            )
-            record_openrouter_completion(
-                response,
-                model=settings.llm_model,
-                context=LlmLogContext(
+            response = create_chat_completion_with_retries(
+                client,
+                log_prefix="bwana_chat",
+                log_context=LlmLogContext(
                     feature=FEATURE_BWANA,
                     route="POST /api/v1/bwana/chat",
                     user_id=user_id,
                 ),
                 supabase=supabase,
+                model=settings.llm_model,
+                max_tokens=400,
+                messages=messages,
             )
             content = get_completion_content(response, default="")
             if not content or not str(content).strip():

@@ -17,9 +17,13 @@ from PyPDF2 import PdfReader
 from docx import Document
 
 from app.core.config import get_settings
+from app.lib.retry import circuit_is_open, degraded_llm_result
 from app.schemas.cv_sections import CVSections
-from app.services.llm import FEATURE_CV_PARSING, LlmLogContext, record_openrouter_completion
-from app.services.openrouter_helpers import get_completion_content
+from app.services.llm import FEATURE_CV_PARSING, LlmLogContext
+from app.services.openrouter_helpers import (
+    create_chat_completion_with_retries,
+    get_completion_content,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -196,12 +200,26 @@ async def parse_cv_with_llm(raw_text: str) -> dict[str, Any]:
     returned. Garbage shapes are coerced; truly unrecoverable garbage
     raises ValueError which the upload route maps to a clean error response.
     """
+    if circuit_is_open():
+        return degraded_llm_result(
+            full_name="",
+            skills=[],
+            experience_summary="",
+            confidence=0.0,
+        )
+
     settings = get_settings()
     client = _get_openrouter_client()
 
     def _call():
         try:
-            response = client.chat.completions.create(
+            response = create_chat_completion_with_retries(
+                client,
+                log_prefix="cv_parser",
+                log_context=LlmLogContext(
+                    feature=FEATURE_CV_PARSING,
+                    route="POST /api/v1/cv/upload",
+                ),
                 model=settings.llm_model,
                 # 4096 to accommodate the structured "sections" object —
                 # 12 nested arrays can easily exceed the old 1024 cap and
@@ -215,14 +233,6 @@ async def parse_cv_with_llm(raw_text: str) -> dict[str, Any]:
                     },
                 ],
                 response_format={"type": "json_object"},
-            )
-            record_openrouter_completion(
-                response,
-                model=settings.llm_model,
-                context=LlmLogContext(
-                    feature=FEATURE_CV_PARSING,
-                    route="POST /api/v1/cv/upload",
-                ),
             )
 
             text = get_completion_content(response, default="")
@@ -276,7 +286,13 @@ async def _ocr_with_vision(image_bytes: bytes, file_type: str) -> str:
 
     def _call():
         try:
-            response = client.chat.completions.create(
+            response = create_chat_completion_with_retries(
+                client,
+                log_prefix="cv_parser_ocr",
+                log_context=LlmLogContext(
+                    feature=FEATURE_CV_PARSING,
+                    route="POST /api/v1/cv/upload",
+                ),
                 model=settings.llm_model,
                 max_tokens=2048,
                 messages=[
@@ -294,14 +310,6 @@ async def _ocr_with_vision(image_bytes: bytes, file_type: str) -> str:
                         ],
                     },
                 ],
-            )
-            record_openrouter_completion(
-                response,
-                model=settings.llm_model,
-                context=LlmLogContext(
-                    feature=FEATURE_CV_PARSING,
-                    route="POST /api/v1/cv/upload",
-                ),
             )
             content = get_completion_content(response, default="")
             if content is None:

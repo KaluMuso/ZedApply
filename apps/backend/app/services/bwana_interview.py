@@ -10,8 +10,12 @@ from typing import Any
 from openai import APIError, AuthenticationError, OpenAI, RateLimitError
 
 from app.core.config import get_settings
-from app.services.llm import FEATURE_APTITUDE, LlmLogContext, record_openrouter_completion
-from app.services.openrouter_helpers import get_completion_content
+from app.lib.retry import DEGRADED_LLM_USER_MESSAGE, circuit_is_open
+from app.services.llm import FEATURE_APTITUDE, LlmLogContext
+from app.services.openrouter_helpers import (
+    create_chat_completion_with_retries,
+    get_completion_content,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +83,8 @@ async def _call_openrouter(
     settings = get_settings()
     if not settings.openrouter_api_key:
         raise ValueError("Bwana Interview is temporarily unavailable.")
+    if circuit_is_open():
+        return {"degraded": True, "message": DEGRADED_LLM_USER_MESSAGE}
 
     client = OpenAI(
         api_key=settings.openrouter_api_key,
@@ -91,20 +97,18 @@ async def _call_openrouter(
 
     def _sync_call() -> dict[str, Any]:
         try:
-            response = client.chat.completions.create(
-                model=BWANA_INTERVIEW_MODEL,
-                max_tokens=max_tokens,
-                temperature=0.4,
-                messages=payload_messages,
-            )
-            record_openrouter_completion(
-                response,
-                model=BWANA_INTERVIEW_MODEL,
-                context=LlmLogContext(
+            response = create_chat_completion_with_retries(
+                client,
+                log_prefix="bwana_interview",
+                log_context=LlmLogContext(
                     feature=FEATURE_APTITUDE,
                     route=route,
                     user_id=user_id,
                 ),
+                model=BWANA_INTERVIEW_MODEL,
+                max_tokens=max_tokens,
+                temperature=0.4,
+                messages=payload_messages,
             )
             content = get_completion_content(response, default="")
             if not content or not str(content).strip():
