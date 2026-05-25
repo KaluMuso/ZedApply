@@ -45,8 +45,10 @@ SELECT
 FROM llm_usage_log
 GROUP BY 1, 2, 3, 4;
 
--- Service role only — no RLS on usage logs (admin reads via backend).
+-- Service role only — backend uses service_role (bypasses RLS). No client access.
 ALTER TABLE llm_usage_log ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS llm_usage_log_service_role ON llm_usage_log;
 
 CREATE POLICY llm_usage_log_service_role ON llm_usage_log
     FOR ALL
