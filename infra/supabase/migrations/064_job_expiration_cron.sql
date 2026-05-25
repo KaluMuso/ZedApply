@@ -8,19 +8,19 @@
 --   1. pg_cron daily at 04:30 CAT (02:30 UTC) calls deactivate_expired_jobs()
 --   2. One-time backfill in this migration (NOTICE logs deactivated count)
 --
+-- pg_cron on Supabase: enable "pg_cron" in Dashboard → Database → Extensions
+-- BEFORE applying. Do NOT run CREATE EXTENSION here — Supabase manages the
+-- extension and re-running it triggers after-create.sql privilege revokes that
+-- fail with "dependent privileges exist" (2BP01).
+--
 -- Verify after apply:
 --   SELECT COUNT(*) FROM jobs
 --   WHERE is_active = true AND closing_date < NOW()::date;
 --   -- expected: 0
 --
--- Idempotent: CREATE EXTENSION IF NOT EXISTS; cron.schedule upserts by job name.
+-- Idempotent: function is CREATE OR REPLACE; cron job is unscheduled then rescheduled.
 
 BEGIN;
-
-CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA pg_catalog;
-
-GRANT USAGE ON SCHEMA cron TO postgres;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA cron TO postgres;
 
 CREATE OR REPLACE FUNCTION public.deactivate_expired_jobs()
 RETURNS INTEGER
@@ -46,11 +46,33 @@ COMMENT ON FUNCTION public.deactivate_expired_jobs() IS
     'Returns the number of rows updated. Scheduled daily via pg_cron.';
 
 -- 04:30 CAT (UTC+2, no DST) = 02:30 UTC. pg_cron uses UTC on Supabase.
-SELECT cron.schedule(
-    'zedcv-deactivate-expired-jobs',
-    '30 2 * * *',
-    $$SELECT public.deactivate_expired_jobs();$$
-);
+DO $zedcv_expire$
+DECLARE
+    v_jobid BIGINT;
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+        SELECT j.jobid
+        INTO v_jobid
+        FROM cron.job AS j
+        WHERE j.jobname = 'zedcv-deactivate-expired-jobs';
+
+        IF v_jobid IS NOT NULL THEN
+            PERFORM cron.unschedule(v_jobid);
+        END IF;
+
+        PERFORM cron.schedule(
+            'zedcv-deactivate-expired-jobs',
+            '30 2 * * *',
+            $$SELECT public.deactivate_expired_jobs();$$
+        );
+    ELSE
+        RAISE NOTICE
+            '064_job_expiration_cron: pg_cron not installed — enable it in '
+            'Supabase Dashboard, then schedule job zedcv-deactivate-expired-jobs '
+            '(30 2 * * * UTC → 04:30 CAT).';
+    END IF;
+END;
+$zedcv_expire$;
 
 DO $$
 DECLARE
