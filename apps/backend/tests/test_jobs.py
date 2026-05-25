@@ -463,6 +463,39 @@ class TestJobIngest:
         assert body["duplicates"] == 0
         assert body["errors"] == []
 
+    @patch(
+        "app.api.v1.jobs.resolve_apply_contacts_from_aggregator_url",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.jobs.generate_embedding", new_callable=AsyncMock)
+    def test_ingest_resolves_aggregator_apply_url(
+        self, mock_embed, mock_resolve, client, fake_supabase
+    ):
+        """Aggregator apply_url is replaced with employer URL before insert."""
+        from app.services.job_page_text_extractor import ApplyContacts
+
+        mock_embed.return_value = [0.1] * 768
+        mock_resolve.return_value = ApplyContacts(
+            apply_url="https://wd1.myworkdaysite.com/recruiting/abinbev/job/1"
+        )
+        fake_supabase.set_table("job_fingerprints", FakeSupabaseQuery(data=[]))
+        jobs_table = FakeSupabaseQuery(data=[])
+        fake_supabase.set_table("jobs", jobs_table)
+        fake_supabase.set_table("skills", FakeSupabaseQuery(data=[]))
+
+        resp = client.post(
+            "/api/v1/jobs/ingest",
+            json={"api_key": "test-ingest-key", "jobs": [self.SAMPLE_JOB]},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["ingested"] == 1
+        mock_resolve.assert_awaited_once()
+        inserted = jobs_table._data[0]
+        assert inserted["apply_url"] == (
+            "https://wd1.myworkdaysite.com/recruiting/abinbev/job/1"
+        )
+        assert inserted.get("apply_source") == "aggregator_deep_link"
+
     @patch("app.api.v1.jobs.generate_embedding", new_callable=AsyncMock)
     def test_ingest_dedupes_existing_fingerprint(
         self, mock_embed, client, fake_supabase
