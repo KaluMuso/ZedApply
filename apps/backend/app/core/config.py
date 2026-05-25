@@ -135,7 +135,7 @@ class Settings(BaseSettings):
     otp_code_length: int = 6
     otp_expire_minutes: int = 5
     # Refresh JWT TTL. Bumped/lowered here without touching auth.py.
-    refresh_token_expire_days: int = 30
+    refresh_token_expire_days: int = 90
     # Length of a paid subscription cycle in days. Drives DPO + Lenco
     # webhook upgrade flows. Used twice in webhooks.py so kept here to
     # avoid drift between providers.

@@ -5,6 +5,23 @@
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
+/** Trusted-device token from POST /auth/otp/verify (remember_device). */
+export const DEVICE_TOKEN_KEY = "zedapply_device_token";
+
+function getDeviceToken(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem(DEVICE_TOKEN_KEY) || "";
+}
+
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  const headers: Record<string, string> = { ...extra };
+  const device = getDeviceToken();
+  if (device) {
+    headers["X-Device-Token"] = device;
+  }
+  return headers;
+}
+
 /** JSON object bodies are stringified in apiFetch (analytics, admin bulk ops, etc.). */
 type ApiJsonBody = Record<string, unknown>;
 
@@ -81,23 +98,48 @@ function getToken(): string {
 // ── Auth ──
 export interface OTPResponse {
   message: string;
+  tier?: string | null;
+  default_channel?: "email" | "whatsapp" | "both" | null;
 }
 
 export interface AuthTokens {
   access_token: string;
   refresh_token: string;
   user_id: string;
+  device_token?: string | null;
+  trusted_device_login?: boolean;
 }
 
+export type OtpChannel = "email" | "whatsapp";
+
 export const auth = {
-  requestOTP: (phone: string) =>
-    apiFetch<OTPResponse>("/auth/otp/request", {
+  login: (phone: string) =>
+    apiFetch<AuthTokens>("/auth/login", {
       method: "POST",
+      headers: authHeaders(),
       body: JSON.stringify({ phone }),
     }),
-  verifyOTP: (phone: string, code: string, options?: { consentAccepted?: boolean; email?: string }) =>
+  requestOTP: (phone: string, channel?: OtpChannel) =>
+    apiFetch<OTPResponse>("/auth/otp/request", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        phone,
+        ...(channel ? { channel } : {}),
+      }),
+    }),
+  verifyOTP: (
+    phone: string,
+    code: string,
+    options?: {
+      consentAccepted?: boolean;
+      email?: string;
+      rememberDevice?: boolean;
+    }
+  ) =>
     apiFetch<AuthTokens>("/auth/otp/verify", {
       method: "POST",
+      headers: authHeaders(),
       body: JSON.stringify({
         phone,
         code,
@@ -105,6 +147,7 @@ export const auth = {
           consent_accepted: options.consentAccepted,
         }),
         ...(options?.email && { email: options.email }),
+        remember_device: options?.rememberDevice ?? false,
       }),
     }),
 };
@@ -443,6 +486,34 @@ export interface AdminStats {
   pending_review_count: number;
 }
 
+export interface AdminLlmCostByModel {
+  model: string;
+  cost_usd: number;
+  request_count: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+}
+
+export interface AdminLlmCostByFeature {
+  feature: string;
+  cost_usd: number;
+  request_count: number;
+}
+
+export interface AdminLlmCostDay {
+  date: string;
+  cost_usd: number;
+}
+
+export interface AdminLlmCostStats {
+  days: number;
+  total_cost_usd: number;
+  total_requests: number;
+  by_model: AdminLlmCostByModel[];
+  by_feature: AdminLlmCostByFeature[];
+  daily: AdminLlmCostDay[];
+}
+
 export interface AdminUserRow {
   id: string;
   phone: string;
@@ -602,6 +673,15 @@ export interface AdminJobCreate {
 
 export const admin = {
   stats: (token: string) => apiFetch<AdminStats>("/admin/stats", { token }),
+  llmCostStats: (token: string, params?: { days?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.days) q.set("days", String(params.days));
+    const qs = q.toString();
+    return apiFetch<AdminLlmCostStats>(
+      `/admin/llm-cost-stats${qs ? `?${qs}` : ""}`,
+      { token }
+    );
+  },
   /** GET /admin/export/companies.csv — authenticated CSV download */
   exportCompaniesCsv: async (token: string): Promise<void> => {
     const res = await fetch(`${API_BASE}/admin/export/companies.csv`, {
@@ -1459,7 +1539,7 @@ export const publicStats = {
 };
 
 // ── Legal docs (task #62) ──
-export type LegalSlug = "privacy" | "terms" | "cookies";
+export type LegalSlug = "privacy" | "terms" | "cookies" | "refund";
 
 export interface AdminLegalDoc {
   slug: string;

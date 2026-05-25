@@ -12,7 +12,12 @@ from functools import lru_cache
 from openai import OpenAI, AuthenticationError, RateLimitError, APIError
 
 from app.core.config import get_settings
-from app.services.openrouter_helpers import get_completion_content
+from app.lib.retry import DEGRADED_LLM_USER_MESSAGE, circuit_is_open, degraded_llm_result
+from app.services.llm import FEATURE_INTERVIEW_PREP, LlmLogContext, record_openrouter_completion
+from app.services.openrouter_helpers import (
+    create_chat_completion_with_retries,
+    get_completion_content,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +81,12 @@ async def generate_interview_prep(
     job_description: str | None = None,
 ) -> dict:
     """Produce an interview prep brief tailored to the role + candidate."""
+    if circuit_is_open():
+        return degraded_llm_result(
+            content=DEGRADED_LLM_USER_MESSAGE,
+            word_count=0,
+        )
+
     settings = get_settings()
     client = _client()
 
@@ -91,13 +102,23 @@ async def generate_interview_prep(
 
     def _call():
         try:
-            response = client.chat.completions.create(
+            response = create_chat_completion_with_retries(
+                client,
+                log_prefix="interview_prep",
                 model=settings.llm_model,
                 max_tokens=2000,
                 messages=[
                     {"role": "system", "content": INTERVIEW_PREP_SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt},
                 ],
+            )
+            record_openrouter_completion(
+                response,
+                model=settings.llm_model,
+                context=LlmLogContext(
+                    feature=FEATURE_INTERVIEW_PREP,
+                    route="POST /api/v1/interview-prep/generate",
+                ),
             )
             content = get_completion_content(response, default="")
             if content is None:

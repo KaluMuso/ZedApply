@@ -21,13 +21,25 @@ from functools import lru_cache
 import httpx
 
 from app.core.config import get_settings
+from app.lib.retry import LLMCircuitOpenError, async_call_with_llm_retry, circuit_is_open
+from app.services.llm import (
+    FEATURE_MATCHING,
+    LlmLogContext,
+    merge_llm_context,
+    record_gemini_embedding,
+)
 
 logger = logging.getLogger(__name__)
 
 GEMINI_EMBED_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent"
 
 
-async def generate_embedding(text: str) -> list[float]:
+async def generate_embedding(
+    text: str,
+    *,
+    log_context: LlmLogContext | None = None,
+    supabase=None,
+) -> list[float]:
     """Generate an embedding via Gemini `embedContent`.
 
     Output dimensionality is taken from `settings.embedding_dimensions`
@@ -40,23 +52,34 @@ async def generate_embedding(text: str) -> list[float]:
     settings = get_settings()
     truncated = text[:32000]
 
+    if circuit_is_open():
+        raise ValueError(
+            "Embedding service is temporarily unavailable. Please try again shortly."
+        )
+
     url = GEMINI_EMBED_URL.format(model=settings.embedding_model)
+    payload = {
+        "model": f"models/{settings.embedding_model}",
+        "content": {"parts": [{"text": truncated}]},
+        "outputDimensionality": settings.embedding_dimensions,
+    }
 
     async with httpx.AsyncClient(timeout=30) as client:
         try:
-            response = await client.post(
-                url,
-                params={"key": settings.gemini_api_key},
-                json={
-                    "model": f"models/{settings.embedding_model}",
-                    "content": {"parts": [{"text": truncated}]},
-                    # Matryoshka truncation — supported by gemini-embedding-001.
-                    # Older models silently 400 with this param; that's the
-                    # signal that the EMBEDDING_MODEL env var needs updating.
-                    "outputDimensionality": settings.embedding_dimensions,
-                },
+            response = await async_call_with_llm_retry(
+                lambda: client.post(
+                    url,
+                    params={"key": settings.gemini_api_key},
+                    json=payload,
+                ),
+                log_prefix="gemini_embed",
             )
+        except LLMCircuitOpenError:
+            raise ValueError(
+                "Embedding service is temporarily unavailable. Please try again shortly."
+            ) from None
 
+        try:
             if response.status_code == 401 or response.status_code == 403:
                 logger.error("Gemini API key is invalid or missing")
                 raise ValueError("Embedding service is not configured. Please contact support.")
@@ -65,11 +88,28 @@ async def generate_embedding(text: str) -> list[float]:
                 logger.warning("Gemini rate limit hit during embedding generation")
                 raise ValueError("Embedding service is temporarily busy. Please try again in a moment.")
 
+            if response.status_code >= 500:
+                raise httpx.HTTPStatusError(
+                    "Gemini server error",
+                    request=response.request,
+                    response=response,
+                )
             if response.status_code != 200:
                 logger.error(f"Gemini API error {response.status_code}: {response.text[:200]}")
                 raise ValueError("Embedding service is temporarily unavailable.")
 
             data = response.json()
+            usage = data.get("usageMetadata") or {}
+            prompt_tokens = int(usage.get("promptTokenCount") or 0)
+            if prompt_tokens <= 0:
+                prompt_tokens = max(1, len(truncated) // 4)
+            ctx = log_context or merge_llm_context(feature=FEATURE_MATCHING)
+            record_gemini_embedding(
+                model=settings.embedding_model,
+                prompt_tokens=prompt_tokens,
+                context=ctx,
+                supabase=supabase,
+            )
             return data["embedding"]["values"]
 
         except httpx.TimeoutException:

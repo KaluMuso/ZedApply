@@ -74,12 +74,12 @@ class TestOTPRequestStoresHash:
         # Patch WAHA bootstrap + send so CI does not need a live session.
         from unittest.mock import AsyncMock
         monkeypatch.setattr(
-            "app.api.v1.auth.ensure_session_started",
-            AsyncMock(return_value=True),
+            "app.api.v1.auth.send_otp",
+            AsyncMock(),
         )
         monkeypatch.setattr(
-            "app.api.v1.auth.send_whatsapp_otp",
-            AsyncMock(return_value={"id": "msg-1"}),
+            "app.api.v1.auth.lookup_user_auth_context",
+            lambda phone, sb: None,
         )
 
         # Empty recent-OTP table so no rate-limit cooldown.

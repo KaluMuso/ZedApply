@@ -1,97 +1,202 @@
-"""Auth routes — OTP via WhatsApp."""
-import hashlib
-import hmac
+"""Auth routes — OTP via email/WhatsApp and trusted-device login."""
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from jose import jwt
-from app.core.config import get_settings, Settings
+
+from app.core.config import Settings, get_settings
 from app.core.deps import get_supabase
 from app.dependencies.rate_limit import (
     apply_rate_limits,
     client_ip_key,
     otp_phone_key,
 )
-from app.schemas.auth import OTPRequest, OTPVerify, AuthTokens
-from app.services.whatsapp import ensure_session_started, send_whatsapp_otp
+from app.schemas.auth import (
+    AuthTokens,
+    LoginRequest,
+    OTPRequest,
+    OTPRequestResponse,
+    OTPVerify,
+)
+from app.services.otp import (
+    default_otp_channel_for_tier,
+    generate_otp_code,
+    hash_otp_code,
+    is_device_trusted,
+    lookup_user_auth_context,
+    otp_delivery_message,
+    register_trusted_device,
+    resolve_otp_channel,
+    send_otp,
+)
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
+log = logging.getLogger(__name__)
+
+# Back-compat for tests importing _hash_otp from this module.
+_hash_otp = hash_otp_code
 
 
-def _hash_otp(code: str, phone: str, secret: str) -> str:
-    """Return HMAC-SHA256(secret, phone:code) hex digest.
-
-    Task #76: OTP codes are no longer stored in plaintext. The DB column
-    `otp_codes.code` now holds this hash. If the DB is leaked, an attacker
-    cannot use the captured rows to authenticate as a user — they'd have
-    to brute-force the 6-digit OTP space against each row's hash, which
-    is rate-limited by our `@limiter.limit` decorators plus the 5-minute
-    TTL on the OTP itself.
-
-    Why include `phone` in the HMAC input:
-        Without it, a single attacker-observed hash could be reused to
-        authenticate to any account that happens to have generated the
-        same code. Including phone binds the hash to (code, phone) so
-        each row's hash is unique to that user's intended code.
-
-    Why HMAC-SHA256 instead of bcrypt/argon2:
-        OTPs are 6 digits — only 10^6 possible inputs. Slow KDFs help
-        against offline cracking of high-entropy passwords; for low-
-        entropy OTPs the rate-limiter + 5-min TTL is the real defense.
-        HMAC is fast, constant-time, and standard.
-
-    Args:
-        code: The 6-digit OTP (or whatever otp_code_length the settings
-              are configured to).
-        phone: The user's phone in E.164 format.
-        secret: settings.jwt_secret — single key reused for OTPs.
-
-    Returns:
-        Lowercase hex digest.
-    """
-    message = f"{phone}:{code}".encode("utf-8")
-    return hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
+def _client_ip(request: Request) -> str | None:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    if request.client:
+        return request.client.host
+    return None
 
 
-@router.post("/otp/request")
+def _device_label(request: Request) -> str | None:
+    ua = request.headers.get("user-agent", "")
+    return (ua[:120] + "…") if len(ua) > 120 else (ua or None)
+
+
+def _issue_tokens(user_id: str, phone: str, settings: Settings) -> tuple[str, str]:
+    now = datetime.now(timezone.utc)
+    access_token = jwt.encode(
+        {
+            "sub": user_id,
+            "phone": phone,
+            "exp": now + timedelta(minutes=settings.jwt_expire_minutes),
+            "iat": now,
+        },
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+    refresh_token = jwt.encode(
+        {
+            "sub": user_id,
+            "type": "refresh",
+            "exp": now + timedelta(days=settings.refresh_token_expire_days),
+            "iat": now,
+        },
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+    return access_token, refresh_token
+
+
+@router.post("/login", response_model=AuthTokens)
+@apply_rate_limits(("10/minute", client_ip_key),)
+async def login(
+    request: Request,
+    body: LoginRequest,
+    settings: Settings = Depends(get_settings),
+    supabase=Depends(get_supabase),
+    x_device_token: str | None = Header(None, alias="X-Device-Token"),
+):
+    """Trusted-device login: skip OTP when X-Device-Token matches a valid row."""
+    ctx = lookup_user_auth_context(body.phone, supabase)
+    if not ctx:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="OTP required",
+        )
+    if not is_device_trusted(ctx["id"], x_device_token, supabase):
+        tier = ctx.get("tier")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="OTP required",
+            headers={
+                "X-Needs-Otp": "1",
+                "X-User-Tier": tier or "free",
+                "X-Default-Otp-Channel": resolve_otp_channel(
+                    user_row=ctx,
+                    tier=tier,
+                    requested_channel=None,
+                ),
+            },
+        )
+    access, refresh = _issue_tokens(ctx["id"], body.phone, settings)
+    return AuthTokens(
+        access_token=access,
+        refresh_token=refresh,
+        user_id=ctx["id"],
+        trusted_device_login=True,
+    )
+
+
+@router.post("/otp/request", response_model=OTPRequestResponse)
 @apply_rate_limits(
     ("5/hour", otp_phone_key),
     ("20/hour", client_ip_key),
 )
-async def request_otp(request: Request, body: OTPRequest, settings: Settings = Depends(get_settings), supabase=Depends(get_supabase)):
+async def request_otp(
+    request: Request,
+    body: OTPRequest,
+    settings: Settings = Depends(get_settings),
+    supabase=Depends(get_supabase),
+):
     recent = (
-        supabase.table("otp_codes").select("created_at").eq("phone", body.phone)
-        .gte("created_at", (datetime.now(timezone.utc) - timedelta(seconds=settings.otp_cooldown_seconds)).isoformat())
+        supabase.table("otp_codes")
+        .select("created_at")
+        .eq("phone", body.phone)
+        .gte(
+            "created_at",
+            (
+                datetime.now(timezone.utc)
+                - timedelta(seconds=settings.otp_cooldown_seconds)
+            ).isoformat(),
+        )
         .execute()
     )
     if recent.data:
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=f"Wait {settings.otp_cooldown_seconds}s between OTP requests")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Wait {settings.otp_cooldown_seconds}s between OTP requests",
+        )
 
-    code = "".join([str(secrets.randbelow(10)) for _ in range(settings.otp_code_length)])
-    # Store the HMAC hash, not the plaintext code. The plaintext is sent
-    # to the user via WAHA and then thrown away in process memory.
-    code_hash = _hash_otp(code, body.phone, settings.jwt_secret)
+    ctx = lookup_user_auth_context(body.phone, supabase)
+    tier = ctx.get("tier") if ctx else None
+    channel = resolve_otp_channel(
+        user_row=ctx,
+        tier=tier,
+        requested_channel=body.channel,
+    )
+    email = (ctx or {}).get("email")
+    if channel in ("email", "both") and not email:
+        if body.channel == "email":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Add an email to your profile before using email OTP",
+            )
+        channel = "whatsapp"
+
+    code = generate_otp_code(settings)
+    code_hash = hash_otp_code(code, body.phone, settings.jwt_secret)
     supabase.table("otp_codes").insert({
-        "phone": body.phone, "code": code_hash,
-        "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=settings.otp_expire_minutes)).isoformat(),
+        "phone": body.phone,
+        "code": code_hash,
+        "expires_at": (
+            datetime.now(timezone.utc)
+            + timedelta(minutes=settings.otp_expire_minutes)
+        ).isoformat(),
     }).execute()
+
     try:
-        # Re-bootstrap WAHA if the session went STOPPED after backend boot
-        # (common after `docker compose restart waha` without restarting backend).
-        session_ok = await ensure_session_started("default", timeout_seconds=20)
-        if not session_ok:
-            raise RuntimeError("WAHA session not WORKING")
-        await send_whatsapp_otp(body.phone, code)
-    except Exception as e:
-        # Log but don't fail — the OTP is already stored, user can re-request if they don't get it.
-        # Better UX is to return a clear 503 here than to crash with text/plain 500.
-        import logging
-        logging.getLogger(__name__).error("WAHA send failed for %s: %s", body.phone, e)
+        await send_otp(phone=body.phone, code=code, channel=channel, email=email)
+    except Exception as exc:
+        log.error("OTP delivery failed for %s via %s: %s", body.phone, channel, exc)
+        if channel == "whatsapp":
+            detail = (
+                "WhatsApp delivery is temporarily unavailable. "
+                "Please try again in a minute or use email OTP."
+            )
+        else:
+            detail = "OTP delivery is temporarily unavailable. Please try again."
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="WhatsApp delivery is temporarily unavailable. Please try again in a minute.",
-        )
-    return {"message": "OTP sent to your WhatsApp"}
+            detail=detail,
+        ) from exc
+
+    default_ch = default_otp_channel_for_tier(tier)
+    return OTPRequestResponse(
+        message=otp_delivery_message(channel),
+        tier=tier,
+        default_channel=default_ch,
+    )
 
 
 @router.post("/otp/verify", response_model=AuthTokens)
@@ -99,36 +204,52 @@ async def request_otp(request: Request, body: OTPRequest, settings: Settings = D
     ("10/hour", otp_phone_key),
     ("30/hour", client_ip_key),
 )
-async def verify_otp(request: Request, body: OTPVerify, settings: Settings = Depends(get_settings), supabase=Depends(get_supabase)):
+async def verify_otp(
+    request: Request,
+    body: OTPVerify,
+    settings: Settings = Depends(get_settings),
+    supabase=Depends(get_supabase),
+):
     now_iso = datetime.now(timezone.utc).isoformat()
-    # Compare the hash of the user-supplied code against the stored hash.
-    # Constant-time-equivalent because the DB engine performs a fixed
-    # equality check on the indexed column; the SELECT either finds the
-    # row or doesn't (no character-by-character compare path).
-    body_code_hash = _hash_otp(body.code, body.phone, settings.jwt_secret)
+    body_code_hash = hash_otp_code(body.code, body.phone, settings.jwt_secret)
     result = (
-        supabase.table("otp_codes").select("*").eq("phone", body.phone).eq("code", body_code_hash)
-        .eq("verified", False).gte("expires_at", now_iso)
-        .order("created_at", desc=True).limit(1).execute()
+        supabase.table("otp_codes")
+        .select("*")
+        .eq("phone", body.phone)
+        .eq("code", body_code_hash)
+        .eq("verified", False)
+        .gte("expires_at", now_iso)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
     )
     if not result.data:
-        # Wrong/expired code: bump attempts on the most-recent unverified OTP for this phone
-        # so the brute-force lockout actually engages. Read-then-write race is acceptable —
-        # the @limiter.limit above bounds attack rate, and under-counting beats locking out
-        # a legitimate user on stale state.
         latest = (
-            supabase.table("otp_codes").select("id, attempts").eq("phone", body.phone)
-            .eq("verified", False).gte("expires_at", now_iso)
-            .order("created_at", desc=True).limit(1).execute()
+            supabase.table("otp_codes")
+            .select("id, attempts")
+            .eq("phone", body.phone)
+            .eq("verified", False)
+            .gte("expires_at", now_iso)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
         )
         if latest.data:
             row = latest.data[0]
-            supabase.table("otp_codes").update({"attempts": (row.get("attempts") or 0) + 1}).eq("id", row["id"]).execute()
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired OTP")
+            supabase.table("otp_codes").update({
+                "attempts": (row.get("attempts") or 0) + 1,
+            }).eq("id", row["id"]).execute()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired OTP",
+        )
 
     otp = result.data[0]
     if otp["attempts"] >= settings.max_otp_attempts:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Too many attempts. Request a new OTP.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Too many attempts. Request a new OTP.",
+        )
 
     user_result = (
         supabase.table("users")
@@ -137,42 +258,67 @@ async def verify_otp(request: Request, body: OTPVerify, settings: Settings = Dep
         .limit(1)
         .execute()
     )
+    device_token: str | None = None
+
     if user_result.data:
-        # Existing user — they consented at original signup; don't re-prompt.
         user_id = user_result.data[0]["id"]
         supabase.table("otp_codes").update({"verified": True}).eq("id", otp["id"]).execute()
         if body.email and not user_result.data[0].get("email"):
             supabase.table("users").update({"email": str(body.email)}).eq("id", user_id).execute()
     else:
-        # New user — require explicit consent before creating the account.
-        # Done before the OTP is marked verified so a forgotten checkbox
-        # doesn't burn the code; the user can re-submit with consent=true.
         if body.consent_accepted is not True:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Consent required")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Consent required",
+            )
         if not body.email:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email is required to create an account",
             )
         supabase.table("otp_codes").update({"verified": True}).eq("id", otp["id"]).execute()
-        # Auto-assign superadmin role if phone matches SUPERADMIN_PHONE env var
-        role = "superadmin" if (settings.superadmin_phone and body.phone == settings.superadmin_phone) else "user"
+        role = (
+            "superadmin"
+            if (settings.superadmin_phone and body.phone == settings.superadmin_phone)
+            else "user"
+        )
+        otp_pref = "email"
         new_user = supabase.table("users").insert({
             "phone": body.phone,
             "email": str(body.email),
             "role": role,
             "preferred_notification_channel": "email",
+            "otp_channel_preference": otp_pref,
         }).execute()
         user_id = new_user.data[0]["id"]
 
-        # Superadmin gets top tier; regular users start on free
         if role == "superadmin":
-            supabase.table("subscriptions").insert({"user_id": user_id, "tier": "professional", "status": "active"}).execute()
+            supabase.table("subscriptions").insert({
+                "user_id": user_id,
+                "tier": "professional",
+                "status": "active",
+            }).execute()
         else:
-            supabase.table("subscriptions").insert({"user_id": user_id, "tier": "free", "status": "active"}).execute()
+            supabase.table("subscriptions").insert({
+                "user_id": user_id,
+                "tier": "free",
+                "status": "active",
+            }).execute()
 
-    now = datetime.now(timezone.utc)
-    access_token = jwt.encode({"sub": user_id, "phone": body.phone, "exp": now + timedelta(minutes=settings.jwt_expire_minutes), "iat": now}, settings.jwt_secret, algorithm=settings.jwt_algorithm)
-    refresh_token = jwt.encode({"sub": user_id, "type": "refresh", "exp": now + timedelta(days=settings.refresh_token_expire_days), "iat": now}, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    if body.remember_device:
+        device_token = secrets.token_urlsafe(32)
+        register_trusted_device(
+            user_id,
+            device_token,
+            label=_device_label(request),
+            ip=_client_ip(request),
+            supabase=supabase,
+        )
 
-    return AuthTokens(access_token=access_token, refresh_token=refresh_token, user_id=user_id)
+    access, refresh = _issue_tokens(user_id, body.phone, settings)
+    return AuthTokens(
+        access_token=access,
+        refresh_token=refresh,
+        user_id=user_id,
+        device_token=device_token,
+    )
