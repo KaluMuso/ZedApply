@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, EmailStr, field_validator
-from typing import Optional, Literal
+from typing import Any, Optional, Literal
 
 from app.core.phone import normalize_zambian_e164_phone
 from app.schemas.cv_sections import CVSections
@@ -35,6 +35,15 @@ class UserProfile(BaseModel):
         ge=0,
         description="Referred users who uploaded a CV (qualified for reward).",
     )
+    education: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Structured education entries from users.education (JSONB).",
+    )
+    certifications: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Professional certifications from users.certifications (JSONB).",
+    )
+
 
 class UserProfileUpdate(BaseModel):
     full_name: Optional[str] = Field(None, max_length=255)

@@ -5,11 +5,16 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   profile as profileApi,
+  preferencesApi,
   subscription as subscriptionApi,
   ApiError,
+  type JobPreferences,
   type Subscription,
   type UserProfile,
 } from "@/lib/api";
+import { computeProfileCompleteness } from "@/lib/profileCompleteness";
+import type { ProfileCompletenessTabHint } from "@/lib/profileCompleteness";
+import { ProfileCompletenessChecklist } from "./ProfileCompletenessChecklist";
 import { useAuth } from "@/lib/auth";
 import { Icon } from "@/components/ui/Icon";
 import { Avatar } from "@/components/ui/Avatar";
@@ -19,11 +24,13 @@ import { CvSkillsTab } from "./_tabs/CvSkillsTab";
 import { AnalysisTab } from "./_tabs/AnalysisTab";
 import { GeneratorTab } from "./_tabs/GeneratorTab";
 import { ProfileReferralCard } from "./_tabs/ProfileReferralCard";
+import { PreferencesTab } from "./_tabs/PreferencesTab";
 
-type Tab = "cv" | "analysis" | "generator";
+type Tab = "cv" | "analysis" | "generator" | "preferences";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "cv", label: "CV & Skills" },
+  { key: "preferences", label: "Preferences" },
   { key: "analysis", label: "CV Analysis" },
   { key: "generator", label: "CV Generator" },
 ];
@@ -38,11 +45,12 @@ const TAB_FROM_SLUG: Record<string, Tab> = {
   "analysis": "analysis",
   "cv-generator": "generator",
   "generator": "generator",
-  preferences: "cv",
+  preferences: "preferences",
 };
 
 const SLUG_FROM_TAB: Record<Tab, string> = {
   cv: "cv-skills",
+  preferences: "preferences",
   analysis: "cv-analysis",
   generator: "cv-generator",
 };
@@ -72,6 +80,7 @@ export default function ProfilePageClient() {
   const searchParams = useSearchParams();
   const { token, isAuthenticated, isLoading: authLoading, logout } = useAuth();
   const [profileData, setProfileData] = useState<UserProfile | null>(null);
+  const [jobPreferences, setJobPreferences] = useState<JobPreferences | null>(null);
   const [subscriptionData, setSubscriptionData] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -82,20 +91,11 @@ export default function ProfilePageClient() {
   const initialTab: Tab = TAB_FROM_SLUG[tabSlug] ?? "cv";
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
 
-  // Legacy: job preferences moved to /settings/job-preferences
-  useEffect(() => {
-    const slug = searchParams.get("tab");
-    if (slug === "preferences") {
-      router.replace("/settings/job-preferences");
-    }
-  }, [searchParams, router]);
-
   // Keep state in sync when the URL changes (e.g. user navigates from nav
   // dropdown to a different tab via Link). Without this, the second click
   // is a no-op because the page is already mounted.
   useEffect(() => {
     const slug = searchParams.get("tab") ?? "cv";
-    if (slug === "preferences") return;
     const tab = TAB_FROM_SLUG[slug];
     if (tab && tab !== activeTab) setActiveTab(tab);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -118,10 +118,12 @@ export default function ProfilePageClient() {
     }
     Promise.all([
       profileApi.get(token),
+      preferencesApi.get(token).catch(() => null),
       subscriptionApi.get(token).catch(() => null),
     ])
-      .then(([profileRes, subRes]) => {
+      .then(([profileRes, prefsRes, subRes]) => {
         setProfileData(profileRes);
+        setJobPreferences(prefsRes);
         setSubscriptionData(subRes);
       })
       .catch((err) => {
@@ -141,7 +143,20 @@ export default function ProfilePageClient() {
   const refresh = () => {
     if (!token) return;
     profileApi.get(token).then(setProfileData).catch(() => {});
+    preferencesApi.get(token).then(setJobPreferences).catch(() => setJobPreferences(null));
     subscriptionApi.get(token).then(setSubscriptionData).catch(() => setSubscriptionData(null));
+  };
+
+  const onPreferencesSaved = (next: JobPreferences) => {
+    setJobPreferences(next);
+  };
+
+  const goToCompletenessTab = (tab: ProfileCompletenessTabHint) => {
+    if (tab === "preferences") {
+      onTabChange("preferences");
+      return;
+    }
+    onTabChange("cv");
   };
 
   if (loading || authLoading) {
@@ -239,15 +254,11 @@ export default function ProfilePageClient() {
   // "Cannot read properties of undefined (reading 'length')". Treat absent
   // skills as empty so the page renders gracefully.
   const skillsList = profileData.skills ?? [];
-  const fields = [
-    !!profileData.full_name,
-    !!profileData.phone,
-    profileData.cv_uploaded,
-    skillsList.length > 0,
-  ];
-  const completeness = Math.round(
-    (fields.filter(Boolean).length / fields.length) * 100
-  );
+  const completenessResult = computeProfileCompleteness({
+    profile: profileData,
+    preferences: jobPreferences,
+  });
+  const completeness = completenessResult.percent;
   const onboardingStep = !profileData.cv_uploaded
     ? 1
     : skillsList.length === 0
@@ -322,11 +333,15 @@ export default function ProfilePageClient() {
             </div>
             <div>
               <div className="text-sm font-medium">Profile complete</div>
-              <div className="text-xs" style={{ color: "var(--muted)" }}>
+              <div className="text-xs" style={{ color: "rgba(255,255,255,0.7)" }}>
                 {completeness < 100 ? "Add more details to improve matches" : "Looking great!"}
               </div>
             </div>
           </div>
+          <ProfileCompletenessChecklist
+            items={completenessResult.items}
+            onGoToTab={goToCompletenessTab}
+          />
         </div>
       </div>
 
@@ -362,6 +377,13 @@ export default function ProfilePageClient() {
           {activeTab === "cv" && (
             <CvSkillsTab token={token} profileData={profileData} onUploaded={refresh} />
           )}
+          {activeTab === "preferences" && (
+            <PreferencesTab
+              profileData={profileData}
+              onProfileUpdated={refresh}
+              onPreferencesSaved={onPreferencesSaved}
+            />
+          )}
           {activeTab === "analysis" && <AnalysisTab token={token} profileData={profileData} />}
           {activeTab === "generator" && <GeneratorTab token={token} profileData={profileData} />}
         </div>
@@ -385,13 +407,14 @@ export default function ProfilePageClient() {
                 Billing &amp; plan
                 <Icon name="arrowRight" size={14} />
               </Link>
-              <Link
-                href="/settings/job-preferences"
+              <button
+                type="button"
+                onClick={() => onTabChange("preferences")}
                 className="btn btn-ghost w-full btn-sm justify-center gap-1.5"
               >
                 Job preferences
                 <Icon name="sliders" size={14} />
-              </Link>
+              </button>
               <Link href="/settings/account" className="btn btn-ghost w-full btn-sm justify-center gap-1.5">
                 Account settings
                 <Icon name="settings" size={14} />

@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import {
   preferencesApi,
+  profile as profileApi,
   cv as cvApi,
   type JobPreferences,
   type JobPreferencesUpdate,
@@ -33,6 +34,7 @@ import { IndustriesInput } from "@/components/IndustriesInput";
 import { usePreferencesAutoSave, type SaveStatus } from "@/hooks/usePreferencesAutoSave";
 
 type SectionKey =
+  | "career"
   | "target_roles"
   | "salary"
   | "work_arrangement"
@@ -40,6 +42,7 @@ type SectionKey =
   | "extras";
 
 const SECTION_LABELS: Record<SectionKey, string> = {
+  career: "Career background",
   target_roles: "Target roles",
   salary: "Salary expectations",
   work_arrangement: "Work arrangement",
@@ -47,10 +50,40 @@ const SECTION_LABELS: Record<SectionKey, string> = {
   extras: "Additional information",
 };
 
+const EDUCATION_LEVEL_OPTIONS = [
+  "Primary / Grade 12",
+  "Certificate / Diploma",
+  "Bachelor's degree",
+  "Honours / Postgraduate diploma",
+  "Master's degree",
+  "Doctorate (PhD)",
+  "Professional qualification",
+  "Other",
+] as const;
+
+const NOTICE_PERIOD_OPTIONS = [
+  "Immediate",
+  "1 week",
+  "2 weeks",
+  "1 month",
+  "2 months",
+  "3+ months",
+] as const;
+
 const STORAGE_KEY = "zedcv:preferences:expanded";
 
-export function PreferencesTab({ profileData }: { profileData: UserProfile }) {
+export function PreferencesTab({
+  profileData,
+  onProfileUpdated,
+  onPreferencesSaved,
+}: {
+  profileData: UserProfile;
+  onProfileUpdated?: () => void;
+  onPreferencesSaved?: (next: JobPreferences) => void;
+}) {
   const { token } = useAuth();
+  const [yearsExperience, setYearsExperience] = useState(profileData.years_experience ?? 0);
+  const [savingYears, setSavingYears] = useState(false);
   const [data, setData] = useState<JobPreferences | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -84,8 +117,15 @@ export function PreferencesTab({ profileData }: { profileData: UserProfile }) {
 
   const { status, queue, flush } = usePreferencesAutoSave({
     token: token ?? "",
-    onSaved: (next) => setData(next),
+    onSaved: (next) => {
+      setData(next);
+      onPreferencesSaved?.(next);
+    },
   });
+
+  useEffect(() => {
+    setYearsExperience(profileData.years_experience ?? 0);
+  }, [profileData.years_experience]);
 
   // Surface CV-derived role titles as extra autocomplete entries on the
   // target-roles input — handy when the user wants to re-add a role
@@ -149,6 +189,24 @@ export function PreferencesTab({ profileData }: { profileData: UserProfile }) {
     },
     [queue, data],
   );
+
+  const saveYearsExperience = async () => {
+    if (!token) return;
+    setSavingYears(true);
+    try {
+      await profileApi.update(token, { years_experience: yearsExperience });
+      onProfileUpdated?.();
+    } catch {
+      /* surfaced via profile refresh failure */
+    } finally {
+      setSavingYears(false);
+    }
+  };
+
+  const educationLevel =
+    typeof data?.extras?.education_level === "string" ? data.extras.education_level : "";
+  const noticePeriod =
+    typeof data?.extras?.notice_period === "string" ? data.extras.notice_period : "";
 
   const onManualPopulate = async () => {
     if (!token) return;
@@ -237,6 +295,105 @@ export function PreferencesTab({ profileData }: { profileData: UserProfile }) {
           )}
         </div>
       )}
+
+      <Section
+        title={SECTION_LABELS.career}
+        sectionKey="career"
+        expanded={expanded.career}
+        onToggle={() => toggle("career")}
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label className="text-xs" style={{ color: "var(--muted)" }}>
+            Years of experience
+            <input
+              type="number"
+              min={0}
+              max={60}
+              value={yearsExperience}
+              onChange={(e) => {
+                const parsed = parseInt(e.target.value, 10);
+                setYearsExperience(Number.isFinite(parsed) && parsed >= 0 ? parsed : 0);
+              }}
+              onBlur={() => void saveYearsExperience()}
+              className="block mt-1 w-full text-sm rounded-md px-3"
+              style={{
+                background: "var(--bg-2)",
+                border: "1px solid var(--line)",
+                color: "var(--ink)",
+                minHeight: 44,
+              }}
+            />
+          </label>
+          <label className="text-xs" style={{ color: "var(--muted)" }}>
+            Highest qualification
+            <select
+              value={educationLevel}
+              onChange={(e) => {
+                const value = e.target.value;
+                const extras = { ...(data.extras || {}) };
+                if (value) {
+                  extras.education_level = value;
+                } else {
+                  delete extras.education_level;
+                }
+                update({ extras });
+              }}
+              className="block mt-1 w-full text-sm rounded-md px-3"
+              style={{
+                background: "var(--bg-2)",
+                border: "1px solid var(--line)",
+                color: "var(--ink)",
+                minHeight: 44,
+              }}
+            >
+              <option value="">Not specified</option>
+              {EDUCATION_LEVEL_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <label className="text-xs mt-3 block" style={{ color: "var(--muted)" }}>
+          Notice period
+          <select
+            value={noticePeriod}
+            onChange={(e) => {
+              const value = e.target.value;
+              const extras = { ...(data.extras || {}) };
+              if (value) {
+                extras.notice_period = value;
+              } else {
+                delete extras.notice_period;
+              }
+              update({ extras });
+            }}
+            className="block mt-1 w-full text-sm rounded-md px-3"
+            style={{
+              background: "var(--bg-2)",
+              border: "1px solid var(--line)",
+              color: "var(--ink)",
+              minHeight: 44,
+            }}
+          >
+            <option value="">Not specified</option>
+            {NOTICE_PERIOD_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+        </label>
+        {savingYears && (
+          <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>
+            Saving experience…
+          </p>
+        )}
+        <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>
+          These fields improve match quality and appear on your profile completeness score.
+        </p>
+      </Section>
 
       <Section
         title={SECTION_LABELS.target_roles}
@@ -437,6 +594,7 @@ export function PreferencesTab({ profileData }: { profileData: UserProfile }) {
 
 function defaultExpanded(): Record<SectionKey, boolean> {
   return {
+    career: true,
     target_roles: true,
     salary: false,
     work_arrangement: false,
