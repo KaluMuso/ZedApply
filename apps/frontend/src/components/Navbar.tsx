@@ -305,14 +305,14 @@ export function Navbar() {
                       <Icon name="user" size={16} /> Profile
                     </Link>
                     <Link
-                      href="/settings"
+                      href="/settings/notifications"
                       onClick={() => setMenuOpen(false)}
                       className={cn(buttonVariants({ variant: "ghost" }), "w-full justify-start gap-2")}
                     >
                       <Icon name="bell" size={16} /> Notifications
                     </Link>
                     <Link
-                      href="/profile?tab=preferences"
+                      href="/settings/account"
                       onClick={() => setMenuOpen(false)}
                       className={cn(buttonVariants({ variant: "ghost" }), "w-full justify-start gap-2")}
                     >
