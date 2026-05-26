@@ -30,8 +30,8 @@ export function UserMenuDropdown({
     { href: "/profile", label: "Profile", icon: "user" },
     { href: "/profile?tab=cv-generator", label: "CV Generator", icon: "file" },
     { href: "/matches", label: "My matches", icon: "sparkle" },
-    { href: "/settings", label: "Notifications", icon: "bell" },
-    { href: "/profile?tab=preferences", label: "Settings", icon: "settings" },
+    { href: "/settings/notifications", label: "Notifications", icon: "bell" },
+    { href: "/settings/account", label: "Settings", icon: "settings" },
   ];
 
   if (showAdmin) {
