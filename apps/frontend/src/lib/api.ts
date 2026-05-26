@@ -343,7 +343,6 @@ export interface UserProfile {
   cv_sections?: CVSections | null;
   referral_code?: string;
   referral_signups_count?: number;
-  referral_qualified_count?: number;
 }
 
 // @openapi NotificationPreferences
