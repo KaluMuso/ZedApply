@@ -344,6 +344,10 @@ export interface UserProfile {
   referral_code?: string;
   referral_signups_count?: number;
   referral_qualified_count?: number;
+  /** From users.education JSONB — used for profile completeness. */
+  education?: Record<string, unknown>[];
+  /** From users.certifications JSONB — used for profile completeness. */
+  certifications?: Record<string, unknown>[];
 }
 
 // @openapi NotificationPreferences

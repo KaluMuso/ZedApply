@@ -95,6 +95,8 @@ def _build_profile(user_id: str, supabase) -> UserProfile:
         referral_code=referral_code,
         referral_signups_count=referral_signups,
         referral_qualified_count=referral_qualified,
+        education=user.get("education") or [],
+        certifications=user.get("certifications") or [],
     )
 
 
