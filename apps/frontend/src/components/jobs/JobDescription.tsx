@@ -13,6 +13,19 @@ const MAIN_SUBTITLE_HEADINGS = new Set([
   "qualifications",
   "key responsibilities",
   "job purpose",
+  "duties",
+  "responsibilities",
+  "experience",
+  "education",
+  "competencies",
+  "preferred qualifications",
+  "secondary job functions",
+  "compensation structure",
+  "about the role",
+  "about the company",
+  "job summary",
+  "essential functions",
+  "minimum qualifications",
 ]);
 
 function headingText(children: React.ReactNode): string {
@@ -37,8 +50,8 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
     <h3
       className={cn(
-        "mt-6 mb-2 font-bold tracking-widest uppercase text-muted-foreground",
-        main ? "text-xs" : "text-[11px] opacity-90",
+        "job-description-heading font-bold tracking-widest uppercase text-muted-foreground",
+        main ? "text-xs mt-8 mb-3 first:mt-0" : "text-[11px] mt-6 mb-2 opacity-90",
       )}
     >
       {children}
@@ -91,6 +104,13 @@ export function JobDescription({
           ),
           li: ({ children }) => <li className="leading-relaxed">{children}</li>,
           p: ({ children }) => <p className="my-2 leading-relaxed whitespace-pre-line">{children}</p>,
+          hr: () => <hr className="my-6 border-0 border-t border-[var(--line)]" />,
+          blockquote: ({ children }) => (
+            <blockquote className="my-4 border-l-[3px] border-[var(--green-500)] bg-[var(--bg-2)] py-3 px-4 rounded-r-lg text-[var(--ink-2)]">
+              {children}
+            </blockquote>
+          ),
+          h4: ({ children }) => <SectionHeading>{children}</SectionHeading>,
         }}
       >
         {md}

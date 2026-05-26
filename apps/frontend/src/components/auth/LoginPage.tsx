@@ -40,12 +40,16 @@ export function LoginPage({
     <div className="fade-up">
       <StepProgress current={1} total={2} labels={["Phone", "Verify code"]} className="mb-4" />
       <h2
-        className="font-display mt-2 mb-2"
-        style={{ fontSize: 44, letterSpacing: "-0.02em" }}
+        className="font-display mt-2 mb-3"
+        style={{
+          fontSize: "clamp(2rem, 5vw, 2.75rem)",
+          letterSpacing: "-0.02em",
+          lineHeight: 1.05,
+        }}
       >
         Enter your number
       </h2>
-      <p className="text-sm mb-8" style={{ color: "var(--muted)" }}>
+      <p className="text-sm mb-6 sm:mb-8 leading-relaxed" style={{ color: "var(--muted)" }}>
         We&apos;ll send a 6-digit code by email or WhatsApp. Your email receives daily match
         digests.
       </p>
@@ -74,7 +78,8 @@ export function LoginPage({
           onChange={(e) => onEmailChange(e.target.value)}
           disabled={loading}
           placeholder="you@example.com"
-          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+          className="field"
+          style={{ height: 44 }}
         />
 
         {isFreeTier && (

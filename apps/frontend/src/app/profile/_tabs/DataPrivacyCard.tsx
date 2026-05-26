@@ -8,10 +8,13 @@ export function DataPrivacyCard({
   token,
   phone,
   onDeleted,
+  exportOnly = false,
 }: {
   token: string;
   phone: string;
   onDeleted: () => void;
+  /** When true, only show data export (delete lives on Settings → Danger zone). */
+  exportOnly?: boolean;
 }) {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -38,14 +41,18 @@ export function DataPrivacyCard({
   };
 
   return (
-    <div className="card p-6">
-      <div className="eyebrow mb-3">Data &amp; privacy</div>
-      <p
-        className="text-xs mb-4"
-        style={{ color: "var(--muted)", lineHeight: 1.6 }}
-      >
-        Exercise your rights under the Zambia Data Protection Act 2021.
-      </p>
+    <div className={exportOnly ? "" : "card p-6"}>
+      {!exportOnly && (
+        <>
+          <div className="eyebrow mb-3">Data &amp; privacy</div>
+          <p
+            className="text-xs mb-4"
+            style={{ color: "var(--muted)", lineHeight: 1.6 }}
+          >
+            Exercise your rights under the Zambia Data Protection Act 2021.
+          </p>
+        </>
+      )}
 
       <div className="space-y-3">
         <div>
@@ -53,13 +60,13 @@ export function DataPrivacyCard({
             type="button"
             onClick={handleExport}
             disabled={exporting}
-            className="btn btn-ghost w-full btn-sm"
-            style={{ justifyContent: "space-between" }}
+            className={exportOnly ? "btn btn-outline btn-sm gap-1.5" : "btn btn-ghost w-full btn-sm"}
+            style={exportOnly ? undefined : { justifyContent: "space-between" }}
           >
             <span>
               {exporting ? "Preparing download..." : "Export my data"}
             </span>
-            <Icon name={exporting ? "zap" : "arrowRight"} size={14} />
+            <Icon name={exporting ? "zap" : "download"} size={14} />
           </button>
           {exportError && (
             <p
@@ -69,41 +76,45 @@ export function DataPrivacyCard({
               {exportError}
             </p>
           )}
-          <p
-            className="text-xs mt-2"
-            style={{ color: "var(--muted)" }}
-          >
-            Downloads a JSON file with your profile, CVs, matches, and
-            payment history.
-          </p>
+          {!exportOnly && (
+            <p
+              className="text-xs mt-2"
+              style={{ color: "var(--muted)" }}
+            >
+              Downloads a JSON file with your profile, CVs, matches, and
+              payment history.
+            </p>
+          )}
         </div>
 
-        <div
-          style={{ borderTop: "1px solid var(--line)", paddingTop: 12 }}
-        >
-          <button
-            type="button"
-            onClick={() => setModalOpen(true)}
-            className="btn btn-ghost w-full btn-sm"
-            style={{
-              justifyContent: "space-between",
-              color: "var(--danger)",
-            }}
+        {!exportOnly && (
+          <div
+            style={{ borderTop: "1px solid var(--line)", paddingTop: 12 }}
           >
-            <span>Delete my account</span>
-            <Icon name="x" size={14} />
-          </button>
-          <p
-            className="text-xs mt-2"
-            style={{ color: "var(--muted)" }}
-          >
-            Permanently removes your account. Some payment records are
-            retained, anonymised, for 7 years (Zambian tax law).
-          </p>
-        </div>
+            <button
+              type="button"
+              onClick={() => setModalOpen(true)}
+              className="btn btn-ghost w-full btn-sm"
+              style={{
+                justifyContent: "space-between",
+                color: "var(--danger)",
+              }}
+            >
+              <span>Delete my account</span>
+              <Icon name="x" size={14} />
+            </button>
+            <p
+              className="text-xs mt-2"
+              style={{ color: "var(--muted)" }}
+            >
+              Permanently removes your account. Some payment records are
+              retained, anonymised, for 7 years (Zambian tax law).
+            </p>
+          </div>
+        )}
       </div>
 
-      {modalOpen && (
+      {!exportOnly && modalOpen && (
         <DeleteAccountModal
           token={token}
           phone={phone}

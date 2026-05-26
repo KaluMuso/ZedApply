@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
+import { SITE_DEFAULT_DESCRIPTION, SITE_DEFAULT_TITLE } from "@/lib/site-metadata";
 import HomePageClient from "./HomePageClient";
 
-// Server entry for the landing page. The interactive body lives in
-// HomePageClient (state, hooks, scroll reveal). Title falls through to
-// the root layout's `title.default` — no per-page suffix
-// because the root URL "/" is the brand homepage.
+export const metadata: Metadata = {
+  title: { absolute: SITE_DEFAULT_TITLE },
+  description: SITE_DEFAULT_DESCRIPTION,
+};
+
 export default function HomePage() {
   return <HomePageClient />;
 }

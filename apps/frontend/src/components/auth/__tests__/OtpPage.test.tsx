@@ -27,18 +27,26 @@ describe("OtpPage", () => {
     onResend: vi.fn(),
   };
 
-  it("accepts a 6-digit OTP input", () => {
+  it("accepts a 6-digit OTP across boxes", () => {
     render(<OtpPageHarness {...baseProps} />);
-    const otpInput = screen.getByLabelText(/one-time passcode/i);
-    fireEvent.change(otpInput, { target: { value: "123456" } });
-    expect(otpInput).toHaveValue("123456");
+    const boxes = screen.getAllByRole("textbox");
+    expect(boxes).toHaveLength(6);
+    fireEvent.change(boxes[0], { target: { value: "1" } });
+    fireEvent.change(boxes[1], { target: { value: "2" } });
+    fireEvent.change(boxes[2], { target: { value: "3" } });
+    fireEvent.change(boxes[3], { target: { value: "4" } });
+    fireEvent.change(boxes[4], { target: { value: "5" } });
+    fireEvent.change(boxes[5], { target: { value: "6" } });
+    expect(boxes[5]).toHaveValue("6");
   });
 
   it("strips non-numeric characters from OTP input", () => {
     render(<OtpPageHarness {...baseProps} />);
-    const otpInput = screen.getByLabelText(/one-time passcode/i);
-    fireEvent.change(otpInput, { target: { value: "12ab34" } });
-    expect(otpInput).toHaveValue("1234");
+    const boxes = screen.getAllByRole("textbox");
+    fireEvent.change(boxes[0], { target: { value: "a" } });
+    expect(boxes[0]).toHaveValue("");
+    fireEvent.change(boxes[0], { target: { value: "9" } });
+    expect(boxes[0]).toHaveValue("9");
   });
 
   it("shows resend countdown when resendIn > 0", () => {

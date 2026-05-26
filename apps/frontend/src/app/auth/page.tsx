@@ -3,9 +3,9 @@ import { Suspense } from "react";
 import AuthPageClient from "./AuthPageClient";
 
 export const metadata: Metadata = {
-  title: "Sign in",
+  title: "Sign In",
   description:
-    "Sign in to ZedApply with your Zambian phone number — WhatsApp OTP, no password.",
+    "Sign in to Zed Apply with your Zambian phone number — WhatsApp or email OTP, no password.",
 };
 
 // Server entry — exports metadata so the browser tab reads

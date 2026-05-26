@@ -376,6 +376,77 @@ body {
   color: var(--orange-400);
 }
 
+/* ─── Job description body (PDF §3 typography) ─── */
+.job-description-markdown {
+  line-height: 1.7;
+  font-size: 0.9375rem;
+}
+.job-description-markdown p {
+  margin-top: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+.job-description-markdown ul,
+.job-description-markdown ol {
+  margin-top: 0.5rem;
+  margin-bottom: 1rem;
+  padding-left: 1.35rem;
+}
+.job-description-markdown li {
+  margin-bottom: 0.4rem;
+  padding-left: 0.15rem;
+}
+.job-description-markdown li::marker {
+  color: var(--green-700);
+}
+.job-description-markdown strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+.job-description-markdown hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 1.5rem 0;
+}
+.job-description-markdown blockquote {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border-left: 3px solid var(--green-500);
+  background: var(--bg-2);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  color: var(--ink-2);
+}
+.job-description-heading {
+  position: relative;
+}
+.job-description-heading:not(:first-child)::before {
+  content: "";
+  display: block;
+  height: 1px;
+  background: var(--line);
+  margin: 1.75rem 0 1rem;
+}
+
+/* ─── Auth phone + OTP ─── */
+.phone-input-prefix {
+  min-height: 56px;
+  min-width: 5.25rem;
+  padding: 0 1rem;
+  font-size: 1.125rem;
+  background: color-mix(in srgb, var(--copper-100) 55%, var(--surface));
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  color: var(--ink);
+}
+.phone-input-digit {
+  min-height: 56px !important;
+  height: 56px !important;
+  font-size: clamp(1.25rem, 4vw, 1.5rem) !important;
+  letter-spacing: 0.06em;
+}
+.otp-box-row {
+  margin: 0.5rem 0 1rem;
+}
+
 /* ─── Inputs ─── */
 .field {
   width: 100%;
@@ -776,10 +847,22 @@ a.link-copper:hover,
   }
 }
 
+/* ─── Auth layout ─── */
+.auth-grid {
+  min-height: calc(100vh - 70px);
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+}
+
+.auth-form-panel {
+  padding: clamp(2rem, 6vw, 4.5rem) clamp(1.25rem, 4vw, 2rem);
+}
+
 /* ─── Responsive helpers ─── */
 @media (max-width: 768px) {
   .auth-grid {
     grid-template-columns: 1fr !important;
+    min-height: calc(100dvh - 4rem);
   }
   .auth-aside {
     display: none !important;

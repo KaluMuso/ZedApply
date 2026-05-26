@@ -3,10 +3,11 @@ import type { Metadata } from "next";
 /** Canonical production origin for metadataBase, OG URLs, and sitemap. */
 export const SITE_URL = "https://www.zedapply.com";
 
-export const SITE_NAME = "ZedApply";
+/** Browser tab suffix and OG site name (e.g. "Pricing - Zed Apply"). */
+export const SITE_NAME = "Zed Apply";
 
 export const SITE_DEFAULT_TITLE =
-  "ZedApply — AI Job Matching for Zambian Professionals";
+  "Zed Apply — AI Job Matching for Zambian Professionals";
 
 export const SITE_DEFAULT_DESCRIPTION =
   "Find your next role in Zambia. AI-powered matching against your CV, WhatsApp digests, and zero spam. Free to start.";
@@ -33,7 +34,7 @@ export const siteDefaultMetadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
     default: SITE_DEFAULT_TITLE,
-    template: `%s | ${SITE_NAME}`,
+    template: `%s - ${SITE_NAME}`,
   },
   description: SITE_DEFAULT_DESCRIPTION,
   keywords: [...SITE_KEYWORDS],
@@ -101,9 +102,9 @@ type PageMetaInput = {
   description: string;
 };
 
-/** Per-route metadata — `title` becomes "{title} | ZedApply" via the root template. */
+/** Per-route metadata — `title` becomes "{title} - Zed Apply" via the root template. */
 export function pageMetadata({ title, description }: PageMetaInput): Metadata {
-  const ogTitle = `${title} | ${SITE_NAME}`;
+  const ogTitle = `${title} - ${SITE_NAME}`;
   return {
     title,
     description,
