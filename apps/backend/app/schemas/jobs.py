@@ -440,11 +440,22 @@ class Job(BaseModel):
     bonus_structure: Optional[str] = None
     equity_offered: Optional[bool] = None
     contact_phone: Optional[str] = None
+    admin_published: Optional[bool] = None
+    scraping_sources: list[dict[str, str]] = Field(default_factory=list)
     source_platform: Optional[str] = None
     original_source_url: Optional[str] = None
     contact_email: Optional[str] = None
     contact_whatsapp: Optional[str] = None
     is_enriched: bool = False
+
+    @field_validator("scraping_sources", mode="before")
+    @classmethod
+    def _coerce_scraping_sources(cls, v: Any) -> list[dict[str, str]]:
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return [dict(item) for item in v if isinstance(item, dict)]
+        return []
 
     @field_validator("benefits", "tools_tech_stack", mode="before")
     @classmethod
@@ -530,6 +541,7 @@ class JobIngestErrorItem(BaseModel):
 class JobIngestResponse(BaseModel):
     ingested: int
     duplicates: int
+    merged: int = 0
     # Rows the server chose to skip without ingesting AND without erroring.
     # Currently used for cross-listing / aggregator-domain filtering, but
     # the field is intentionally generic so future skip reasons can use
@@ -587,9 +599,14 @@ class AdminJobCreate(JobCreate):
             raise ValueError("salary_min must be <= salary_max")
         has_url = bool(self.apply_url and self.apply_url.strip())
         has_email = bool(self.apply_email and self.apply_email.strip())
-        if has_url == has_email:
+        has_phone = bool(self.contact_phone and self.contact_phone.strip())
+        if not (has_url or has_email or has_phone):
             raise ValueError(
-                "Exactly one of apply_url or apply_email is required"
+                "At least one of apply_url, apply_email, or contact_phone is required"
+            )
+        if has_url and has_email:
+            raise ValueError(
+                "Provide apply_url or apply_email, not both"
             )
         return self
 
@@ -637,6 +654,7 @@ class AdminJobUpdate(BaseModel):
     # second endpoint. DELETE handles deactivation; PATCH handles the
     # reverse and any other ad-hoc state change.
     is_active: Optional[bool] = None
+    admin_published: Optional[bool] = None
     source_platform: Optional[str] = Field(None, max_length=64)
     original_source_url: Optional[str] = Field(None, max_length=2000)
     contact_email: Optional[str] = Field(None, max_length=255)

@@ -190,20 +190,39 @@ class TestWhatsappScraperWebhook:
             "job_fingerprints",
             FakeSupabaseQuery(data=[{"fingerprint": fp, "job_id": "existing-job"}]),
         )
-        fake_supabase.set_table("jobs", FakeSupabaseQuery(data=[]))
-
-        resp = client.post(
-            "/api/v1/whatsapp/scraper-webhook",
-            headers=_headers(),
-            json=_payload(
-                body=JOB_TEXT,
-                msg_id="wa-other-channel-99",
-                channel=CHANNEL_B,
+        fake_supabase.set_table(
+            "jobs",
+            FakeSupabaseQuery(
+                data=[
+                    {
+                        "id": "existing-job",
+                        "apply_url": None,
+                        "apply_email": None,
+                        "contact_phone": None,
+                        "admin_published": None,
+                        "scraping_sources": [],
+                        "source_url": None,
+                    }
+                ]
             ),
         )
+
+        with patch(
+            "app.services.whatsapp_ingest._job_exists_by_whatsapp_id",
+            return_value=False,
+        ):
+            resp = client.post(
+                "/api/v1/whatsapp/scraper-webhook",
+                headers=_headers(),
+                json=_payload(
+                    body=JOB_TEXT,
+                    msg_id="wa-other-channel-99",
+                    channel=CHANNEL_B,
+                ),
+            )
         assert resp.status_code == 200
         body = resp.json()
-        assert body.get("ingest_result") == "duplicate" or body.get("status") == "duplicate"
+        assert body.get("ingest_result") == "merged" or body.get("status") == "merged"
 
     @patch("app.api.v1.jobs.generate_embedding", new_callable=AsyncMock)
     @patch("app.api.v1.jobs.resolve_skill_ids", new_callable=AsyncMock)

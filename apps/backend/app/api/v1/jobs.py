@@ -38,6 +38,12 @@ from app.services.deep_scrape_tick import run_deep_enrich_tick
 from app.services.description_body_extractor import merge_description_extraction
 from app.services.description_markdown import description_to_markdown
 from app.services.job_activation import apply_review_state_to_row, compute_review_state
+from app.services.job_publication import (
+    PUBLIC_JOBS_OR_FILTER,
+    apply_contact_activation,
+    is_publicly_listable,
+)
+from app.services.job_scraping_sources import merge_scraping_sources
 from app.services.job_deadline_extractor import extract_closing_date_llm
 from app.services.skill_resolver import resolve_skill_ids
 from app.services import skills_dictionary
@@ -274,6 +280,7 @@ async def list_jobs(
         .select("*", count="estimated")
         .eq("is_active", True)
         .eq("is_review_required", False)
+        .or_(PUBLIC_JOBS_OR_FILTER)
     )
 
     if sort_mode == "closing":
@@ -442,6 +449,8 @@ async def list_jobs_for_sitemap(supabase=Depends(get_supabase)):
         supabase.table("jobs")
         .select("id, updated_at, posted_at")
         .eq("is_active", True)
+        .eq("is_review_required", False)
+        .or_(PUBLIC_JOBS_OR_FILTER)
         .order("posted_at", desc=True)
         .limit(50000)
         .execute()
@@ -515,6 +524,8 @@ async def unsave_job(
 async def get_job(job_id: str, supabase=Depends(get_supabase)):
     result = supabase.table("jobs").select("*, job_skills(skills(name))").eq("id", job_id).single().execute()
     if not result.data:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if not is_publicly_listable(result.data):
         raise HTTPException(status_code=404, detail="Job not found")
     return hydrate_job_row(result.data)
 
@@ -621,6 +632,59 @@ def _build_aggregator_blacklist(settings: Settings) -> list[str]:
     ]
 
 
+def _merge_contact_fields(existing: dict, incoming: dict) -> dict[str, object]:
+    """Fill missing apply contacts on an existing row from a new scrape."""
+    patch: dict[str, object] = {}
+    for field in ("apply_url", "apply_email", "contact_phone"):
+        if not existing.get(field) and incoming.get(field):
+            patch[field] = incoming[field]
+    return patch
+
+
+async def _merge_duplicate_ingest(
+    supabase,
+    job_id: str,
+    job: JobCreate,
+    incoming: dict,
+) -> tuple[str, str]:
+    """Append provenance + contacts to an existing fingerprint match."""
+    from datetime import datetime, timezone
+
+    row_res = (
+        supabase.table("jobs")
+        .select(
+            "id, apply_url, apply_email, contact_phone, admin_published, "
+            "scraping_sources, source_url"
+        )
+        .eq("id", job_id)
+        .limit(1)
+        .execute()
+    )
+    if not row_res.data:
+        return "error", "duplicate_job_missing"
+
+    existing = row_res.data[0]
+    now = datetime.now(timezone.utc).isoformat()
+    patch: dict[str, object] = {"updated_at": now}
+
+    sources = merge_scraping_sources(
+        existing.get("scraping_sources"),
+        job.source_url or incoming.get("source_url"),
+        scraped_at=now,
+    )
+    if job.source_url and not existing.get("source_url"):
+        patch["source_url"] = job.source_url
+    patch["scraping_sources"] = sources
+    patch.update(_merge_contact_fields(existing, incoming))
+
+    merged_row = {**existing, **patch}
+    apply_contact_activation(merged_row)
+    patch["is_active"] = merged_row["is_active"]
+
+    supabase.table("jobs").update(patch).eq("id", job_id).execute()
+    return "merged", ""
+
+
 async def _ingest_one_job(
     supabase,
     job: JobCreate,
@@ -630,7 +694,8 @@ async def _ingest_one_job(
 
     Returns (status, detail) where status is one of:
       - "ingested" — row inserted, fingerprint stored, skills linked.
-      - "duplicate" — fingerprint already in job_fingerprints; no write.
+      - "merged" — fingerprint match; provenance/contacts updated on existing row.
+      - "duplicate" — reserved for legacy no-op duplicates (unused after merge path).
       - "skipped" — apply_url/source_url matched the aggregator blacklist.
       - "error" — anything else; detail carries the short reason.
 
@@ -683,15 +748,6 @@ async def _ingest_one_job(
             .eq("fingerprint", fp)
             .execute()
         )
-        if existing.data:
-            return "duplicate", ""
-
-        try:
-            embedding = await generate_embedding(
-                f"{job.title} {job.company or ''} {job.description}"
-            )
-        except Exception as exc:
-            return "error", f"embedding_failed: {type(exc).__name__}"
 
         job_data = job.model_dump(exclude_none=True, mode="json")
         skills_required = job_data.pop("skills_required", [])
@@ -718,17 +774,41 @@ async def _ingest_one_job(
         job_data["description_markdown"] = description_to_markdown(
             job_data.get("description")
         )
+
+        if existing.data:
+            return await _merge_duplicate_ingest(
+                supabase,
+                existing.data[0]["job_id"],
+                job,
+                job_data,
+            )
+
+        try:
+            embedding = await generate_embedding(
+                f"{job.title} {job.company or ''} {job.description}"
+            )
+        except Exception as exc:
+            return "error", f"embedding_failed: {type(exc).__name__}"
+
         job_data["embedding"] = embedding
+        if job.source_url:
+            job_data["scraping_sources"] = merge_scraping_sources(
+                job_data.get("scraping_sources"),
+                job.source_url,
+            )
         review = compute_review_state(
             apply_url=job_data.get("apply_url"),
             apply_email=job_data.get("apply_email"),
+            contact_phone=job_data.get("contact_phone"),
             closing_date=job_data.get("closing_date"),
             application_instructions=job.application_instructions,
             instructions_have_contact=_instructions_have_contact(
                 job.application_instructions
             ),
+            admin_published=job_data.get("admin_published"),
         )
         apply_review_state_to_row(job_data, review)
+        apply_contact_activation(job_data)
         review_reasons = (
             [p.strip() for p in (job_data.get("admin_review_reason") or "").split(",") if p.strip()]
         )
@@ -814,6 +894,7 @@ async def ingest_jobs(
 
     ingested = 0
     duplicates = 0
+    merged = 0
     skipped = 0
     errors: list[JobIngestErrorItem] = []
 
@@ -821,6 +902,8 @@ async def ingest_jobs(
         status, detail = await _ingest_one_job(supabase, job, aggregator_blacklist)
         if status == "ingested":
             ingested += 1
+        elif status == "merged":
+            merged += 1
         elif status == "duplicate":
             duplicates += 1
         elif status == "skipped":
@@ -835,6 +918,7 @@ async def ingest_jobs(
     return JobIngestResponse(
         ingested=ingested,
         duplicates=duplicates,
+        merged=merged,
         skipped=skipped,
         errors=errors[:50],  # cap to keep response size bounded
     )

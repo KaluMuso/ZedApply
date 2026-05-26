@@ -81,7 +81,9 @@ async def update_review_job(
     patch = body.model_dump(exclude_unset=True, exclude_none=True, mode="json")
     existing = (
         supabase.table("jobs")
-        .select("apply_url, apply_email, closing_date, review_reason")
+        .select(
+            "apply_url, apply_email, contact_phone, closing_date, review_reason"
+        )
         .eq("id", job_id)
         .single()
         .execute()
@@ -95,6 +97,7 @@ async def update_review_job(
         merged.get("apply_url"),
         merged.get("apply_email"),
         merged.get("closing_date"),
+        merged.get("contact_phone"),
     )
     patch.update(
         {

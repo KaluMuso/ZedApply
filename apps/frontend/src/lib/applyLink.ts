@@ -7,6 +7,7 @@ export interface ApplyJobFields {
   company?: string | null;
   apply_url?: string | null;
   apply_email?: string | null;
+  contact_phone?: string | null;
   source_url?: string | null;
   apply_source?: string | null;
 }
@@ -43,30 +44,24 @@ function applySourceFromField(
   return field === "url" ? "direct" : "direct";
 }
 
-/** Resolve primary + optional secondary apply affordances. */
-export function resolveApplyAction(job: ApplyJobFields): ApplyAction {
+function normalizePhone(raw: string): string | null {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("260") && digits.length === 12) return `+${digits}`;
+  if (digits.length === 10 && digits.startsWith("0")) return `+260${digits.slice(1)}`;
+  if (digits.length === 9) return `+260${digits}`;
+  return null;
+}
+
+/** Resolve primary apply affordance for compact job cards. */
+export function resolveApplyAction(job: ApplyJobFields): ApplyAction | null {
   const hasUrl = Boolean(job.apply_url && /^https?:\/\//i.test(job.apply_url));
   const hasEmail = Boolean(job.apply_email?.trim());
-
-  if (hasUrl && hasEmail) {
-    return {
-      href: job.apply_url as string,
-      label: "Apply now",
-      applySource: applySourceFromField(job, "url"),
-      external: true,
-      secondary: {
-        href: mailtoApply(job.apply_email as string, job),
-        label: "Or email instead →",
-        applySource: applySourceFromField(job, "email"),
-        external: false,
-      },
-    };
-  }
+  const phone = job.contact_phone ? normalizePhone(job.contact_phone) : null;
 
   if (hasUrl) {
     return {
       href: job.apply_url as string,
-      label: "Apply now",
+      label: "Apply on company site",
       applySource: applySourceFromField(job, "url"),
       external: true,
     };
@@ -75,25 +70,38 @@ export function resolveApplyAction(job: ApplyJobFields): ApplyAction {
   if (hasEmail) {
     return {
       href: mailtoApply(job.apply_email as string, job),
-      label: "Apply via email",
+      label: "Email application",
       applySource: applySourceFromField(job, "email"),
       external: false,
     };
   }
 
-  if (job.source_url && /^https?:\/\//i.test(job.source_url)) {
+  if (phone) {
     return {
-      href: job.source_url,
-      label: "Apply via source",
-      applySource: "source_fallback",
-      external: true,
+      href: `tel:${phone}`,
+      label: "Call/WhatsApp",
+      applySource: "direct",
+      external: false,
+      secondary: {
+        href: `https://wa.me/${phone.replace(/\D/g, "")}`,
+        label: "WhatsApp",
+        applySource: "direct",
+        external: true,
+      },
     };
   }
 
-  return {
-    href: SUPPORT_MAIL,
-    label: "Contact Support",
-    applySource: "source_fallback",
-    external: false,
-  };
+  return null;
+}
+
+/** Legacy fallback when no structured contact exists (admin-only / stale clients). */
+export function resolveApplyActionOrSupport(job: ApplyJobFields): ApplyAction {
+  return (
+    resolveApplyAction(job) ?? {
+      href: SUPPORT_MAIL,
+      label: "Contact Support",
+      applySource: "source_fallback",
+      external: false,
+    }
+  );
 }

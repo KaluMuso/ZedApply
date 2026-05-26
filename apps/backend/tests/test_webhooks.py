@@ -399,6 +399,22 @@ def test_whatsapp_channel_rebroadcast_returns_duplicate(
         "job_fingerprints",
         FakeSupabaseQuery(data=[{"job_id": "job-from-yesterday"}]),
     )
+    fake_supabase.set_table(
+        "jobs",
+        FakeSupabaseQuery(
+            data=[
+                {
+                    "id": "job-from-yesterday",
+                    "apply_url": None,
+                    "apply_email": "careers@zanaco.co.zm",
+                    "contact_phone": None,
+                    "admin_published": None,
+                    "scraping_sources": [],
+                    "source_url": None,
+                }
+            ]
+        ),
+    )
 
     payload = {
         "title": "Accountant",
@@ -433,8 +449,8 @@ def test_whatsapp_channel_rebroadcast_returns_duplicate(
 
     assert resp.status_code == 200
     body = resp.json()
-    assert body["ingest_result"] == "duplicate"
-    # Critical: dedup short-circuited BEFORE the expensive embedding call.
+    assert body["ingest_result"] == "merged"
+    # Critical: fingerprint merge short-circuits BEFORE the expensive embedding call.
     mock_embed.assert_not_called()
 
 

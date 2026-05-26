@@ -897,6 +897,20 @@ components:
           type: boolean
           default: false
           description: True after deep-scrape enrichment was applied.
+        admin_published:
+          type: boolean
+          nullable: true
+          description: Admin force-publish without extracted apply contacts.
+        scraping_sources:
+          type: array
+          description: Multi-aggregator provenance ({url, source_type, scraped_at}).
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              url: { type: string, format: uri }
+              source_type: { type: string }
+              scraped_at: { type: string, format: date-time }
 
     JobEnrichPatch:
       type: object
@@ -1032,6 +1046,9 @@ components:
         equity_offered: { type: boolean }
         salary_text: { type: string, maxLength: 500 }
         is_active: { type: boolean, description: "Re-activate a soft-deleted job by PATCHing true" }
+        admin_published:
+          type: boolean
+          description: Force-publish on the public site without extracted contacts.
         source_platform: { type: string, maxLength: 64 }
         original_source_url: { type: string, format: uri }
         contact_email: { type: string, format: email }

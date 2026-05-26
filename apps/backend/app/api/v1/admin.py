@@ -1314,6 +1314,27 @@ async def update_admin_job(
                 {"job_id": job_id, "skill_id": sid}
             ).execute()
 
+    from app.services.job_activation import can_publish_after_admin_edit
+    from app.services.job_publication import apply_contact_activation
+
+    merged_preview = {**existing, **update_payload}
+    contact_touched = bool(
+        changed_set
+        & {"apply_url", "apply_email", "contact_phone", "admin_published"}
+    )
+    if contact_touched or "admin_published" in body.model_fields_set:
+        apply_contact_activation(merged_preview)
+        update_payload["is_active"] = merged_preview["is_active"]
+        if can_publish_after_admin_edit(
+            merged_preview.get("apply_url"),
+            merged_preview.get("apply_email"),
+            merged_preview.get("closing_date"),
+            merged_preview.get("contact_phone"),
+        ):
+            update_payload["is_review_required"] = False
+            update_payload["review_reason"] = None
+            update_payload["admin_review_reason"] = None
+
     update_payload["updated_by_user_id"] = current_user["id"]
     update_payload["updated_at"] = datetime.now(timezone.utc).isoformat()
 

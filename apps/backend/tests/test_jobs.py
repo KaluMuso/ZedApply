@@ -500,11 +500,27 @@ class TestJobIngest:
     def test_ingest_dedupes_existing_fingerprint(
         self, mock_embed, client, fake_supabase
     ):
-        """Job already in job_fingerprints → counted as duplicate, not re-inserted."""
+        """Fingerprint match merges provenance onto the existing row."""
         mock_embed.return_value = [0.1] * 768
         fake_supabase.set_table(
             "job_fingerprints",
             FakeSupabaseQuery(data=[{"job_id": "already-here"}]),
+        )
+        fake_supabase.set_table(
+            "jobs",
+            FakeSupabaseQuery(
+                data=[
+                    {
+                        "id": "already-here",
+                        "apply_url": None,
+                        "apply_email": None,
+                        "contact_phone": None,
+                        "admin_published": None,
+                        "scraping_sources": [],
+                        "source_url": None,
+                    }
+                ]
+            ),
         )
 
         resp = client.post(
@@ -514,7 +530,8 @@ class TestJobIngest:
         assert resp.status_code == 200
         body = resp.json()
         assert body["ingested"] == 0
-        assert body["duplicates"] == 1
+        assert body["merged"] == 1
+        assert body["duplicates"] == 0
 
     @patch("app.api.v1.jobs.generate_embedding", new_callable=AsyncMock)
     def test_ingest_skips_aggregator_cross_listing(
