@@ -9,10 +9,9 @@ describe("resolveApplyAction", () => {
       apply_email: "recruitments@mikameats.com",
       apply_source: "description_email",
     });
-    expect(action.label).toBe("Apply via email");
-    expect(action.href).toMatch(/^mailto:recruitments@mikameats\.com/);
-    expect(action.href).toContain("subject=");
-    expect(action.external).toBe(false);
+    expect(action?.label).toBe("Email application");
+    expect(action?.href).toMatch(/^mailto:recruitments@mikameats\.com/);
+    expect(action?.external).toBe(false);
   });
 
   it("apply_link_url_mode_opens_external", () => {
@@ -20,19 +19,26 @@ describe("resolveApplyAction", () => {
       title: "Analyst",
       apply_url: "https://jobs.example.com/apply",
     });
-    expect(action.label).toBe("Apply now");
-    expect(action.href).toBe("https://jobs.example.com/apply");
-    expect(action.external).toBe(true);
+    expect(action?.label).toBe("Apply on company site");
+    expect(action?.href).toBe("https://jobs.example.com/apply");
+    expect(action?.external).toBe(true);
   });
 
-  it("prefers_url_with_email_secondary", () => {
+  it("returns_null_when_no_structured_contact", () => {
+    const action = resolveApplyAction({
+      title: "Role",
+      source_url: "https://aggregator.example/job/1",
+    });
+    expect(action).toBeNull();
+  });
+
+  it("prefers_url_over_email", () => {
     const action = resolveApplyAction({
       title: "Role",
       apply_url: "https://jobs.example.com/apply",
       apply_email: "hr@co.com",
     });
-    expect(action.label).toBe("Apply now");
-    expect(action.secondary?.label).toBe("Or email instead →");
-    expect(action.secondary?.href).toMatch(/^mailto:hr@co\.com/);
+    expect(action?.label).toBe("Apply on company site");
+    expect(action?.secondary).toBeUndefined();
   });
 });

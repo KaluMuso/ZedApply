@@ -6,6 +6,7 @@ import {
   jobs as jobsApi,
   type AdminJobRow,
   type AdminJobCreate,
+  type ScrapingSourceEntry,
 } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -24,8 +25,40 @@ const EMPTY_FORM: AdminJobCreate = {
   source: "manual",
   apply_url: "",
   apply_email: "",
+  contact_phone: "",
   closing_date: "",
+  admin_published: false,
 };
+
+function sourceChipLabel(entry: ScrapingSourceEntry): string {
+  const labels: Record<string, string> = {
+    jobwebzambia: "jobwebzambia",
+    gozambiajobs: "gozambiajobs",
+    jobsearchzambia: "jobsearchzambia",
+    whatsapp: "whatsapp",
+  };
+  return labels[entry.source_type] ?? entry.source_type;
+}
+
+function SourcesList({ sources }: { sources: ScrapingSourceEntry[] }) {
+  if (!sources.length) return null;
+  return (
+    <div className="sm:col-span-2 flex flex-wrap items-center gap-2 text-xs">
+      <span className="text-muted-foreground">Sources:</span>
+      {sources.map((s) => (
+        <a
+          key={s.url}
+          href={s.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-0.5 rounded-md border border-border px-2 py-0.5 hover:bg-muted"
+        >
+          {sourceChipLabel(s)} ↗
+        </a>
+      ))}
+    </div>
+  );
+}
 
 export function JobsTab({ token }: { token: string }) {
   const [data, setData] = useState<AdminJobRow[]>([]);
@@ -46,6 +79,8 @@ export function JobsTab({ token }: { token: string }) {
   const [editForm, setEditForm] = useState<AdminJobCreate>(EMPTY_FORM);
   const [editLoading, setEditLoading] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
+  const [editSources, setEditSources] = useState<ScrapingSourceEntry[]>([]);
+  const [forcePublish, setForcePublish] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -125,8 +160,12 @@ export function JobsTab({ token }: { token: string }) {
         source: (full.source as AdminJobCreate["source"]) ?? "manual",
         apply_url: full.apply_url ?? "",
         apply_email: full.apply_email ?? "",
+        contact_phone: full.contact_phone ?? "",
         closing_date: full.closing_date ? full.closing_date.slice(0, 10) : "",
+        admin_published: full.admin_published ?? false,
       });
+      setEditSources(full.scraping_sources ?? []);
+      setForcePublish(full.admin_published === true);
     } catch (e) {
       notify.error(
         e instanceof Error ? e.message : "Failed to load job for editing"
@@ -153,7 +192,10 @@ export function JobsTab({ token }: { token: string }) {
       // Strip empty-string optionals so the PATCH doesn't nullify fields
       // we don't intend to change. The backend treats missing keys as
       // "leave alone" and explicit nulls as "clear".
-      const payload: Partial<AdminJobCreate> = { ...editForm };
+      const payload: Partial<AdminJobCreate> & { admin_published?: boolean } = {
+        ...editForm,
+        admin_published: forcePublish,
+      };
       (Object.keys(payload) as (keyof AdminJobCreate)[]).forEach((k) => {
         if (payload[k] === "") delete payload[k];
       });
@@ -161,6 +203,8 @@ export function JobsTab({ token }: { token: string }) {
       notify.custom.success("Job updated.");
       setEditingId(null);
       setEditForm(EMPTY_FORM);
+      setEditSources([]);
+      setForcePublish(false);
       load();
     } catch (err) {
       notify.error(err instanceof Error ? err.message : "Update failed");
@@ -266,6 +310,11 @@ export function JobsTab({ token }: { token: string }) {
               onChange={(e) => setForm({ ...form, apply_email: e.target.value })}
             />
             <Input
+              placeholder="Contact phone (+260…)"
+              value={form.contact_phone ?? ""}
+              onChange={(e) => setForm({ ...form, contact_phone: e.target.value })}
+            />
+            <Input
               placeholder="Closing date (YYYY-MM-DD)"
               type="date"
               value={form.closing_date}
@@ -355,12 +404,30 @@ export function JobsTab({ token }: { token: string }) {
               disabled={editLoading}
             />
             <Input
+              placeholder="Contact phone (+260…)"
+              value={editForm.contact_phone ?? ""}
+              onChange={(e) =>
+                setEditForm({ ...editForm, contact_phone: e.target.value })
+              }
+              disabled={editLoading}
+            />
+            <Input
               placeholder="Closing date (YYYY-MM-DD)"
               type="date"
               value={editForm.closing_date}
               onChange={(e) => setEditForm({ ...editForm, closing_date: e.target.value })}
               disabled={editLoading}
             />
+            <SourcesList sources={editSources} />
+            <label className="sm:col-span-2 flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={forcePublish}
+                onChange={(e) => setForcePublish(e.target.checked)}
+                disabled={editLoading}
+              />
+              Force publish (show on public site without extracted contacts)
+            </label>
             <textarea
               className="sm:col-span-2 min-h-[110px] rounded-md border border-input bg-background p-2 text-sm"
               placeholder="Description (min 20 chars)"

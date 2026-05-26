@@ -14,10 +14,15 @@ class ReviewState(BaseModel):
     admin_review_reason: Optional[str] = None
 
 
-def _has_apply_path(apply_url: str | None, apply_email: str | None) -> bool:
+def _has_apply_path(
+    apply_url: str | None,
+    apply_email: str | None,
+    contact_phone: str | None = None,
+) -> bool:
     return bool(
         (apply_url and str(apply_url).strip())
         or (apply_email and str(apply_email).strip())
+        or (contact_phone and str(contact_phone).strip())
     )
 
 
@@ -25,12 +30,18 @@ def compute_review_state(
     *,
     apply_url: str | None,
     apply_email: str | None,
+    contact_phone: str | None = None,
     closing_date: date | str | None,
     application_instructions: str | None = None,
     instructions_have_contact: bool = False,
+    admin_published: bool | None = None,
 ) -> ReviewState:
     """Apply Track 4e visibility rules for ingest and admin promote."""
-    has_apply = _has_apply_path(apply_url, apply_email) or instructions_have_contact
+    has_apply = (
+        _has_apply_path(apply_url, apply_email, contact_phone)
+        or instructions_have_contact
+        or admin_published is True
+    )
     has_deadline = closing_date is not None and str(closing_date).strip() != ""
 
     reasons: list[str] = []
@@ -49,7 +60,14 @@ def compute_review_state(
         "both": "missing_apply_link,missing_contact,missing_deadline",
     }[review_reason]
 
-    is_active = has_apply
+    from app.services.job_publication import compute_contact_is_active
+
+    is_active = compute_contact_is_active(
+        apply_url=apply_url,
+        apply_email=apply_email,
+        contact_phone=contact_phone,
+        admin_published=admin_published,
+    )
     return ReviewState(
         is_active=is_active,
         is_review_required=True,
@@ -71,6 +89,10 @@ def can_publish_after_admin_edit(
     apply_url: str | None,
     apply_email: str | None,
     closing_date: date | str | None,
+    contact_phone: str | None = None,
 ) -> bool:
     """True when admin filled enough to clear review and go live."""
-    return _has_apply_path(apply_url, apply_email) and closing_date is not None
+    return (
+        _has_apply_path(apply_url, apply_email, contact_phone)
+        and closing_date is not None
+    )

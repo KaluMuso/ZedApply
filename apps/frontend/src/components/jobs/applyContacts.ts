@@ -19,11 +19,6 @@ export interface ApplyContactMethod {
   href?: string;
 }
 
-const PHONE_RE =
-  /(?:\+260|0)[\s.-]?(?:\d[\s.-]?){8}\d|\+260\d{9}|0\d{9}/gi;
-
-const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-
 function normalizeZambianPhone(raw: string): string | null {
   const digits = raw.replace(/\D/g, "");
   if (digits.startsWith("260") && digits.length === 12) {
@@ -38,17 +33,7 @@ function normalizeZambianPhone(raw: string): string | null {
   return null;
 }
 
-function extractPhoneFromText(text: string): string | null {
-  const matches = text.match(PHONE_RE);
-  if (!matches) return null;
-  for (const m of matches) {
-    const normalized = normalizeZambianPhone(m);
-    if (normalized) return normalized;
-  }
-  return null;
-}
-
-/** Build deduplicated apply contact rows for the Apply modal. */
+/** Build apply contact rows for the Apply modal and job detail actions. */
 export function buildApplyContactMethods(job: ApplyModalJob): ApplyContactMethod[] {
   const methods: ApplyContactMethod[] = [];
   const seen = new Set<string>();
@@ -60,39 +45,36 @@ export function buildApplyContactMethods(job: ApplyModalJob): ApplyContactMethod
     methods.push(method);
   };
 
-  const email = job.apply_email?.trim();
-  if (email) {
-    push({
-      kind: "email",
-      label: "Email",
-      display: email,
-      copyValue: email,
-      href: `mailto:${email}`,
-    });
-  }
-
   const url = job.apply_url?.trim();
   if (url && /^https?:\/\//i.test(url)) {
     push({
       kind: "website",
-      label: "Website",
+      label: "Apply on company site",
       display: url.replace(/^https?:\/\//i, "").replace(/\/$/, ""),
       copyValue: url,
       href: url,
     });
   }
 
+  const email = job.apply_email?.trim();
+  if (email) {
+    push({
+      kind: "email",
+      label: "Email application",
+      display: email,
+      copyValue: email,
+      href: `mailto:${email}`,
+    });
+  }
+
   const phone =
-    (job.contact_phone && normalizeZambianPhone(job.contact_phone)) ||
-    extractPhoneFromText(
-      [job.description, job.application_instructions].filter(Boolean).join("\n"),
-    );
+    job.contact_phone && normalizeZambianPhone(job.contact_phone);
 
   if (phone) {
     const waDigits = phone.replace(/\D/g, "");
     push({
       kind: "phone",
-      label: "Phone",
+      label: "Call",
       display: phone,
       copyValue: phone,
       href: `tel:${phone}`,
@@ -106,21 +88,10 @@ export function buildApplyContactMethods(job: ApplyModalJob): ApplyContactMethod
     });
   }
 
-  if (methods.length === 0) {
-    const hay = [job.description, job.application_instructions]
-      .filter(Boolean)
-      .join("\n");
-    const extraEmail = hay.match(EMAIL_RE)?.[0];
-    if (extraEmail && !email) {
-      push({
-        kind: "email",
-        label: "Email",
-        display: extraEmail,
-        copyValue: extraEmail,
-        href: `mailto:${extraEmail}`,
-      });
-    }
-  }
-
   return methods;
+}
+
+/** True when the job has at least one listable apply channel in structured fields. */
+export function hasStructuredApplyContact(job: ApplyModalJob): boolean {
+  return buildApplyContactMethods(job).length > 0;
 }

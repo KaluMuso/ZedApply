@@ -19,7 +19,7 @@ export interface MatchCardProps {
 
 export function MatchCard({ match, expired = false, onApplyClick }: MatchCardProps) {
   const apply = resolveApplyAction(match.job as ApplyJobFields);
-  const useExternalLink = apply.external && !onApplyClick;
+  const useExternalLink = Boolean(apply?.external && !onApplyClick);
 
   return (
     <article
@@ -83,7 +83,7 @@ export function MatchCard({ match, expired = false, onApplyClick }: MatchCardPro
             >
               Application closed
             </button>
-          ) : useExternalLink ? (
+          ) : apply && useExternalLink ? (
             <a
               href={apply.href}
               target="_blank"
@@ -93,16 +93,16 @@ export function MatchCard({ match, expired = false, onApplyClick }: MatchCardPro
             >
               {apply.label}
             </a>
-          ) : (
+          ) : apply ? (
             <button
               type="button"
               className="btn btn-primary btn-sm w-40"
               onClick={onApplyClick}
               data-testid="match-apply-active"
             >
-              Apply
+              {apply.label}
             </button>
-          )}
+          ) : null}
         </div>
       </div>
     </article>

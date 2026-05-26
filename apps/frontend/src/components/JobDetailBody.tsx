@@ -18,7 +18,7 @@ import {
   PAY_FREQUENCY_LABEL,
   formatSalary,
 } from "@/components/jobs/jobDetailFormatters";
-import { resolveApplyAction } from "@/lib/applyLink";
+import { buildApplyContactMethods } from "@/components/jobs/applyContacts";
 import { cn } from "@/lib/utils";
 
 interface JobDetailBodyProps {
@@ -86,11 +86,7 @@ export function JobDetailBody({
   const [coverOpen, setCoverOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const applyAction = resolveApplyAction(job);
-  const applyLabel =
-    applyAction.external && job.apply_url
-      ? "Apply on company site"
-      : "Apply";
+  const applyMethods = buildApplyContactMethods(job);
 
   const jobTypeLabel = job.employment_type
     ? EMPLOYMENT_TYPE_LABEL[job.employment_type] || job.employment_type
@@ -114,14 +110,6 @@ export function JobDetailBody({
       job.bonus_structure ||
       job.equity_offered != null,
   );
-
-  const handleApply = () => {
-    if (applyAction.external) {
-      window.open(applyAction.href, "_blank", "noopener,noreferrer");
-      return;
-    }
-    setApplyOpen(true);
-  };
 
   return (
     <div className="p-6 md:p-8">
@@ -193,10 +181,30 @@ export function JobDetailBody({
         <div className="order-2 lg:order-1 min-w-0">
           {/* Action row */}
           <div className="flex flex-col sm:flex-row flex-wrap gap-3 mb-8">
-            <button type="button" className="btn btn-primary flex-1 sm:flex-none sm:min-w-[200px]" onClick={handleApply}>
-              {applyLabel}
-              {applyAction.external && <Icon name="external" size={14} />}
-            </button>
+            {applyMethods.map((method) =>
+              method.href ? (
+                <a
+                  key={`${method.kind}-${method.copyValue}`}
+                  href={method.href}
+                  className="btn btn-primary flex-1 sm:flex-none sm:min-w-[160px] justify-center"
+                  target={
+                    method.kind === "website" || method.kind === "whatsapp"
+                      ? "_blank"
+                      : undefined
+                  }
+                  rel={
+                    method.kind === "website" || method.kind === "whatsapp"
+                      ? "noopener noreferrer"
+                      : undefined
+                  }
+                >
+                  {method.label}
+                  {(method.kind === "website" || method.kind === "whatsapp") && (
+                    <Icon name="external" size={14} />
+                  )}
+                </a>
+              ) : null,
+            )}
             <SaveJobButton
               jobId={job.id}
               saved={jobSaved}

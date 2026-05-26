@@ -115,6 +115,7 @@ async def ingest_whatsapp_classification(
     blacklist = _build_aggregator_blacklist(settings)
     ingested = 0
     duplicates = 0
+    merged = 0
     errors = 0
     titles: list[str] = []
 
@@ -123,6 +124,8 @@ async def ingest_whatsapp_classification(
         if result == "ingested":
             ingested += 1
             titles.append(job_create.title)
+        elif result == "merged":
+            merged += 1
         elif result == "duplicate":
             duplicates += 1
         else:
@@ -135,6 +138,8 @@ async def ingest_whatsapp_classification(
             )
 
     if ingested == 0:
+        if merged > 0 and errors == 0:
+            return {"status": "ok", "ingest_result": "merged"}
         if duplicates > 0 and errors == 0:
             return {"status": "ok", "ingest_result": "duplicate"}
         return {"status": "validation_failed" if errors else "not_ingested"}

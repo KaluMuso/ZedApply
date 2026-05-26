@@ -177,7 +177,7 @@ def _job(**overrides):
     [
         (_job(apply_url="https://company.test/apply", apply_email="hr@test.com", application_instructions="Call +260971234567"), True),
         (_job(apply_url="https://company.test/apply", apply_email="hr@test.com"), True),
-        (_job(application_instructions="Email careers@test.com"), True),
+        (_job(application_instructions="Email careers@test.com"), False),
         (_job(closing_date=None), False),
     ],
 )
@@ -198,9 +198,13 @@ def test_ingest_sets_listing_eligibility(job, active):
     if active:
         assert inserted["admin_review_reason"] is None
         assert supabase.rows("analytics_events") == []
-    else:
+    elif job.closing_date is None:
         assert inserted["admin_review_reason"] == "missing_apply_link,missing_contact,missing_deadline"
         assert supabase.rows("analytics_events")[0]["event"] == "job_eligibility_flagged"
+    else:
+        # Instructions-only contact no longer activates public listings.
+        assert inserted.get("admin_review_reason") is None
+        assert supabase.rows("analytics_events") == []
 
 
 def test_match_crediting_unique_pairs_and_new_only():

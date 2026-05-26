@@ -658,6 +658,12 @@ export interface AdminSubscriptionList {
   pages: number;
 }
 
+export interface ScrapingSourceEntry {
+  url: string;
+  source_type: string;
+  scraped_at: string;
+}
+
 export interface AdminJobCreate {
   title: string;
   company?: string;
@@ -666,9 +672,11 @@ export interface AdminJobCreate {
   source: "manual" | "scraper" | "ocr" | "partner";
   apply_url?: string;
   apply_email?: string;
+  contact_phone?: string;
   closing_date?: string;
   salary_min?: number;
   salary_max?: number;
+  admin_published?: boolean;
 }
 
 export const admin = {
@@ -844,7 +852,7 @@ export const admin = {
       }
     ),
   createJob: (token: string, data: AdminJobCreate) =>
-    apiFetch<AdminJobRow>("/admin/jobs", {
+    apiFetch<Job>("/admin/jobs", {
       method: "POST",
       token,
       body: JSON.stringify(data),
@@ -852,9 +860,9 @@ export const admin = {
   updateJob: (
     token: string,
     jobId: string,
-    data: Partial<AdminJobCreate> & { is_active?: boolean }
+    data: Partial<AdminJobCreate> & { is_active?: boolean; admin_published?: boolean }
   ) =>
-    apiFetch<AdminJobRow>(`/admin/jobs/${encodeURIComponent(jobId)}`, {
+    apiFetch<Job>(`/admin/jobs/${encodeURIComponent(jobId)}`, {
       method: "PATCH",
       token,
       body: JSON.stringify(data),
@@ -1040,8 +1048,11 @@ export interface Job {
   source_url?: string | null;
   apply_url?: string | null;
   apply_email?: string | null;
+  contact_phone?: string | null;
   apply_source?: string | null;
   description_markdown?: string | null;
+  admin_published?: boolean | null;
+  scraping_sources?: ScrapingSourceEntry[] | null;
 
   // ── task #60: richer job ad shape ───────────────────────────────────
   // All optional + nullable so legacy rows (pre-migration 016) still

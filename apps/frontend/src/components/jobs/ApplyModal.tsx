@@ -79,12 +79,7 @@ export function ApplyModal({ job, open, onOpenChange }: ApplyModalProps) {
           </DialogDescription>
         </DialogHeader>
 
-        {methods.length === 0 ? (
-          <p className="text-sm text-muted-foreground dark:text-muted-foreground">
-            No direct contact details were listed for this role. Check the job
-            description below or reach out via the original listing.
-          </p>
-        ) : (
+        {methods.length > 0 ? (
           <ul className="flex flex-col gap-3">
             {methods.map((method) => {
               const key = `${method.kind}-${method.copyValue}`;
@@ -137,7 +132,7 @@ export function ApplyModal({ job, open, onOpenChange }: ApplyModalProps) {
               );
             })}
           </ul>
-        )}
+        ) : null}
 
         {job?.application_instructions ? (
           <p className="text-xs leading-relaxed text-muted-foreground dark:text-muted-foreground border-t border-border pt-3 dark:border-border">
