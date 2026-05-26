@@ -37,6 +37,18 @@
 - **Profile hydration:** `mapProfileToDraft()` + `useHydrateBuilderFromProfile()` from `GET /profile` → `cv_sections`
 - **Referral card:** `ProfileReferralCard` on profile sidebar (invite link with `ref` query param)
 
+### Fourth round (2026-05-26) — referral tracking end-to-end
+
+| Layer | Change |
+|-------|--------|
+| **DB** | `067_user_referrals.sql` — `users.referral_code`, `users.referred_by_user_id`, `referral_events` |
+| **Backend** | `app/services/referral.py`; OTP verify `referral_ref`; profile returns code + signup count |
+| **Frontend** | `sessionStorage` for `?ref=`; verify sends `referral_ref`; profile card uses API fields |
+| **Contract** | `docs/openapi.yaml` — `OTPVerify.referral_ref`, `UserProfile.referral_*` |
+
+**Ops:** Apply migration `067` on Supabase before prod deploy.  
+**Future:** Mark `referral_events.status` → `qualified` when referred user uploads CV; reward credits on paid tiers.
+
 ---
 
 ## Executive summary

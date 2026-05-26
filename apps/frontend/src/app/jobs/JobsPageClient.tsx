@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   jobs as jobsApi,
@@ -304,21 +305,41 @@ export default function JobsPageClient() {
   return (
     <div className="max-w-[1280px] mx-auto px-6 py-8 md:py-12">
       {/* Header */}
-      <div className="mb-8">
-        <div className="eyebrow mb-2">Browse opportunities</div>
-        <h1
-          className="font-display"
-          style={{
-            fontSize: "clamp(36px, 5vw, 56px)",
-            letterSpacing: "-0.025em",
-            lineHeight: 1,
-          }}
-        >
-          <Counter to={total} /> open{" "}
-          <span className="italic" style={{ color: "var(--copper-500)" }}>
-            roles
-          </span>
-        </h1>
+      <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <div className="eyebrow mb-2">All jobs across Zambia</div>
+          <h1
+            className="font-display"
+            style={{
+              fontSize: "clamp(36px, 5vw, 56px)",
+              letterSpacing: "-0.025em",
+              lineHeight: 1,
+            }}
+          >
+            <Counter to={total} /> open{" "}
+            <span className="italic" style={{ color: "var(--copper-500)" }}>
+              roles
+            </span>
+          </h1>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            type="button"
+            className="btn btn-outline btn-sm gap-1.5"
+            onClick={() => onListPresetChange("saved")}
+            aria-pressed={listPreset === "saved"}
+          >
+            <Icon name="bookmark" size={14} />
+            Saved
+            {savedJobIds.size > 0 ? (
+              <span className="tag tag-green text-xs ml-0.5">{savedJobIds.size}</span>
+            ) : null}
+          </button>
+          <Link href="/matches" className="btn btn-primary btn-sm gap-1.5">
+            My matches
+            <Icon name="arrowRight" size={14} />
+          </Link>
+        </div>
       </div>
 
       {/* Filter bar */}

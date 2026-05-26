@@ -4,51 +4,30 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-import { profile as profileApi } from "@/lib/api";
+import { profile as profileApi, subscription as subscriptionApi } from "@/lib/api";
 import { useTheme } from "@/components/ThemeProvider";
 import { Logo } from "@/components/ui/Logo";
 import { Icon } from "@/components/ui/Icon";
-import { Avatar } from "@/components/ui/Avatar";
 import { buttonVariants } from "@/components/ui/button";
+import { UserMenuDropdown, UserMenuTrigger } from "@/components/nav/UserMenuDropdown";
+import { formatTierNavSubtitle } from "@/lib/tier-display";
 import { cn } from "@/lib/utils";
+
+type NavProfile = {
+  fullName: string;
+  tierSubtitle: string;
+  showAdmin: boolean;
+};
 
 export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const { isAuthenticated, logout, user, token } = useAuth();
+  const { isAuthenticated, logout, token } = useAuth();
+  const [navProfile, setNavProfile] = useState<NavProfile | null>(null);
   const [subscriptionTier, setSubscriptionTier] = useState<string | null>(null);
   const { dark, toggle } = useTheme();
   const pathname = usePathname();
-
-  useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 10);
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
-  // Close menu on route change
-  useEffect(() => {
-    setMenuOpen(false);
-    setDropdownOpen(false);
-  }, [pathname]);
-
-  useEffect(() => {
-    if (!token) {
-      setSubscriptionTier(null);
-      return;
-    }
-    profileApi
-      .get(token)
-      .then((p) => setSubscriptionTier(p.subscription_tier))
-      .catch(() => setSubscriptionTier(null));
-  }, [token]);
-
-  const navLinks = [
-    { href: "/jobs", label: "Jobs" },
-    { href: "/matches", label: "Matches" },
-    { href: "/pricing", label: "Pricing" },
-  ];
 
   const interviewPrepSubLinks =
     subscriptionTier === "super_standard"
@@ -58,6 +37,57 @@ export function Navbar() {
           { href: "/interview-prep/history", label: "History" },
         ]
       : [];
+
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 10);
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    setMenuOpen(false);
+    setDropdownOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!token) {
+      setNavProfile(null);
+      return;
+    }
+    Promise.all([
+      profileApi.get(token),
+      subscriptionApi.get(token).catch(() => null),
+    ])
+      .then(([profile, sub]) => {
+        const fullName =
+          profile.full_name?.trim() ||
+          profile.email?.split("@")[0] ||
+          "Your account";
+        const tierSubtitle = formatTierNavSubtitle(
+          profile.subscription_tier,
+          sub?.matches_used,
+          sub?.matches_limit,
+        );
+        setSubscriptionTier(profile.subscription_tier);
+        setNavProfile({
+          fullName,
+          tierSubtitle,
+          showAdmin: profile.role === "admin" || profile.role === "superadmin",
+        });
+      })
+      .catch(() => {
+        setNavProfile(null);
+        setSubscriptionTier(null);
+      });
+  }, [token]);
+
+  const navLinks = [
+    { href: "/jobs", label: "Jobs" },
+    { href: "/matches", label: "Matches" },
+    { href: "/pricing", label: "Pricing" },
+  ];
+
+  const displayName = navProfile?.fullName ?? "Account";
 
   return (
     <>
@@ -77,17 +107,24 @@ export function Navbar() {
             <Logo size={28} />
           </Link>
 
-          {/* Desktop nav */}
           <div className="hidden md:flex items-center gap-8">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className={`nav-link ${pathname === link.href ? "active" : ""}`}
+                className={`nav-link ${pathname === link.href || pathname.startsWith(`${link.href}/`) ? "active" : ""}`}
               >
                 {link.label}
               </Link>
             ))}
+            {isAuthenticated ? (
+              <Link
+                href="/dashboard"
+                className={`nav-link ${pathname === "/dashboard" ? "active" : ""}`}
+              >
+                Dashboard
+              </Link>
+            ) : null}
             {interviewPrepSubLinks.length > 0 && (
               <div className="relative group">
                 <Link
@@ -127,7 +164,6 @@ export function Navbar() {
           </div>
 
           <div className="hidden md:flex items-center gap-3">
-            {/* Theme toggle */}
             <button
               onClick={toggle}
               className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors"
@@ -142,94 +178,49 @@ export function Navbar() {
 
             {isAuthenticated ? (
               <div className="relative">
-                <button
-                  onClick={() => setDropdownOpen(!dropdownOpen)}
-                  className="flex items-center gap-2"
-                >
-                  <Avatar name={user?.id?.slice(0, 4) || "ZC"} size={32} />
-                  <Icon name="chevronDown" size={14} />
-                </button>
+                <UserMenuTrigger
+                  displayName={displayName}
+                  open={dropdownOpen}
+                  onToggle={() => setDropdownOpen(!dropdownOpen)}
+                />
                 {dropdownOpen && (
                   <>
                     <div
                       className="fixed inset-0 z-40"
                       onClick={() => setDropdownOpen(false)}
+                      aria-hidden
                     />
-                    <div
-                      className="absolute right-0 top-full mt-2 w-48 py-2 rounded-xl z-50"
-                      style={{
-                        background: "var(--surface)",
-                        border: "1px solid var(--line)",
-                        boxShadow: "var(--shadow-lg)",
-                      }}
-                    >
-                      <Link
-                        href="/profile"
-                        className="block px-4 py-2 text-sm hover:bg-[var(--bg-2)] transition-colors"
-                        style={{ color: "var(--ink-2)" }}
-                      >
-                        Profile
-                      </Link>
-                      <Link
-                        href="/matches"
-                        className="block px-4 py-2 text-sm hover:bg-[var(--bg-2)] transition-colors"
-                        style={{ color: "var(--ink-2)" }}
-                      >
-                        My Matches
-                      </Link>
-                      <hr style={{ borderColor: "var(--line)" }} className="my-1" />
-                      <Link
-                        href="/profile?tab=cv-generator"
-                        className="block px-4 py-2 text-sm hover:bg-[var(--bg-2)] transition-colors"
-                        style={{ color: "var(--ink-2)" }}
-                      >
-                        <span className="flex items-center gap-2">
-                          <Icon name="edit" size={13} /> CV Generator
-                        </span>
-                      </Link>
-                      <Link
-                        href="/profile?tab=cv-analysis"
-                        className="block px-4 py-2 text-sm hover:bg-[var(--bg-2)] transition-colors"
-                        style={{ color: "var(--ink-2)" }}
-                      >
-                        <span className="flex items-center gap-2">
-                          <Icon name="target" size={13} /> CV Analysis
-                        </span>
-                      </Link>
-                      <Link
-                        href="/admin"
-                        className="block px-4 py-2 text-sm hover:bg-[var(--bg-2)] transition-colors"
-                        style={{ color: "var(--ink-2)" }}
-                      >
-                        <span className="flex items-center gap-2">
-                          <Icon name="settings" size={13} /> Admin Dashboard
-                        </span>
-                      </Link>
-                      <hr style={{ borderColor: "var(--line)" }} className="my-1" />
-                      <button
-                        onClick={logout}
-                        className="block w-full text-left px-4 py-2 text-sm hover:bg-[var(--bg-2)] transition-colors"
-                        style={{ color: "var(--danger)" }}
-                      >
-                        Sign Out
-                      </button>
-                    </div>
+                    <UserMenuDropdown
+                      displayName={displayName}
+                      tierSubtitle={navProfile?.tierSubtitle ?? ""}
+                      showAdmin={navProfile?.showAdmin}
+                      onClose={() => setDropdownOpen(false)}
+                      onSignOut={logout}
+                    />
                   </>
                 )}
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <Link href="/auth" className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}>
-                  Sign In
+                <Link
+                  href="/auth"
+                  className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
+                  title="Returning user? Sign in with your phone number"
+                >
+                  Log in
                 </Link>
-                <Link href="/auth" className={cn(buttonVariants({ variant: "primary", size: "sm" }))}>
-                  Get Started
+                <Link
+                  href="/auth?next=/matches"
+                  className={cn(buttonVariants({ variant: "primary", size: "sm" }))}
+                  title="New here? Create your account in under a minute"
+                >
+                  Get started
+                  <Icon name="arrowRight" size={14} className="ml-1 inline" />
                 </Link>
               </div>
             )}
           </div>
 
-          {/* Mobile hamburger */}
           <button
             onClick={() => setMenuOpen(!menuOpen)}
             className="md:hidden touch-target flex items-center justify-center"
@@ -240,10 +231,9 @@ export function Navbar() {
           </button>
         </div>
 
-        {/* Mobile menu */}
         {menuOpen && (
           <div
-            className="md:hidden fixed inset-0 top-[70px] z-40"
+            className="md:hidden fixed inset-0 top-[70px] z-40 overflow-y-auto"
             style={{ background: "var(--surface)" }}
           >
             <div className="flex flex-col p-6 gap-2">
@@ -255,9 +245,7 @@ export function Navbar() {
                   className="font-display text-3xl py-3 transition-colors"
                   style={{
                     color:
-                      pathname === link.href
-                        ? "var(--green-700)"
-                        : "var(--ink)",
+                      pathname === link.href ? "var(--green-700)" : "var(--ink)",
                     borderBottom: "1px solid var(--line)",
                   }}
                 >
@@ -283,7 +271,7 @@ export function Navbar() {
                 <button
                   type="button"
                   onClick={toggle}
-                  className={cn(buttonVariants({ variant: "ghost" }), "w-full")}
+                  className={cn(buttonVariants({ variant: "ghost" }), "w-full justify-center gap-2")}
                 >
                   <Icon name={dark ? "sun" : "moon"} size={16} />
                   {dark ? "Light Mode" : "Dark Mode"}
@@ -291,12 +279,44 @@ export function Navbar() {
 
                 {isAuthenticated ? (
                   <>
+                    {navProfile ? (
+                      <div
+                        className="px-3 py-3 rounded-xl mb-1"
+                        style={{ background: "var(--bg-2)", border: "1px solid var(--line)" }}
+                      >
+                        <div className="font-semibold">{navProfile.fullName}</div>
+                        <div className="text-sm" style={{ color: "var(--muted)" }}>
+                          {navProfile.tierSubtitle}
+                        </div>
+                      </div>
+                    ) : null}
+                    <Link
+                      href="/dashboard"
+                      onClick={() => setMenuOpen(false)}
+                      className={cn(buttonVariants({ variant: "ghost" }), "w-full justify-start gap-2")}
+                    >
+                      <Icon name="home" size={16} /> Dashboard
+                    </Link>
                     <Link
                       href="/profile"
                       onClick={() => setMenuOpen(false)}
-                      className={cn(buttonVariants({ variant: "ghost" }), "w-full")}
+                      className={cn(buttonVariants({ variant: "ghost" }), "w-full justify-start gap-2")}
                     >
-                      Profile
+                      <Icon name="user" size={16} /> Profile
+                    </Link>
+                    <Link
+                      href="/settings"
+                      onClick={() => setMenuOpen(false)}
+                      className={cn(buttonVariants({ variant: "ghost" }), "w-full justify-start gap-2")}
+                    >
+                      <Icon name="bell" size={16} /> Notifications
+                    </Link>
+                    <Link
+                      href="/profile?tab=preferences"
+                      onClick={() => setMenuOpen(false)}
+                      className={cn(buttonVariants({ variant: "ghost" }), "w-full justify-start gap-2")}
+                    >
+                      <Icon name="settings" size={16} /> Settings
                     </Link>
                     <button
                       type="button"
@@ -307,17 +327,27 @@ export function Navbar() {
                       className={cn(buttonVariants({ variant: "ghost" }), "w-full")}
                       style={{ color: "var(--danger)" }}
                     >
-                      Sign Out
+                      Sign out
                     </button>
                   </>
                 ) : (
-                  <Link
-                    href="/auth"
-                    onClick={() => setMenuOpen(false)}
-                    className={cn(buttonVariants({ variant: "primary" }), "w-full")}
-                  >
-                    Get Started
-                  </Link>
+                  <>
+                    <Link
+                      href="/auth"
+                      onClick={() => setMenuOpen(false)}
+                      className={cn(buttonVariants({ variant: "ghost" }), "w-full")}
+                    >
+                      Log in
+                    </Link>
+                    <Link
+                      href="/auth?next=/matches"
+                      onClick={() => setMenuOpen(false)}
+                      className={cn(buttonVariants({ variant: "primary" }), "w-full justify-center gap-2")}
+                    >
+                      Get started
+                      <Icon name="arrowRight" size={16} />
+                    </Link>
+                  </>
                 )}
               </div>
             </div>

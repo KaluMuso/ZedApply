@@ -104,6 +104,13 @@ export function JobDescription({
           ),
           li: ({ children }) => <li className="leading-relaxed">{children}</li>,
           p: ({ children }) => <p className="my-2 leading-relaxed whitespace-pre-line">{children}</p>,
+          hr: () => <hr className="my-6 border-0 border-t border-[var(--line)]" />,
+          blockquote: ({ children }) => (
+            <blockquote className="my-4 border-l-[3px] border-[var(--green-500)] bg-[var(--bg-2)] py-3 px-4 rounded-r-lg text-[var(--ink-2)]">
+              {children}
+            </blockquote>
+          ),
+          h4: ({ children }) => <SectionHeading>{children}</SectionHeading>,
         }}
       >
         {md}
