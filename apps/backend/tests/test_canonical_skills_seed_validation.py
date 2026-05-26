@@ -37,17 +37,8 @@ class TestRejectSeedCandidate:
         assert reject_seed_candidate(long_text) == "too long"
 
     def test_too_many_words(self) -> None:
-        text = "one two three four five"
+        text = "one two three four five six"
         assert reject_seed_candidate(text) == "too many words"
-
-    def test_comma_separated_list(self) -> None:
-        assert reject_seed_candidate("Honest, Punctual, Reliable") == "comma-separated list"
-
-    def test_soft_skill_opener(self) -> None:
-        assert (
-            reject_seed_candidate("Strong Computer Literacy Skills")
-            == "soft-skill sentence opener"
-        )
 
     def test_too_short(self) -> None:
         assert reject_seed_candidate("go") == "too short"

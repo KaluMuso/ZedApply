@@ -29,6 +29,11 @@ from app.services.embedding import generate_embedding
 from app.services.job_enricher import enrich_job
 from app.services.job_enrichment import apply_job_enrichment
 from app.services.deep_link_enricher import schedule_deep_link_enrichment
+from app.services.job_page_text_extractor import (
+    is_aggregator,
+    merge_resolved_apply_contacts,
+    resolve_apply_contacts_from_aggregator_url,
+)
 from app.services.deep_scrape_tick import run_deep_enrich_tick
 from app.services.description_body_extractor import merge_description_extraction
 from app.services.description_markdown import description_to_markdown
@@ -692,6 +697,16 @@ async def _ingest_one_job(
         skills_required = job_data.pop("skills_required", [])
         job_data.pop("salary_text", None)
         merge_description_extraction(job_data, job_data.get("description"))
+        apply_url_raw = job_data.get("apply_url")
+        if apply_url_raw and is_aggregator(str(apply_url_raw)):
+            contacts = await resolve_apply_contacts_from_aggregator_url(
+                str(apply_url_raw)
+            )
+            merge_resolved_apply_contacts(
+                job_data,
+                contacts,
+                original_apply_url=str(apply_url_raw),
+            )
         if not job_data.get("closing_date"):
             extracted_deadline = await extract_closing_date_llm(
                 job.description,

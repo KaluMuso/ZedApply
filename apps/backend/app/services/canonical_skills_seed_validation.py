@@ -5,9 +5,9 @@ import logging
 import re
 from functools import lru_cache
 
-from app.services.canonical_skills_curated_list import CURATED_ZAMBIA_SKILLS_RAW
 from app.services.canonical_skills_seed_data import (
     ACRONYMS,
+    CURATED_RAW_TOP_100,
     DISPLAY_OVERRIDES,
     EXTRA_ALIASES,
 )
@@ -17,18 +17,13 @@ logger = logging.getLogger(__name__)
 
 MAX_SKILL_CHARS = 60
 MIN_SKILL_CHARS = 3
-MAX_SKILL_WORDS = 4
+MAX_SKILL_WORDS = 5
 SENTENCE_END_CHARS = ".:;"
-
-SOFT_SKILL_PREFIX_RE = re.compile(
-    r"^(honest,|strong |good |excellent |ability to |knowledge of |physically |clean )",
-    re.IGNORECASE,
-)
 
 QUALIFICATION_RE = re.compile(
     r"\b("
     r"years?|experience|minimum|must|should|required|"
-    r"bachelor'?s?|degree|diploma|certificate|membership|qualification|"
+    r"bachelor'?s?|degree|diploma|certificate|membership|"
     r"knowledge\s+of|ability\s+to"
     r")\b",
     re.IGNORECASE,
@@ -92,7 +87,7 @@ def _word_tokens(text: str) -> list[str]:
 def _skill_vocabulary() -> frozenset[str]:
     words: set[str] = set(_EXTRA_VOCAB)
     words.update(ACRONYMS)
-    for raw in CURATED_ZAMBIA_SKILLS_RAW:
+    for raw in CURATED_RAW_TOP_100:
         words.update(_word_tokens(raw))
     for mapping in (SKILL_ALIASES, EXTRA_ALIASES, DISPLAY_OVERRIDES):
         for key, value in mapping.items():
@@ -120,15 +115,6 @@ def reject_seed_candidate(text: str) -> str | None:
 
     if QUALIFICATION_RE.search(stripped):
         return "qualification phrase"
-
-    if "," in stripped:
-        return "comma-separated list"
-
-    if ":" in stripped:
-        return "labeled category (contains colon)"
-
-    if SOFT_SKILL_PREFIX_RE.search(stripped):
-        return "soft-skill sentence opener"
 
     words = _word_tokens(stripped)
     if len(words) > MAX_SKILL_WORDS:
