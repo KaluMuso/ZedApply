@@ -1,3 +1,11 @@
+import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/site-metadata";
+
+export const metadata: Metadata = pageMetadata({
+  title: "CV Builder",
+  description: "Tailor your CV and cover letter for a specific job with AI-assisted editing.",
+});
+
 /** Wider canvas for the split-pane CV builder (parent (app) layout caps at 5xl). */
 export default function CvBuilderLayout({ children }: { children: React.ReactNode }) {
   return (

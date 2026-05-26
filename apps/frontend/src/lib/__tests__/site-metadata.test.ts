@@ -9,11 +9,11 @@ describe("siteDefaultMetadata", () => {
   it("sets the branded default title and OpenGraph tags", () => {
     expect(siteDefaultMetadata.title).toMatchObject({
       default: SITE_DEFAULT_TITLE,
-      template: "%s | ZedApply",
+      template: "%s - Zed Apply",
     });
     expect(siteDefaultMetadata.openGraph).toMatchObject({
       title: SITE_DEFAULT_TITLE,
-      siteName: "ZedApply",
+      siteName: "Zed Apply",
       type: "website",
     });
     expect(siteDefaultMetadata.openGraph?.images?.[0]).toMatchObject({
@@ -31,7 +31,7 @@ describe("pageMetadata", () => {
       description: "Browse open roles across Zambia.",
     });
     expect(meta.title).toBe("Jobs");
-    expect(meta.openGraph?.title).toBe("Jobs | ZedApply");
-    expect(meta.twitter?.title).toBe("Jobs | ZedApply");
+    expect(meta.openGraph?.title).toBe("Jobs - Zed Apply");
+    expect(meta.twitter?.title).toBe("Jobs - Zed Apply");
   });
 });

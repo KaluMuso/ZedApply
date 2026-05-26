@@ -2,7 +2,15 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { auth, DEVICE_TOKEN_KEY, type OtpChannel, ApiError } from "@/lib/api";
+import {
+  auth,
+  clearStoredReferralRef,
+  DEVICE_TOKEN_KEY,
+  readStoredReferralRef,
+  REFERRAL_STORAGE_KEY,
+  type OtpChannel,
+  ApiError,
+} from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { z } from "zod";
 import { Icon } from "@/components/ui/Icon";
@@ -56,6 +64,17 @@ export default function AuthPageClient() {
   const rawNext = searchParams?.get("next") || "";
   const safeNext =
     rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/matches";
+
+  // Preserve referral attribution until OTP verify sends it to the backend.
+  useEffect(() => {
+    const ref = searchParams?.get("ref")?.trim();
+    if (!ref) return;
+    try {
+      sessionStorage.setItem(REFERRAL_STORAGE_KEY, ref);
+    } catch {
+      /* private mode */
+    }
+  }, [searchParams]);
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -152,10 +171,12 @@ export default function AuthPageClient() {
           consentAccepted: consentChecked,
           email: email.trim(),
           rememberDevice,
+          referralRef: readStoredReferralRef(),
         });
         if (tokens.device_token) {
           localStorage.setItem(DEVICE_TOKEN_KEY, tokens.device_token);
         }
+        clearStoredReferralRef();
         login(tokens.access_token, tokens.user_id);
         setStep("success");
         setTimeout(() => router.push(safeNext), 1400);
@@ -173,14 +194,7 @@ export default function AuthPageClient() {
   }, [otpCode, step, loading, verifyOtp]);
 
   return (
-    <main
-      className="auth-grid"
-      style={{
-        minHeight: "calc(100vh - 70px)",
-        display: "grid",
-        gridTemplateColumns: "1.05fr 1fr",
-      }}
-    >
+    <main className="auth-grid w-full max-w-7xl mx-auto">
       {/* LEFT — brand panel */}
       <aside
         className="auth-aside relative overflow-hidden flex flex-col justify-between"
@@ -188,7 +202,7 @@ export default function AuthPageClient() {
           background:
             "linear-gradient(165deg, var(--green-800) 0%, var(--green-700) 60%, var(--copper-700) 130%)",
           color: "#faf7f2",
-          padding: "72px 64px",
+          padding: "clamp(2rem, 6vw, 4.5rem) clamp(1.5rem, 5vw, 4rem)",
         }}
       >
         <div
@@ -278,10 +292,10 @@ export default function AuthPageClient() {
 
       {/* RIGHT — form */}
       <section
-        className="flex items-center justify-center"
-        style={{ padding: "72px 32px", background: "var(--bg)" }}
+        className="auth-form-panel flex items-center justify-center"
+        style={{ background: "var(--bg)" }}
       >
-        <div className="w-full max-w-[420px]">
+        <div className="w-full max-w-[420px] px-1">
           {/* Mobile logo */}
           <div className="show-mobile mb-10">
             <Logo size={28} />

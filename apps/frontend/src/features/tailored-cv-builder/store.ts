@@ -1,5 +1,16 @@
 import { create } from "zustand";
-import type { BuilderStep, TailoredCvDraft } from "./types";
+import type {
+  BuilderStep,
+  CvStyleOptions,
+  EducationEntry,
+  ExperienceEntry,
+  TailoredCvDraft,
+} from "./types";
+
+export const DEFAULT_STYLE: CvStyleOptions = {
+  density: "standard",
+  showSummary: true,
+};
 
 export const DEFAULT_DRAFT: TailoredCvDraft = {
   basics: {
@@ -54,26 +65,120 @@ export const DEFAULT_DRAFT: TailoredCvDraft = {
     "Tax Compliance",
     "Stakeholder Management",
   ],
+  style: DEFAULT_STYLE,
 };
+
+export function emptyExperience(): ExperienceEntry {
+  return {
+    title: "",
+    company: "",
+    location: "",
+    startDate: "",
+    endDate: "",
+    achievements: [""],
+  };
+}
+
+export function emptyEducation(): EducationEntry {
+  return {
+    degree: "",
+    institution: "",
+    location: "",
+    startDate: "",
+    endDate: "",
+  };
+}
 
 type TailoredCvBuilderState = {
   step: BuilderStep;
   draft: TailoredCvDraft;
+  hydratedFromProfile: boolean;
   setStep: (step: BuilderStep) => void;
+  setDraft: (draft: TailoredCvDraft, options?: { fromProfile?: boolean }) => void;
   updateBasics: (patch: Partial<TailoredCvDraft["basics"]>) => void;
+  setExperience: (entries: ExperienceEntry[]) => void;
+  updateExperience: (index: number, patch: Partial<ExperienceEntry>) => void;
+  addExperience: () => void;
+  removeExperience: (index: number) => void;
+  setEducation: (entries: EducationEntry[]) => void;
+  updateEducation: (index: number, patch: Partial<EducationEntry>) => void;
+  addEducation: () => void;
+  removeEducation: (index: number) => void;
+  setSkills: (skills: string[]) => void;
+  updateStyle: (patch: Partial<CvStyleOptions>) => void;
   resetDraft: () => void;
 };
 
 export const useTailoredCvBuilderStore = create<TailoredCvBuilderState>((set) => ({
   step: "basics",
   draft: DEFAULT_DRAFT,
+  hydratedFromProfile: false,
   setStep: (step) => set({ step }),
+  setDraft: (draft, options) =>
+    set({
+      draft,
+      hydratedFromProfile: options?.fromProfile ?? false,
+    }),
   updateBasics: (patch) =>
+    set((state) => ({
+      draft: { ...state.draft, basics: { ...state.draft.basics, ...patch } },
+    })),
+  setExperience: (entries) =>
+    set((state) => ({ draft: { ...state.draft, experience: entries } })),
+  updateExperience: (index, patch) =>
     set((state) => ({
       draft: {
         ...state.draft,
-        basics: { ...state.draft.basics, ...patch },
+        experience: state.draft.experience.map((e, i) =>
+          i === index ? { ...e, ...patch } : e,
+        ),
       },
     })),
-  resetDraft: () => set({ draft: DEFAULT_DRAFT, step: "basics" }),
+  addExperience: () =>
+    set((state) => ({
+      draft: {
+        ...state.draft,
+        experience: [...state.draft.experience, emptyExperience()],
+      },
+    })),
+  removeExperience: (index) =>
+    set((state) => ({
+      draft: {
+        ...state.draft,
+        experience: state.draft.experience.filter((_, i) => i !== index),
+      },
+    })),
+  setEducation: (entries) =>
+    set((state) => ({ draft: { ...state.draft, education: entries } })),
+  updateEducation: (index, patch) =>
+    set((state) => ({
+      draft: {
+        ...state.draft,
+        education: state.draft.education.map((e, i) =>
+          i === index ? { ...e, ...patch } : e,
+        ),
+      },
+    })),
+  addEducation: () =>
+    set((state) => ({
+      draft: {
+        ...state.draft,
+        education: [...state.draft.education, emptyEducation()],
+      },
+    })),
+  removeEducation: (index) =>
+    set((state) => ({
+      draft: {
+        ...state.draft,
+        education: state.draft.education.filter((_, i) => i !== index),
+      },
+    })),
+  setSkills: (skills) =>
+    set((state) => ({ draft: { ...state.draft, skills } })),
+  updateStyle: (patch) =>
+    set((state) => ({
+      draft: { ...state.draft, style: { ...state.draft.style, ...patch } },
+    })),
+  resetDraft: () =>
+    set({ draft: DEFAULT_DRAFT, step: "basics", hydratedFromProfile: false }),
 }));

@@ -18,16 +18,14 @@ import { StepProgress } from "@/components/shared/StepProgress";
 import { CvSkillsTab } from "./_tabs/CvSkillsTab";
 import { AnalysisTab } from "./_tabs/AnalysisTab";
 import { GeneratorTab } from "./_tabs/GeneratorTab";
-import { PreferencesTab } from "./_tabs/PreferencesTab";
-import { DataPrivacyCard } from "./_tabs/DataPrivacyCard";
+import { ProfileReferralCard } from "./_tabs/ProfileReferralCard";
 
-type Tab = "cv" | "analysis" | "generator" | "preferences";
+type Tab = "cv" | "analysis" | "generator";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "cv", label: "CV & Skills" },
   { key: "analysis", label: "CV Analysis" },
   { key: "generator", label: "CV Generator" },
-  { key: "preferences", label: "Preferences" },
 ];
 
 // Mapping from URL `?tab=` slug (kebab-case, user-facing) to internal Tab key.
@@ -40,14 +38,13 @@ const TAB_FROM_SLUG: Record<string, Tab> = {
   "analysis": "analysis",
   "cv-generator": "generator",
   "generator": "generator",
-  "preferences": "preferences",
+  preferences: "cv",
 };
 
 const SLUG_FROM_TAB: Record<Tab, string> = {
   cv: "cv-skills",
   analysis: "cv-analysis",
   generator: "cv-generator",
-  preferences: "preferences",
 };
 
 const TIER_LABELS: Record<string, string> = {
@@ -85,11 +82,20 @@ export default function ProfilePageClient() {
   const initialTab: Tab = TAB_FROM_SLUG[tabSlug] ?? "cv";
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
 
+  // Legacy: job preferences moved to /settings/job-preferences
+  useEffect(() => {
+    const slug = searchParams.get("tab");
+    if (slug === "preferences") {
+      router.replace("/settings/job-preferences");
+    }
+  }, [searchParams, router]);
+
   // Keep state in sync when the URL changes (e.g. user navigates from nav
   // dropdown to a different tab via Link). Without this, the second click
   // is a no-op because the page is already mounted.
   useEffect(() => {
     const slug = searchParams.get("tab") ?? "cv";
+    if (slug === "preferences") return;
     const tab = TAB_FROM_SLUG[slug];
     if (tab && tab !== activeTab) setActiveTab(tab);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -254,19 +260,29 @@ export default function ProfilePageClient() {
         <StepProgress
           current={onboardingStep}
           total={3}
-          labels={["Upload CV", "Review skills", "Preferences"]}
+          labels={["Upload CV", "Review skills", "Job preferences"]}
           className="mb-6 max-w-md"
         />
       ) : null}
-      <div className="card p-6 md:p-8 mb-8">
+      <div
+        className="card p-6 md:p-8 mb-8 overflow-hidden"
+        style={{
+          background:
+            "linear-gradient(135deg, var(--green-800) 0%, var(--green-700) 55%, var(--green-600) 100%)",
+          borderColor: "transparent",
+        }}
+      >
         <div className="flex flex-col md:flex-row md:items-center gap-6">
           <div className="flex items-center gap-5 flex-1">
             <Avatar name={profileData.full_name || "User"} size={72} />
             <div>
-              <h1 className="font-display text-3xl" style={{ letterSpacing: "-0.01em" }}>
+              <h1
+                className="font-display text-3xl"
+                style={{ letterSpacing: "-0.01em", color: "var(--green-50)" }}
+              >
                 {profileData.full_name || "Your Profile"}
               </h1>
-              <p className="text-sm" style={{ color: "var(--muted)" }}>
+              <p className="text-sm" style={{ color: "rgba(255,255,255,0.75)" }}>
                 {profileData.phone}
               </p>
               <div className="flex items-center gap-2 mt-2">
@@ -334,7 +350,7 @@ export default function ProfilePageClient() {
             {activeTab === tab.key && (
               <span
                 className="absolute left-0 right-0 bottom-0 h-0.5 rounded-full"
-                style={{ background: "var(--copper-500)" }}
+                style={{ background: "var(--green-700)" }}
               />
             )}
           </button>
@@ -348,109 +364,59 @@ export default function ProfilePageClient() {
           )}
           {activeTab === "analysis" && <AnalysisTab token={token} profileData={profileData} />}
           {activeTab === "generator" && <GeneratorTab token={token} profileData={profileData} />}
-          {activeTab === "preferences" && <PreferencesTab profileData={profileData} />}
         </div>
 
         <div className="space-y-6">
           <div className="card p-6">
-            <div className="eyebrow mb-3">Your plan</div>
-            <div className="font-display text-2xl mb-1">
+            <div className="eyebrow mb-3">Plan &amp; settings</div>
+            <div className="font-display text-xl mb-2">
               {TIER_LABELS[profileData.subscription_tier] || profileData.subscription_tier}
             </div>
-            {profileData.subscription_tier === "free" &&
-              subscriptionData?.welcome_bonus_active && (
-                <p className="text-sm mb-3" style={{ color: "var(--muted)" }}>
-                  {subscriptionData.matches_limit} matches/mo (welcome bonus) → 3/mo after{" "}
-                  {formatWelcomeEnd(subscriptionData.welcome_match_bonus_until)}
-                </p>
-              )}
-            {profileData.subscription_tier === "free" &&
-              subscriptionData &&
-              !subscriptionData.welcome_bonus_active && (
-                <p className="text-sm mb-3" style={{ color: "var(--muted)" }}>
-                  {subscriptionData.matches_used}/{subscriptionData.matches_limit} matches used
-                  this month. Upgrade for more matches and tailored CVs.
-                </p>
-              )}
-            {/* Tier-aware sidebar — Professional and Super Standard users
-                already have tailored CVs + generous match quotas. Showing
-                "Upgrade to unlock tailored CVs" to them is misleading and
-                erodes trust in the product. Top tiers see a "Manage plan"
-                affordance instead; paid-but-not-top tiers see a tier-specific
-                upsell; free sees the original upsell. Backend enforcement
-                of paid features is unchanged — this is UI tier-gating only. */}
-            {profileData.subscription_tier === "super_standard" ? (
-              <>
-                <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
-                  You&apos;re on the top tier — unlimited matches, tailored CVs,
-                  and priority support. Thanks for backing Zed CV.
-                </p>
-                <Link href="/pricing" className="btn btn-ghost w-full btn-sm">
-                  Manage plan <Icon name="arrowRight" size={14} />
-                </Link>
-              </>
-            ) : profileData.subscription_tier === "professional" ? (
-              <>
-                <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
-                  Tailored CVs and 125 matches/month included. Move to Super
-                  Standard for unlimited matches and daily WhatsApp digests.
-                </p>
-                <Link href="/pricing" className="btn btn-accent w-full btn-sm">
-                  Upgrade <Icon name="arrowRight" size={14} />
-                </Link>
-              </>
-            ) : profileData.subscription_tier === "free" &&
-              subscriptionData &&
-              !subscriptionData.welcome_bonus_active ? (
-              <>
-                <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
-                  Your welcome bonus has ended — you have {subscriptionData.matches_limit}{" "}
-                  matches per month on Free. Upgrade for more matches and tailored CVs.
-                </p>
-                <Link href="/pricing" className="btn btn-accent w-full btn-sm">
-                  Upgrade <Icon name="arrowRight" size={14} />
-                </Link>
-              </>
-            ) : (
-              <>
-                <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
-                  Upgrade to unlock tailored CVs and more matches.
-                </p>
-                <Link href="/pricing" className="btn btn-accent w-full btn-sm">
-                  Upgrade <Icon name="arrowRight" size={14} />
-                </Link>
-              </>
+            {subscriptionData && profileData.subscription_tier === "free" && (
+              <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
+                {subscriptionData.matches_used}/{subscriptionData.matches_limit} matches used
+                {subscriptionData.welcome_bonus_active
+                  ? ` (welcome bonus until ${formatWelcomeEnd(subscriptionData.welcome_match_bonus_until)})`
+                  : " this month"}
+              </p>
             )}
-          </div>
-
-          <div className="card p-6">
-            <div className="eyebrow mb-3">Account</div>
-            <div className="space-y-3">
-              <div>
-                <div className="text-xs" style={{ color: "var(--muted)" }}>Name</div>
-                <div className="text-sm font-medium">{profileData.full_name || "Not set"}</div>
-              </div>
-              <div>
-                <div className="text-xs" style={{ color: "var(--muted)" }}>Phone</div>
-                <div className="text-sm font-mono">{profileData.phone}</div>
-              </div>
-              {profileData.email && (
-                <div>
-                  <div className="text-xs" style={{ color: "var(--muted)" }}>Email</div>
-                  <div className="text-sm">{profileData.email}</div>
-                </div>
-              )}
+            <div className="flex flex-col gap-2">
+              <Link href="/settings/billing" className="btn btn-outline w-full btn-sm justify-center gap-1.5">
+                Billing &amp; plan
+                <Icon name="arrowRight" size={14} />
+              </Link>
+              <Link
+                href="/settings/job-preferences"
+                className="btn btn-ghost w-full btn-sm justify-center gap-1.5"
+              >
+                Job preferences
+                <Icon name="sliders" size={14} />
+              </Link>
+              <Link href="/settings/account" className="btn btn-ghost w-full btn-sm justify-center gap-1.5">
+                Account settings
+                <Icon name="settings" size={14} />
+              </Link>
             </div>
           </div>
 
-          <DataPrivacyCard
-            token={token}
-            phone={profileData.phone}
-            onDeleted={() => {
-              logout();
-              router.replace("/account-deleted");
-            }}
+          <ProfileReferralCard
+            userId={profileData.id}
+            userName={profileData.full_name}
+            referralCode={profileData.referral_code ?? ""}
+            referralSignupsCount={profileData.referral_signups_count ?? 0}
           />
+
+          <div className="card p-6">
+            <div className="eyebrow mb-3">Quick links</div>
+            <div className="flex flex-col gap-2 text-sm">
+              <Link href="/settings/notifications" className="underline" style={{ color: "var(--green-700)" }}>
+                Notification preferences
+              </Link>
+              <Link href="/settings/privacy" className="underline" style={{ color: "var(--green-700)" }}>
+                Privacy &amp; data export
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
     </div>

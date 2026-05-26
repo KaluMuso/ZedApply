@@ -4,6 +4,7 @@ export const BUILDER_STEPS = [
   "education",
   "skills",
   "style",
+  "coverLetter",
   "preview",
 ] as const;
 
@@ -14,8 +15,9 @@ export const BUILDER_STEP_LABELS: Record<BuilderStep, string> = {
   experience: "Experience",
   education: "Education",
   skills: "Skills",
-  style: "Style",
-  preview: "Preview",
+  style: "Extras",
+  coverLetter: "Cover letter",
+  preview: "Review",
 };
 
 export type BasicsInfo = {
@@ -44,9 +46,15 @@ export type EducationEntry = {
   endDate: string;
 };
 
+export type CvStyleOptions = {
+  density: "compact" | "standard";
+  showSummary: boolean;
+};
+
 export type TailoredCvDraft = {
   basics: BasicsInfo;
   experience: ExperienceEntry[];
   education: EducationEntry[];
   skills: string[];
+  style: CvStyleOptions;
 };

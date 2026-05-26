@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   jobs as jobsApi,
@@ -15,6 +16,11 @@ import { Icon } from "@/components/ui/Icon";
 import { isJobHiddenFromUserFeed } from "@/lib/isJobHiddenFromUserFeed";
 import { Counter } from "@/components/ui/Counter";
 import { Pagination } from "@/components/ui/Pagination";
+import {
+  JobsSidebar,
+  JobsSidebarMobile,
+  type JobsListPreset,
+} from "@/components/jobs/JobsSidebar";
 
 const ZAMBIAN_LOCATIONS = [
   "All Locations",
@@ -123,6 +129,7 @@ export default function JobsPageClient() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
+  const [listPreset, setListPreset] = useState<JobsListPreset>("all");
   const urlHydratedRef = useRef(false);
   const lastUrlSyncRef = useRef("");
 
@@ -200,6 +207,13 @@ export default function JobsPageClient() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
+  const effectiveSort =
+    listPreset === "closing" ? "closing" : sort;
+  const effectiveEmploymentType =
+    listPreset === "full_time" ? "full_time" : employmentType;
+  const effectiveWorkArrangement =
+    listPreset === "remote" ? "remote" : workArrangement;
+
   const fetchJobs = useCallback(async () => {
     setLoading(true);
     try {
@@ -207,20 +221,38 @@ export default function JobsPageClient() {
         page,
         search: searchQuery || undefined,
         location: location || undefined,
-        sort,
+        sort: effectiveSort,
         skills: selectedSkills.length > 0 ? selectedSkills : undefined,
-        employment_type: employmentType ? [employmentType] : undefined,
-        work_arrangement: workArrangement ? [workArrangement] : undefined,
+        employment_type: effectiveEmploymentType ? [effectiveEmploymentType] : undefined,
+        work_arrangement: effectiveWorkArrangement ? [effectiveWorkArrangement] : undefined,
       });
-      setJobsList(res.jobs.filter((j) => !isJobHiddenFromUserFeed(j.closing_date)));
+      let jobs = res.jobs.filter((j) => !isJobHiddenFromUserFeed(j.closing_date));
+      if (listPreset === "with_salary") {
+        jobs = jobs.filter((j) => j.salary_min != null || j.salary_max != null);
+      }
+      if (listPreset === "saved" && token) {
+        jobs = jobs.filter((j) => savedJobIds.has(j.id));
+      }
+      setJobsList(jobs);
       setTotalPages(res.pages);
-      setTotal(res.total);
+      setTotal(listPreset === "saved" ? jobs.length : res.total);
     } catch {
       setJobsList([]);
     } finally {
       setLoading(false);
     }
-  }, [page, searchQuery, location, sort, selectedSkills, employmentType, workArrangement]);
+  }, [
+    page,
+    searchQuery,
+    location,
+    effectiveSort,
+    selectedSkills,
+    effectiveEmploymentType,
+    effectiveWorkArrangement,
+    listPreset,
+    token,
+    savedJobIds,
+  ]);
 
   useEffect(() => {
     fetchJobs();
@@ -247,7 +279,20 @@ export default function JobsPageClient() {
     setSelectedSkills([]);
     setEmploymentType("");
     setWorkArrangement("");
+    setListPreset("all");
     setPage(1);
+  };
+
+  const onListPresetChange = (preset: JobsListPreset) => {
+    setListPreset(preset);
+    setPage(1);
+    if (preset === "closing") setSort("closing");
+    if (preset === "full_time") setEmploymentType("full_time");
+    if (preset === "remote") setWorkArrangement("remote");
+    if (preset === "all") {
+      setEmploymentType("");
+      setWorkArrangement("");
+    }
   };
 
   const toggleSkill = (skill: string) => {
@@ -260,21 +305,41 @@ export default function JobsPageClient() {
   return (
     <div className="max-w-[1280px] mx-auto px-6 py-8 md:py-12">
       {/* Header */}
-      <div className="mb-8">
-        <div className="eyebrow mb-2">Browse opportunities</div>
-        <h1
-          className="font-display"
-          style={{
-            fontSize: "clamp(36px, 5vw, 56px)",
-            letterSpacing: "-0.025em",
-            lineHeight: 1,
-          }}
-        >
-          <Counter to={total} /> open{" "}
-          <span className="italic" style={{ color: "var(--copper-500)" }}>
-            roles
-          </span>
-        </h1>
+      <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <div className="eyebrow mb-2">All jobs across Zambia</div>
+          <h1
+            className="font-display"
+            style={{
+              fontSize: "clamp(36px, 5vw, 56px)",
+              letterSpacing: "-0.025em",
+              lineHeight: 1,
+            }}
+          >
+            <Counter to={total} /> open{" "}
+            <span className="italic" style={{ color: "var(--copper-500)" }}>
+              roles
+            </span>
+          </h1>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            type="button"
+            className="btn btn-outline btn-sm gap-1.5"
+            onClick={() => onListPresetChange("saved")}
+            aria-pressed={listPreset === "saved"}
+          >
+            <Icon name="bookmark" size={14} />
+            Saved
+            {savedJobIds.size > 0 ? (
+              <span className="tag tag-green text-xs ml-0.5">{savedJobIds.size}</span>
+            ) : null}
+          </button>
+          <Link href="/matches" className="btn btn-primary btn-sm gap-1.5">
+            My matches
+            <Icon name="arrowRight" size={14} />
+          </Link>
+        </div>
       </div>
 
       {/* Filter bar */}
@@ -452,6 +517,15 @@ export default function JobsPageClient() {
             <div key={i} className="skeleton h-28 w-full" />
           ))}
         </div>
+      ) : listPreset === "saved" && !token ? (
+        <div className="text-center py-20">
+          <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
+            Sign in to see jobs you have saved.
+          </p>
+          <a href="/auth?next=/jobs" className="btn btn-primary btn-sm">
+            Sign in
+          </a>
+        </div>
       ) : jobsList.length === 0 ? (
         <div className="text-center py-20">
           <div
@@ -489,7 +563,18 @@ export default function JobsPageClient() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <JobsSidebarMobile
+            active={listPreset}
+            onChange={onListPresetChange}
+            savedCount={savedJobIds.size}
+          />
+          <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)] gap-6 lg:gap-8">
+            <JobsSidebar
+              active={listPreset}
+              onChange={onListPresetChange}
+              savedCount={savedJobIds.size}
+            />
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 min-w-0">
             {jobsList.map((job) => (
               <JobCard
                 key={job.id}
@@ -518,10 +603,11 @@ export default function JobsPageClient() {
                 }}
               />
             ))}
+            </div>
           </div>
 
           {/* Pagination */}
-          {totalPages > 1 && (
+          {totalPages > 1 && listPreset !== "saved" && (
             <Pagination
               page={page}
               totalPages={totalPages}

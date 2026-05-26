@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
 import {
   Dialog,
@@ -9,30 +10,104 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useAuth } from "@/lib/auth";
 import { BuilderHeader } from "./BuilderHeader";
 import { BasicsStepForm } from "./BasicsStepForm";
+import { CoverLetterStep } from "./CoverLetterStep";
+import { EducationStepForm } from "./EducationStepForm";
+import { ExperienceStepForm } from "./ExperienceStepForm";
 import { LivePreviewPane } from "./LivePreviewPane";
-import { StepPlaceholder } from "./StepPlaceholder";
+import { PreviewStepForm } from "./PreviewStepForm";
+import { SkillsStepForm } from "./SkillsStepForm";
+import { StyleStepForm } from "./StyleStepForm";
 import { useTailoredCvBuilderStore } from "./store";
 import type { BuilderStep } from "./types";
+import { useHydrateBuilderFromProfile } from "./useHydrateBuilderFromProfile";
 import "./builder.css";
+import "./print.css";
 
-function LeftPane({ step }: { step: BuilderStep }) {
-  if (step === "basics") {
-    return <BasicsStepForm />;
+function LeftPane({
+  step,
+  jobId,
+  jobTitle,
+  company,
+  token,
+  setStep,
+  onOpenPreview,
+}: {
+  step: BuilderStep;
+  jobId: string | null;
+  jobTitle: string;
+  company: string;
+  token: string | null;
+  setStep: (s: BuilderStep) => void;
+  onOpenPreview?: () => void;
+}) {
+  switch (step) {
+    case "basics":
+      return <BasicsStepForm />;
+    case "experience":
+      return <ExperienceStepForm />;
+    case "education":
+      return <EducationStepForm />;
+    case "skills":
+      return <SkillsStepForm />;
+    case "style":
+      return <StyleStepForm />;
+    case "coverLetter":
+      return (
+        <CoverLetterStep
+          jobId={jobId}
+          jobTitle={jobTitle}
+          company={company}
+          token={token}
+          onBack={() => setStep("style")}
+          onNext={() => setStep("preview")}
+        />
+      );
+    case "preview":
+      return <PreviewStepForm onOpenPreview={onOpenPreview} />;
+    default:
+      return null;
   }
-  return <StepPlaceholder step={step} />;
 }
 
 export function TailoredCvBuilder() {
+  const searchParams = useSearchParams();
+  const { token } = useAuth();
+  const jobId = searchParams.get("jobId");
+  const jobTitle = searchParams.get("jobTitle") ?? "";
+  const company = searchParams.get("company") ?? "";
   const step = useTailoredCvBuilderStore((s) => s.step);
   const setStep = useTailoredCvBuilderStore((s) => s.setStep);
+  const hydratedFromProfile = useTailoredCvBuilderStore((s) => s.hydratedFromProfile);
+  const resetDraft = useTailoredCvBuilderStore((s) => s.resetDraft);
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const [previewOpen, setPreviewOpen] = useState(false);
 
+  useHydrateBuilderFromProfile(token);
+
   return (
     <div className="w-full">
-      <BuilderHeader currentStep={step} onStepClick={setStep} />
+      {hydratedFromProfile ? (
+        <div
+          className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg border px-4 py-3 text-sm"
+          style={{ borderColor: "var(--line)", background: "var(--green-50)" }}
+        >
+          <span style={{ color: "var(--green-800)" }}>
+            Loaded from your uploaded CV. Edit any section — the preview updates live.
+          </span>
+          <button type="button" className="btn btn-ghost btn-sm shrink-0" onClick={resetDraft}>
+            Reset sample data
+          </button>
+        </div>
+      ) : null}
+      <BuilderHeader
+        currentStep={step}
+        onStepClick={setStep}
+        jobTitle={jobTitle}
+        company={company}
+      />
 
       {!isDesktop && (
         <div className="mb-4">
@@ -50,7 +125,15 @@ export function TailoredCvBuilder() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 lg:items-stretch lg:min-h-[calc(100vh-220px)]">
         <div className="min-w-0 flex flex-col">
-          <LeftPane step={step} />
+          <LeftPane
+            step={step}
+            jobId={jobId}
+            jobTitle={jobTitle}
+            company={company}
+            token={token}
+            setStep={setStep}
+            onOpenPreview={() => setPreviewOpen(true)}
+          />
         </div>
 
         {isDesktop ? (
