@@ -14,8 +14,12 @@ import { useAuth } from "@/lib/auth";
 import { BuilderHeader } from "./BuilderHeader";
 import { BasicsStepForm } from "./BasicsStepForm";
 import { CoverLetterStep } from "./CoverLetterStep";
+import { EducationStepForm } from "./EducationStepForm";
+import { ExperienceStepForm } from "./ExperienceStepForm";
 import { LivePreviewPane } from "./LivePreviewPane";
-import { StepPlaceholder } from "./StepPlaceholder";
+import { PreviewStepForm } from "./PreviewStepForm";
+import { SkillsStepForm } from "./SkillsStepForm";
+import { StyleStepForm } from "./StyleStepForm";
 import { useTailoredCvBuilderStore } from "./store";
 import type { BuilderStep } from "./types";
 import "./builder.css";
@@ -27,6 +31,7 @@ function LeftPane({
   company,
   token,
   setStep,
+  onOpenPreview,
 }: {
   step: BuilderStep;
   jobId: string | null;
@@ -34,39 +39,35 @@ function LeftPane({
   company: string;
   token: string | null;
   setStep: (s: BuilderStep) => void;
+  onOpenPreview?: () => void;
 }) {
-  if (step === "basics") {
-    return <BasicsStepForm />;
+  switch (step) {
+    case "basics":
+      return <BasicsStepForm />;
+    case "experience":
+      return <ExperienceStepForm />;
+    case "education":
+      return <EducationStepForm />;
+    case "skills":
+      return <SkillsStepForm />;
+    case "style":
+      return <StyleStepForm />;
+    case "coverLetter":
+      return (
+        <CoverLetterStep
+          jobId={jobId}
+          jobTitle={jobTitle}
+          company={company}
+          token={token}
+          onBack={() => setStep("style")}
+          onNext={() => setStep("preview")}
+        />
+      );
+    case "preview":
+      return <PreviewStepForm onOpenPreview={onOpenPreview} />;
+    default:
+      return null;
   }
-  if (step === "coverLetter") {
-    return (
-      <CoverLetterStep
-        jobId={jobId}
-        jobTitle={jobTitle}
-        company={company}
-        token={token}
-        onBack={() => setStep("style")}
-        onNext={() => setStep("preview")}
-      />
-    );
-  }
-  if (step === "preview") {
-    return (
-      <div className="card p-6 max-w-xl">
-        <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--ink)" }}>
-          Review & export
-        </h2>
-        <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
-          Check the live preview on the right (or tap Preview on mobile). Download or copy
-          sections when export is enabled for your plan.
-        </p>
-        <button type="button" className="btn btn-ghost" onClick={() => setStep("coverLetter")}>
-          Back to cover letter
-        </button>
-      </div>
-    );
-  }
-  return <StepPlaceholder step={step} />;
 }
 
 export function TailoredCvBuilder() {
@@ -112,6 +113,7 @@ export function TailoredCvBuilder() {
             company={company}
             token={token}
             setStep={setStep}
+            onOpenPreview={() => setPreviewOpen(true)}
           />
         </div>
 

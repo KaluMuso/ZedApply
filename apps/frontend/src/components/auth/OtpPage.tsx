@@ -48,12 +48,16 @@ export function OtpPage({
       </Button>
       <StepProgress current={2} total={2} labels={["Phone", "Verify code"]} className="mb-4" />
       <h2
-        className="font-display mt-2 mb-2"
-        style={{ fontSize: 44, letterSpacing: "-0.02em" }}
+        className="font-display mt-2 mb-3"
+        style={{
+          fontSize: "clamp(2rem, 5vw, 2.75rem)",
+          letterSpacing: "-0.02em",
+          lineHeight: 1.05,
+        }}
       >
         Enter the code
       </h2>
-      <p className="text-sm mb-8" style={{ color: "var(--muted)" }}>
+      <p className="text-sm mb-6 sm:mb-8 leading-relaxed" style={{ color: "var(--muted)" }}>
         {otpChannel === "email" ? (
           <>
             Sent to <span style={{ color: "var(--ink)" }}>{email.trim()}</span> by email.

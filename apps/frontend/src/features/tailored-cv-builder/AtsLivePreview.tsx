@@ -1,31 +1,51 @@
 "use client";
 
+import { cn } from "@/lib/utils";
 import type { TailoredCvDraft } from "./types";
 
+function PreviewSection({
+  title,
+  defaultOpen = true,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <details className="cv-preview-section" open={defaultOpen}>
+      <summary className="cv-preview-section-title">{title}</summary>
+      <div className="cv-preview-section-body">{children}</div>
+    </details>
+  );
+}
+
 export function AtsLivePreview({ draft }: { draft: TailoredCvDraft }) {
-  const { basics, experience, education, skills } = draft;
+  const { basics, experience, education, skills, style } = draft;
   const contactBits = [basics.phone, basics.email, basics.location].filter(Boolean);
+  const densityClass = style.density === "compact" ? "tailored-cv-paper--compact" : "";
 
   return (
-    <article className="tailored-cv-paper" aria-label="CV preview">
+    <article
+      className={cn("tailored-cv-paper", densityClass)}
+      aria-label="CV preview"
+    >
       <h1>{basics.fullName.trim() || "Your Name"}</h1>
       {basics.headline.trim() ? <p className="cv-headline">{basics.headline}</p> : null}
       {contactBits.length > 0 && (
         <div className="cv-contact">{contactBits.join("  ·  ")}</div>
       )}
 
-      {basics.summary.trim() ? (
-        <section>
-          <h2>Summary</h2>
+      {style.showSummary && basics.summary.trim() ? (
+        <PreviewSection title="Summary">
           <p>{basics.summary}</p>
-        </section>
+        </PreviewSection>
       ) : null}
 
       {experience.length > 0 && (
-        <section>
-          <h2>Experience</h2>
+        <PreviewSection title="Work experience">
           {experience.map((role, i) => (
-            <div key={`${role.company}-${i}`} style={{ marginBottom: "0.5em" }}>
+            <div key={`${role.company}-${i}`} className="cv-role-block">
               <p className="cv-entry-title">
                 <strong>{role.title || "Role title"}</strong>
                 {role.company ? <span>, {role.company}</span> : null}
@@ -38,24 +58,23 @@ export function AtsLivePreview({ draft }: { draft: TailoredCvDraft }) {
                   </span>
                 )}
               </p>
-              {role.achievements.length > 0 && (
+              {role.achievements.filter(Boolean).length > 0 && (
                 <ul>
-                  {role.achievements.map((item, j) => (
+                  {role.achievements.filter(Boolean).map((item, j) => (
                     <li key={j}>{item}</li>
                   ))}
                 </ul>
               )}
             </div>
           ))}
-        </section>
+        </PreviewSection>
       )}
 
       {education.length > 0 && (
-        <section>
-          <h2>Education</h2>
+        <PreviewSection title="Education">
           {education.map((edu, i) => (
             <p key={`${edu.institution}-${i}`} className="cv-entry-title">
-              <strong>{edu.degree}</strong>
+              <strong>{edu.degree || "Qualification"}</strong>
               {edu.institution ? <span>, {edu.institution}</span> : null}
               {edu.location ? <span> ({edu.location})</span> : null}
               {(edu.startDate || edu.endDate) && (
@@ -67,14 +86,13 @@ export function AtsLivePreview({ draft }: { draft: TailoredCvDraft }) {
               )}
             </p>
           ))}
-        </section>
+        </PreviewSection>
       )}
 
       {skills.length > 0 && (
-        <section>
-          <h2>Skills</h2>
+        <PreviewSection title="Skills" defaultOpen={false}>
           <p className="cv-skills">{skills.join(" · ")}</p>
-        </section>
+        </PreviewSection>
       )}
     </article>
   );

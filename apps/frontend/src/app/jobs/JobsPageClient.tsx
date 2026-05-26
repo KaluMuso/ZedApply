@@ -15,7 +15,11 @@ import { Icon } from "@/components/ui/Icon";
 import { isJobHiddenFromUserFeed } from "@/lib/isJobHiddenFromUserFeed";
 import { Counter } from "@/components/ui/Counter";
 import { Pagination } from "@/components/ui/Pagination";
-import { JobsSidebar, type JobsListPreset } from "@/components/jobs/JobsSidebar";
+import {
+  JobsSidebar,
+  JobsSidebarMobile,
+  type JobsListPreset,
+} from "@/components/jobs/JobsSidebar";
 
 const ZAMBIAN_LOCATIONS = [
   "All Locations",
@@ -538,6 +542,11 @@ export default function JobsPageClient() {
         </div>
       ) : (
         <>
+          <JobsSidebarMobile
+            active={listPreset}
+            onChange={onListPresetChange}
+            savedCount={savedJobIds.size}
+          />
           <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)] gap-6 lg:gap-8">
             <JobsSidebar
               active={listPreset}

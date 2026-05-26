@@ -173,14 +173,7 @@ export default function AuthPageClient() {
   }, [otpCode, step, loading, verifyOtp]);
 
   return (
-    <main
-      className="auth-grid"
-      style={{
-        minHeight: "calc(100vh - 70px)",
-        display: "grid",
-        gridTemplateColumns: "1.05fr 1fr",
-      }}
-    >
+    <main className="auth-grid w-full max-w-7xl mx-auto">
       {/* LEFT — brand panel */}
       <aside
         className="auth-aside relative overflow-hidden flex flex-col justify-between"
@@ -188,7 +181,7 @@ export default function AuthPageClient() {
           background:
             "linear-gradient(165deg, var(--green-800) 0%, var(--green-700) 60%, var(--copper-700) 130%)",
           color: "#faf7f2",
-          padding: "72px 64px",
+          padding: "clamp(2rem, 6vw, 4.5rem) clamp(1.5rem, 5vw, 4rem)",
         }}
       >
         <div
@@ -278,10 +271,10 @@ export default function AuthPageClient() {
 
       {/* RIGHT — form */}
       <section
-        className="flex items-center justify-center"
-        style={{ padding: "72px 32px", background: "var(--bg)" }}
+        className="auth-form-panel flex items-center justify-center"
+        style={{ background: "var(--bg)" }}
       >
-        <div className="w-full max-w-[420px]">
+        <div className="w-full max-w-[420px] px-1">
           {/* Mobile logo */}
           <div className="show-mobile mb-10">
             <Logo size={28} />

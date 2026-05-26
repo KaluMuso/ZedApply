@@ -801,10 +801,22 @@ a.link-copper:hover,
   }
 }
 
+/* ─── Auth layout ─── */
+.auth-grid {
+  min-height: calc(100vh - 70px);
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+}
+
+.auth-form-panel {
+  padding: clamp(2rem, 6vw, 4.5rem) clamp(1.25rem, 4vw, 2rem);
+}
+
 /* ─── Responsive helpers ─── */
 @media (max-width: 768px) {
   .auth-grid {
     grid-template-columns: 1fr !important;
+    min-height: calc(100dvh - 4rem);
   }
   .auth-aside {
     display: none !important;

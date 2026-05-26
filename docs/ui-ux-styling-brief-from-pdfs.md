@@ -24,12 +24,18 @@
 - `ProfilePageClient.tsx`, `GeneratorTab.tsx`
 - `components/ui/SectionEyebrow.tsx`, `globals.css`
 
-### Still optional / follow-up
+### Follow-up round (2026-05-26) — completed
 
-- Full Experience/Education/Skills form steps (still placeholders except Basics + Cover letter + Review)
-- Jobs sidebar on mobile (horizontal scroll or drawer)
+- Full **Experience**, **Education**, **Skills**, **Extras (style)**, and **Review** builder steps with live preview sync
+- Preview accordions for WORK EXPERIENCE / EDUCATION / SKILLS sections
+- **JobsSidebarMobile** horizontal chips on viewports &lt; lg
+- Auth layout tokens (`.auth-grid`, `.auth-form-panel`), responsive headings, `.field` on email input
+
+### Still optional
+
 - Profile referral block parity with PDF §14
-- Auth split-panel micro-spacing pass
+- CV builder PDF export from Review step
+- Hydrate builder draft from uploaded profile CV via API
 
 ---
 

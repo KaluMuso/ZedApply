@@ -71,3 +71,46 @@
 .tailored-cv-paper .cv-entry-title {
   margin-bottom: 0;
 }
+
+.tailored-cv-paper--compact {
+  font-size: 9pt;
+  padding: 10mm 12mm;
+}
+
+.tailored-cv-paper--compact h1 {
+  font-size: 17pt;
+}
+
+.tailored-cv-paper--compact h2,
+.tailored-cv-paper .cv-preview-section-title {
+  font-size: 9.5pt;
+  margin-top: 8pt;
+}
+
+.cv-preview-section {
+  margin-bottom: 4pt;
+}
+
+.cv-preview-section-title {
+  font-size: 10.5pt;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  border-bottom: 1pt solid #d8cebb;
+  padding-bottom: 2pt;
+  margin: 10pt 0 4pt;
+  cursor: pointer;
+  list-style: none;
+}
+
+.cv-preview-section-title::-webkit-details-marker {
+  display: none;
+}
+
+.cv-preview-section-body {
+  padding-bottom: 4pt;
+}
+
+.cv-role-block + .cv-role-block {
+  margin-top: 6pt;
+}
