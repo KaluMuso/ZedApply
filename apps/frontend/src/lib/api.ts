@@ -1793,3 +1793,137 @@ export const adminLegal = {
       body: JSON.stringify(data),
     }),
 };
+
+// ── Employer portal (B2B) ──
+export type EmployerTier = "lite" | "pro";
+export type EmployerRole = "owner" | "admin" | "recruiter" | "viewer";
+
+export interface EmployerSummary {
+  id: string;
+  company_name: string;
+  industry?: string | null;
+  size_band?: string | null;
+  website?: string | null;
+  verified: boolean;
+}
+
+export interface EmployerMe {
+  employer: EmployerSummary;
+  seats: Array<{
+    id: string;
+    user_id: string;
+    role: EmployerRole;
+    invite_email?: string | null;
+    accepted_at?: string | null;
+  }>;
+  my_role: EmployerRole;
+}
+
+export interface CandidatePreview {
+  candidate_id: string;
+  headline?: string | null;
+  location?: string | null;
+  years_experience?: number | null;
+  skills: string[];
+  match_hint?: string | null;
+}
+
+export interface ContactRequestRow {
+  id: string;
+  candidate_user_id: string;
+  message_text: string;
+  channel: string;
+  status: string;
+  candidate_consented?: boolean | null;
+  candidate_phone?: string | null;
+  candidate_email?: string | null;
+  candidate_name?: string | null;
+}
+
+export interface EmployerSubscription {
+  tier: EmployerTier | null;
+  status: string;
+  active: boolean;
+  contacts_used: number;
+  contacts_limit: number;
+  price_ngwee: number;
+  current_period_end?: string | null;
+}
+
+export interface EmployerCheckout {
+  reference: string;
+  amount_ngwee: number;
+  tier: EmployerTier;
+  public_key: string;
+  label: string;
+}
+
+export const employer = {
+  register: (
+    token: string,
+    body: {
+      company_name: string;
+      industry?: string;
+      size_band?: string;
+      website?: string;
+    },
+  ) =>
+    apiFetch<{ employer: EmployerSummary }>("/employers/register", {
+      method: "POST",
+      token,
+      body,
+    }),
+
+  me: (token: string) => apiFetch<EmployerMe>("/employers/me", { token }),
+
+  invite: (token: string, body: { email: string; role?: EmployerRole }) =>
+    apiFetch<{ seat_id: string; message: string }>("/employers/me/invite", {
+      method: "POST",
+      token,
+      body,
+    }),
+
+  search: (token: string, params?: { skills?: string; location?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.skills) q.set("skills", params.skills);
+    if (params?.location) q.set("location", params.location);
+    if (params?.limit) q.set("limit", String(params.limit));
+    const qs = q.toString();
+    return apiFetch<{ results: CandidatePreview[]; total: number }>(
+      `/employers/candidates/search${qs ? `?${qs}` : ""}`,
+      { token },
+    );
+  },
+
+  requestContact: (
+    token: string,
+    candidateId: string,
+    body: { message_text: string; channel?: "whatsapp" | "email" | "both" },
+  ) =>
+    apiFetch<ContactRequestRow>(`/employers/candidates/${candidateId}/contact`, {
+      method: "POST",
+      token,
+      body,
+    }),
+
+  contacts: (token: string) =>
+    apiFetch<{ contacts: ContactRequestRow[]; total: number }>("/employers/me/contacts", {
+      token,
+    }),
+
+  subscription: (token: string) =>
+    apiFetch<EmployerSubscription>("/employers/me/subscription", { token }),
+
+  checkout: (token: string, tier: EmployerTier) =>
+    apiFetch<EmployerCheckout>("/employers/me/subscription/checkout", {
+      method: "POST",
+      token,
+      body: { tier },
+    }),
+
+  verifyPayment: (token: string, body: { reference: string; tier: EmployerTier }) =>
+    apiFetch<{ status: string; tier: string; reference: string; message: string }>(
+      "/employers/me/subscription/verify-payment",
+      { method: "POST", token, body },
+    ),
+};

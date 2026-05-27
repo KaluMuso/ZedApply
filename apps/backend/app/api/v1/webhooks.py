@@ -153,6 +153,23 @@ async def whatsapp_webhook(request: Request, supabase=Depends(get_supabase)):
         return {"status": "ignored"}
 
     phone = f"+{from_number}"
+
+    # Employer contact consent (YES / NO) — must run before generic commands.
+    if message_body in ("yes", "no"):
+        from app.services.employer_contact import resolve_consent_reply
+
+        try:
+            result = await resolve_consent_reply(
+                supabase, phone=phone, reply=message_body.upper()
+            )
+            if result is not None:
+                return {
+                    "status": "ok",
+                    "employer_consent": bool(result.get("candidate_consented")),
+                }
+        except Exception:
+            logger.exception("Employer consent webhook handler failed")
+
     command = COMMANDS.get(message_body, "unknown")
 
     if command == "welcome":

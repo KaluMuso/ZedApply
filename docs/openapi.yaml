@@ -1423,6 +1423,137 @@ components:
         success: { type: boolean }
         message: { type: string }
 
+    EmployerRegisterBody:
+      type: object
+      required: [company_name]
+      properties:
+        company_name: { type: string, minLength: 2, maxLength: 200 }
+        industry: { type: string, maxLength: 120 }
+        size_band:
+          type: string
+          enum: ['1-10', '11-50', '51-200', '201-1000', '1000+']
+        website: { type: string, maxLength: 500 }
+
+    EmployerSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        company_name: { type: string }
+        industry: { type: string, nullable: true }
+        size_band: { type: string, nullable: true }
+        website: { type: string, nullable: true }
+        verified: { type: boolean }
+        created_at: { type: string, format: date-time, nullable: true }
+
+    EmployerSeat:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        role: { type: string, enum: [owner, admin, recruiter, viewer] }
+        invited_at: { type: string, format: date-time, nullable: true }
+        accepted_at: { type: string, format: date-time, nullable: true }
+        invite_email: { type: string, format: email, nullable: true }
+
+    EmployerMeResponse:
+      type: object
+      properties:
+        employer: { $ref: '#/components/schemas/EmployerSummary' }
+        seats: { type: array, items: { $ref: '#/components/schemas/EmployerSeat' } }
+        my_role: { type: string, enum: [owner, admin, recruiter, viewer] }
+
+    EmployerInviteBody:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+        role: { type: string, enum: [owner, admin, recruiter, viewer], default: recruiter }
+
+    CandidatePreview:
+      type: object
+      properties:
+        candidate_id: { type: string, format: uuid }
+        headline: { type: string, nullable: true }
+        location: { type: string, nullable: true }
+        years_experience: { type: integer, nullable: true }
+        skills: { type: array, items: { type: string } }
+        match_hint: { type: string, nullable: true }
+
+    CandidateSearchResponse:
+      type: object
+      properties:
+        results: { type: array, items: { $ref: '#/components/schemas/CandidatePreview' } }
+        total: { type: integer }
+
+    ContactRequestBody:
+      type: object
+      required: [message_text]
+      properties:
+        message_text: { type: string, minLength: 10, maxLength: 2000 }
+        channel: { type: string, enum: [whatsapp, email, both], default: both }
+
+    ContactRequestRow:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        candidate_user_id: { type: string, format: uuid }
+        message_text: { type: string }
+        channel: { type: string }
+        sent_at: { type: string, format: date-time, nullable: true }
+        candidate_responded_at: { type: string, format: date-time, nullable: true }
+        candidate_consented: { type: boolean, nullable: true }
+        status: { type: string, enum: [pending, consented, declined, expired, unavailable, draft] }
+        candidate_phone: { type: string, nullable: true, description: Only when status=consented }
+        candidate_email: { type: string, nullable: true }
+        candidate_name: { type: string, nullable: true }
+
+    EmployerContactsResponse:
+      type: object
+      properties:
+        contacts: { type: array, items: { $ref: '#/components/schemas/ContactRequestRow' } }
+        total: { type: integer }
+
+    EmployerSubscriptionResponse:
+      type: object
+      properties:
+        tier: { type: string, enum: [lite, pro], nullable: true }
+        status: { type: string }
+        active: { type: boolean }
+        current_period_end: { type: string, format: date-time, nullable: true }
+        contacts_used: { type: integer }
+        contacts_limit: { type: integer }
+        price_ngwee: { type: integer, description: 'K500 lite = 50000, K2500 pro = 250000' }
+
+    EmployerCheckoutBody:
+      type: object
+      required: [tier]
+      properties:
+        tier: { type: string, enum: [lite, pro] }
+
+    EmployerCheckoutResponse:
+      type: object
+      properties:
+        reference: { type: string }
+        amount_ngwee: { type: integer }
+        tier: { type: string, enum: [lite, pro] }
+        public_key: { type: string }
+        label: { type: string }
+
+    EmployerVerifyPaymentBody:
+      type: object
+      required: [reference, tier]
+      properties:
+        reference: { type: string, minLength: 8, maxLength: 128 }
+        tier: { type: string, enum: [lite, pro] }
+
+    EmployerVerifyPaymentResponse:
+      type: object
+      properties:
+        status: { type: string }
+        tier: { type: string }
+        reference: { type: string }
+        message: { type: string }
+
     Subscription:
       type: object
       description: |
@@ -3285,6 +3416,147 @@ paths:
           description: Payment failed at Lenco
         '502':
           description: Lenco upstream error
+
+  /employers/register:
+    post:
+      operationId: employerRegister
+      summary: Register employer company (caller becomes owner)
+      tags: [Employers]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployerRegisterBody'
+      responses:
+        '201':
+          description: Employer created
+        '409':
+          description: User already linked to an employer
+
+  /employers/me:
+    get:
+      operationId: employerMe
+      tags: [Employers]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Current employer profile and team seats
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployerMeResponse' }
+
+  /employers/me/invite:
+    post:
+      operationId: employerInvite
+      tags: [Employers]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmployerInviteBody' }
+      responses:
+        '200':
+          description: Invitation sent
+
+  /employers/candidates/search:
+    get:
+      operationId: employerCandidateSearch
+      tags: [Employers]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: skills
+          schema: { type: string }
+        - in: query
+          name: location
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20, maximum: 50 }
+      responses:
+        '200':
+          description: Anonymized candidate previews
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CandidateSearchResponse' }
+        '402':
+          description: Active employer subscription required
+
+  /employers/candidates/{candidate_id}/contact:
+    post:
+      operationId: employerRequestContact
+      tags: [Employers]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: candidate_id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContactRequestBody' }
+      responses:
+        '200':
+          description: Consent flow initiated (WhatsApp + email)
+
+  /employers/me/contacts:
+    get:
+      operationId: employerContacts
+      tags: [Employers]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Contact request log (PII only when consented)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployerContactsResponse' }
+
+  /employers/me/subscription:
+    get:
+      operationId: employerSubscription
+      tags: [Employers]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Employer subscription status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployerSubscriptionResponse' }
+
+  /employers/me/subscription/checkout:
+    post:
+      operationId: employerSubscriptionCheckout
+      tags: [Employers]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmployerCheckoutBody' }
+      responses:
+        '200':
+          description: Lenco widget checkout parameters
+
+  /employers/me/subscription/verify-payment:
+    post:
+      operationId: employerVerifyPayment
+      tags: [Employers]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmployerVerifyPaymentBody' }
+      responses:
+        '200':
+          description: Subscription activated
+        '202':
+          description: Payment processing
 
   /webhooks/dpo:
     post:
