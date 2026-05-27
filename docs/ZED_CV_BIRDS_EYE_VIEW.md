@@ -511,7 +511,7 @@ DPO_PAY_SERVICE_TYPE=...
 
 # Email
 RESEND_API_KEY=...
-RESEND_FROM_EMAIL=Zed CV <notifications@zedcv.vergeo.company>
+RESEND_FROM_EMAIL=Zed CV <info@vergeo.company>
 EMAIL_ENABLED=true
 
 # Scraping

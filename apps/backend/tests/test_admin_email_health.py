@@ -20,8 +20,8 @@ class TestAdminEmailHealth:
             code=None,
             message="healthy",
             api_key_configured=True,
-            from_email="noreply@zedcv.com",
-            from_domain="zedcv.com",
+            from_email="info@vergeo.company",
+            from_domain="vergeo.company",
             domain_verified=True,
             domains_listed=1,
         )

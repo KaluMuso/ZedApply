@@ -37,10 +37,11 @@ see `docs/migrations.md`. Do not re-apply renumbered files.
 | Step | Owner | Action |
 |------|-------|--------|
 | 2.1 | Vercel/OCI | `RESEND_API_KEY` = production key |
-| 2.2 | DNS | Verify **zedapply.com** (or primary domain) **SPF**, **DKIM**, **DMARC** in Resend dashboard |
-| 2.3 | Kaluba | Send signup/OTP test email → confirm delivery to Gmail and Yahoo (inbox, not spam) |
+| 2.2 | OCI | `RESEND_FROM_EMAIL=Zed CV <info@vergeo.company>` (must match a verified sender domain) |
+| 2.3 | DNS | In Resend, verify **vergeo.company** — add SPF, DKIM, DMARC records at the DNS host |
+| 2.4 | Kaluba | Send signup/OTP test email → confirm delivery to Gmail and Yahoo (inbox, not spam) |
 
-**Verify:** Resend dashboard shows verified domain; test message `delivered`.
+**Verify:** Resend dashboard shows **vergeo.company** as `verified` (not `zedcv.com`); `GET /api/v1/admin/email-health` reports `domain_verified: true`; test message `delivered`.
 
 ---
 
