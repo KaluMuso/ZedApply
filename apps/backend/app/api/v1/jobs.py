@@ -36,7 +36,10 @@ from app.services.job_page_text_extractor import (
 )
 from app.services.deep_scrape_tick import run_deep_enrich_tick
 from app.services.description_body_extractor import merge_description_extraction
-from app.services.description_markdown import description_to_markdown
+from app.services.job_quality import (
+    apply_ingest_quality_to_job_data,
+    split_multi_role_listing,
+)
 from app.services.job_activation import apply_review_state_to_row, compute_review_state
 from app.services.job_publication import (
     PUBLIC_JOBS_OR_FILTER,
@@ -689,6 +692,8 @@ async def _ingest_one_job(
     supabase,
     job: JobCreate,
     aggregator_blacklist: list[str],
+    *,
+    _skip_split: bool = False,
 ) -> tuple[str, str]:
     """Run the full per-row ingest pipeline on one JobCreate.
 
@@ -706,6 +711,29 @@ async def _ingest_one_job(
     in the body.
     """
     try:
+        if not _skip_split:
+            expanded = await split_multi_role_listing(
+                job.model_dump(mode="json"), None
+            )
+            if len(expanded) > 1:
+                last_status = "ingested"
+                last_detail = ""
+                any_ok = False
+                for child in expanded:
+                    child_job = JobCreate.model_validate(child)
+                    status, detail = await _ingest_one_job(
+                        supabase,
+                        child_job,
+                        aggregator_blacklist,
+                        _skip_split=True,
+                    )
+                    if status == "ingested":
+                        any_ok = True
+                    last_status, last_detail = status, detail
+                if any_ok:
+                    return "ingested", ""
+                return last_status, last_detail
+
         if aggregator_blacklist:
             urls_to_check = " ".join(
                 filter(None, [job.apply_url or "", job.source_url or ""])
@@ -718,6 +746,8 @@ async def _ingest_one_job(
                     job.title,
                 )
                 return "skipped", "aggregator"
+
+        original_contact_phone = job.contact_phone
 
         # Strip HTML BEFORE fingerprinting so identical jobs that differ
         # only in markup collapse to the same dedup key. Mutated value is
@@ -771,9 +801,13 @@ async def _ingest_one_job(
             )
             if extracted_deadline:
                 job_data["closing_date"] = extracted_deadline.isoformat()
-        job_data["description_markdown"] = description_to_markdown(
-            job_data.get("description")
+
+        apply_ingest_quality_to_job_data(
+            job_data,
+            original_contact_phone=original_contact_phone,
         )
+        if job.parent_listing_signature:
+            job_data["parent_listing_signature"] = job.parent_listing_signature
 
         if existing.data:
             return await _merge_duplicate_ingest(
@@ -809,6 +843,8 @@ async def _ingest_one_job(
         )
         apply_review_state_to_row(job_data, review)
         apply_contact_activation(job_data)
+        if job_data.get("deactivation_reason"):
+            job_data["is_active"] = False
         review_reasons = (
             [p.strip() for p in (job_data.get("admin_review_reason") or "").split(",") if p.strip()]
         )

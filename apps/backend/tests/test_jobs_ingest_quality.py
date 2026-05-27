@@ -1,0 +1,62 @@
+"""Ingest pipeline tests for job quality gates (migration 073)."""
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, patch
+
+from tests.conftest import FakeSupabaseQuery
+
+
+class TestJobIngestQualityGates:
+    BASE = {
+        "title": "Warehouse Assistant",
+        "company": "Test Co",
+        "location": "Lusaka",
+        "description": "A" * 350,
+        "source": "scraper",
+        "source_url": "https://careers.testco.zm/jobs/1",
+        "apply_url": "https://careers.testco.zm/apply",
+    }
+
+    @patch("app.api.v1.jobs.generate_embedding", new_callable=AsyncMock)
+    def test_ingest_deactivates_missing_source_url(
+        self, mock_embed, client, fake_supabase
+    ):
+        mock_embed.return_value = [0.1] * 768
+        fake_supabase.set_table("job_fingerprints", FakeSupabaseQuery(data=[]))
+        jobs_q = FakeSupabaseQuery(data=[])
+        fake_supabase.set_table("jobs", jobs_q)
+
+        payload = {**self.BASE, "source_url": None}
+        resp = client.post(
+            "/api/v1/jobs/ingest",
+            json={"api_key": "test-ingest-key", "jobs": [payload]},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["ingested"] == 1
+        inserted = jobs_q._data[0]
+        assert inserted.get("is_active") is False
+        assert "missing_source_url" in (inserted.get("deactivation_reason") or "")
+
+    @patch("app.api.v1.jobs.generate_embedding", new_callable=AsyncMock)
+    def test_ingest_normalizes_sections(
+        self, mock_embed, client, fake_supabase
+    ):
+        mock_embed.return_value = [0.1] * 768
+        fake_supabase.set_table("job_fingerprints", FakeSupabaseQuery(data=[]))
+        jobs_q = FakeSupabaseQuery(data=[])
+        fake_supabase.set_table("jobs", jobs_q)
+
+        payload = {
+            **self.BASE,
+            "description": (
+                "RESPONSIBILITIES\nManage stock.\n\nREQUIREMENTS\nGrade 12."
+            ),
+        }
+        resp = client.post(
+            "/api/v1/jobs/ingest",
+            json={"api_key": "test-ingest-key", "jobs": [payload]},
+        )
+        assert resp.status_code == 200
+        inserted = jobs_q._data[0]
+        assert "## Responsibilities" in inserted.get("description", "")
+        assert inserted.get("section_responsibilities")

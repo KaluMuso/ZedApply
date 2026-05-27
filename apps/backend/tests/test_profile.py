@@ -1,5 +1,5 @@
 """Smoke tests for profile and skills routes."""
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from tests.conftest import FakeSupabaseQuery
 
 
@@ -28,8 +28,17 @@ class TestGetProfile:
         resp = client.get("/api/v1/profile")
         assert resp.status_code in (401, 403)
 
-    def test_get_profile_success(self, client, auth_headers, fake_supabase):
-        """Returns user profile."""
+    @patch("app.api.v1.profile.count_referral_signups", return_value=2)
+    @patch("app.api.v1.profile.count_referral_qualified", return_value=1)
+    def test_get_profile_success(
+        self,
+        _mock_qualified,
+        _mock_signups,
+        client,
+        auth_headers,
+        fake_supabase,
+    ):
+        """Returns user profile with referral counts."""
         fake_supabase.set_table(
             "users",
             _SingleQuery(
@@ -40,6 +49,7 @@ class TestGetProfile:
                         "full_name": "Test User",
                         "email": "test@example.com",
                         "location": "Lusaka",
+                        "referral_code": "ZEDTEST1",
                     }
                 ]
             ),
@@ -53,8 +63,10 @@ class TestGetProfile:
             ),
         )
         resp = client.get("/api/v1/profile", headers=auth_headers)
-        # May be 200 or 404 depending on whether profile router exists
-        assert resp.status_code in (200, 404)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["referral_signups_count"] == 2
+        assert body["referral_qualified_count"] == 1
 
 
 class TestProfileSkills:

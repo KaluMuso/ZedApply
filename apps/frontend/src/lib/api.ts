@@ -1153,6 +1153,11 @@ export interface Job {
   contact_phone?: string | null;
   apply_source?: string | null;
   description_markdown?: string | null;
+  section_responsibilities?: string | null;
+  section_requirements?: string | null;
+  section_benefits?: string | null;
+  section_how_to_apply?: string | null;
+  section_about?: string | null;
   admin_published?: boolean | null;
   scraping_sources?: ScrapingSourceEntry[] | null;
 

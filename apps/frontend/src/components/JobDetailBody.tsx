@@ -311,6 +311,13 @@ export function JobDetailBody({
               <JobDescription
                 description={job.description ? stripDescriptionHtml(job.description) : null}
                 descriptionMarkdown={job.description_markdown}
+                sections={{
+                  section_responsibilities: job.section_responsibilities,
+                  section_requirements: job.section_requirements,
+                  section_benefits: job.section_benefits,
+                  section_how_to_apply: job.section_how_to_apply,
+                  section_about: job.section_about,
+                }}
               />
             </section>
           )}
