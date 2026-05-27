@@ -1,0 +1,161 @@
+"""Unit tests for job ingest quality pipeline."""
+from __future__ import annotations
+
+import json
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from app.services import job_quality
+
+
+class TestValidateSourceUrl:
+    def test_missing_source_url(self):
+        ok, reason = job_quality.validate_source_url(None, "https://employer.com/apply")
+        assert ok is False
+        assert reason == "missing_source_url"
+
+    def test_aggregator_domain_rejected(self):
+        ok, reason = job_quality.validate_source_url(
+            "https://www.gozambiajobs.com/job/123", None
+        )
+        assert ok is False
+        assert reason == "source_url_is_aggregator:gozambiajobs.com"
+
+    def test_employer_url_accepted(self):
+        ok, reason = job_quality.validate_source_url(
+            "https://careers.savethechildren.net/job/1", None
+        )
+        assert ok is True
+        assert reason is None
+
+
+class TestNormalizeContactPhone:
+    def test_mtn_valid(self):
+        assert job_quality.normalize_contact_phone("+260 97 123 4567") == "+260971234567"
+
+    def test_invalid_prefix_cleared(self):
+        assert job_quality.normalize_contact_phone("+260813252760") is None
+
+    def test_empty(self):
+        assert job_quality.normalize_contact_phone(None) is None
+
+
+class TestDescriptionQualityOk:
+    def test_thin_with_ats_rejected(self):
+        ok, reason = job_quality.description_quality_ok(
+            "Apply online",
+            "https://company.myworkdayjobs.com/en-US/job/123",
+        )
+        assert ok is False
+        assert "thin_description_with_ats_link" in (reason or "")
+
+    def test_thin_without_ats_accepted(self):
+        ok, reason = job_quality.description_quality_ok("Short ad", None)
+        assert ok is True
+
+
+class TestNormalizeDescriptionMarkdown:
+    SEC_RAW = """JOB PURPOSE
+Provide security services across Lusaka sites.
+
+RESPONSIBILITIES
+ Patrol premises and write incident reports.
+
+REQUIREMENTS
+ Grade 12 and valid driver's licence.
+
+HOW TO APPLY
+ Email CV to careers@sec.co.zm before Friday."""
+
+    ZAMFRESH_RAW = """DESCRIPTION
+Zamfresh Limited seeks a Sales Representative in Lusaka.
+
+QUALIFICATIONS
+ Diploma in Marketing and 2 years FMCG experience.
+
+BENEFITS
+ Transport allowance and medical cover."""
+
+    ZCAS_RAW = """SUMMARY
+ZCAS University invites applications for a Lecturer in Accounting.
+
+KEY DUTIES
+ Deliver lectures and supervise student research.
+
+BENEFITS
+ Pension scheme and annual leave."""
+
+    def test_sec_headers_normalized(self):
+        md = job_quality.normalize_description_markdown(self.SEC_RAW)
+        assert "## Job purpose" in md
+        assert "## Responsibilities" in md
+        assert "## Requirements" in md
+        assert "## How to apply" in md
+        assert job_quality.normalize_description_markdown(md) == md
+
+    def test_zamfresh_headers_normalized(self):
+        md = job_quality.normalize_description_markdown(self.ZAMFRESH_RAW)
+        assert "## Job purpose" in md
+        assert "Zamfresh" in md
+
+    def test_zcas_headers_normalized(self):
+        md = job_quality.normalize_description_markdown(self.ZCAS_RAW)
+        assert "## Responsibilities" in md
+        assert "## Benefits" in md
+
+
+class TestExtractSections:
+    def test_splits_h2_sections(self):
+        md = """## Responsibilities
+Line one
+
+## Requirements
+Line two"""
+        sections = job_quality.extract_sections(md)
+        assert sections["section_responsibilities"] == "Line one"
+        assert sections["section_requirements"] == "Line two"
+
+
+class TestSplitMultiRoleListing:
+    @pytest.mark.asyncio
+    async def test_single_role_unchanged(self):
+        job = {"title": "Accountant", "description": "We need an accountant." * 5}
+        out = await job_quality.split_multi_role_listing(job, None)
+        assert out == [job]
+
+    @pytest.mark.asyncio
+    async def test_multi_role_llm_split(self):
+        job = {
+            "title": "Multiple positions: Driver and Clerk",
+            "company": "ACME",
+            "description": "1. DRIVER\nDrive fleet.\n\n2. CLERK\nFile papers." * 3,
+            "source_url": "https://employer.com/jobs",
+        }
+        mock_client = MagicMock()
+        payload = [
+            {
+                "title": "Driver",
+                "description": "Drive fleet vehicles daily.",
+                "skills_required": ["driving"],
+                "requirements": ["valid licence"],
+            },
+            {
+                "title": "Clerk",
+                "description": "Maintain filing and records.",
+                "skills_required": ["ms office"],
+                "requirements": ["grade 12"],
+            },
+        ]
+
+        with patch(
+            "app.services.job_quality._call_split_llm",
+            new_callable=AsyncMock,
+            return_value=[job_quality.SplitRoleItem.model_validate(x) for x in payload],
+        ):
+            out = await job_quality.split_multi_role_listing(job, mock_client)
+
+        assert len(out) == 2
+        assert out[0]["title"] == "Driver"
+        assert out[1]["title"] == "Clerk"
+        assert out[0]["parent_listing_signature"] == out[1]["parent_listing_signature"]

@@ -274,6 +274,9 @@ class JobCreate(BaseModel):
     contact_whatsapp: Optional[str] = Field(None, max_length=64)
     is_enriched: Optional[bool] = None
 
+    # Set by multi-role splitter during ingest; stored on jobs row.
+    parent_listing_signature: Optional[str] = Field(None, max_length=64)
+
     # INPUT-ONLY (not stored). When the scraper emits a free-text salary
     # string and leaves salary_min/max null, the ingest pipeline runs
     # _parse_salary_to_ngwee on this to derive the integer fields. After
@@ -404,6 +407,13 @@ class Job(BaseModel):
     location: Optional[str] = None
     description: str
     description_markdown: Optional[str] = None
+    deactivation_reason: Optional[str] = None
+    parent_listing_signature: Optional[str] = None
+    section_responsibilities: Optional[str] = None
+    section_requirements: Optional[str] = None
+    section_benefits: Optional[str] = None
+    section_how_to_apply: Optional[str] = None
+    section_about: Optional[str] = None
     requirements: list[str] = []
     skills_required: list[str] = []
     skills: list[str] = []  # Alias for frontend compatibility

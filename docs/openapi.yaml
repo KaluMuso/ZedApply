@@ -905,6 +905,30 @@ components:
           type: string
           nullable: true
           description: Markdown-normalized description for UI (Track 4e).
+        deactivation_reason:
+          type: string
+          nullable: true
+          description: Ingest quality gate reason when is_active=false (migration 073).
+        parent_listing_signature:
+          type: string
+          nullable: true
+          description: Groups jobs split from the same multi-role listing.
+        section_responsibilities:
+          type: string
+          nullable: true
+          description: Markdown body for Responsibilities section (migration 073).
+        section_requirements:
+          type: string
+          nullable: true
+        section_benefits:
+          type: string
+          nullable: true
+        section_how_to_apply:
+          type: string
+          nullable: true
+        section_about:
+          type: string
+          nullable: true
         requirements: { type: array, items: { type: string } }
         skills_required: { type: array, items: { type: string } }
         skills: { type: array, items: { type: string }, description: "Alias for frontend compatibility" }

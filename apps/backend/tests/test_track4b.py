@@ -166,6 +166,7 @@ def _job(**overrides):
         "company": "TEVETA",
         "description": "Manage accounting records and monthly reporting for the finance team.",
         "source": JobSource.scraper,
+        "source_url": "https://careers.teveta.org.zm/jobs/accounts-officer",
         "closing_date": "2026-06-30",
     }
     data.update(overrides)
