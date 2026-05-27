@@ -95,13 +95,6 @@ export default function AdminJobReviewPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold">Job review queue</h1>
-        <p className="text-sm text-muted-foreground">
-          Add missing application details, approve good listings, or dismiss unusable ones.
-        </p>
-      </div>
-
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading review queue...</p>
       ) : jobs.length === 0 ? (

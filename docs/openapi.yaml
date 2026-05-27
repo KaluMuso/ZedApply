@@ -835,6 +835,48 @@ components:
         per_page: { type: integer }
         pages: { type: integer }
 
+    AdminSubscriptionMetrics:
+      type: object
+      properties:
+        mrr_kwacha: { type: number, description: 'MRR in ZMW (price_ngwee sum / 100)' }
+        mrr_ngwee: { type: integer }
+        active_subscriptions: { type: integer }
+        cancelled_this_month: { type: integer }
+        active_at_month_start: { type: integer }
+        churn_rate: { type: number, minimum: 0, maximum: 1 }
+        month_start: { type: string, format: date }
+
+    AdminContactFixJobRow:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        company: { type: string, nullable: true }
+        source_url: { type: string, nullable: true }
+        apply_url: { type: string, nullable: true }
+        apply_email: { type: string, nullable: true }
+        contact_phone: { type: string, nullable: true }
+        posted_at: { type: string, format: date-time, nullable: true }
+
+    AdminContactFixJobList:
+      type: object
+      properties:
+        jobs: { type: array, items: { $ref: '#/components/schemas/AdminContactFixJobRow' } }
+        total: { type: integer }
+        page: { type: integer }
+        per_page: { type: integer }
+        pages: { type: integer }
+        fixed_count: { type: integer }
+
+    AdminJobContactPatch:
+      type: object
+      properties:
+        apply_url: { type: string, maxLength: 2000, nullable: true }
+        apply_email: { type: string, format: email, nullable: true }
+        contact_phone: { type: string, maxLength: 20, nullable: true }
+        mark_uncontactable: { type: boolean, default: false }
+        reason: { type: string, maxLength: 120, nullable: true }
+
     TierConfigRow:
       type: object
       properties:
@@ -2301,6 +2343,41 @@ paths:
               schema: { $ref: '#/components/schemas/BulkDeactivateResponse' }
         '403': { description: Superadmin only }
 
+  /admin/jobs/needs-contact-fix:
+    get:
+      operationId: adminListJobsNeedsContactFix
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      description: |
+        Paginated queue of active jobs missing a non-aggregator apply URL or contact phone.
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 1, minimum: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, default: 1, minimum: 1, maximum: 50 } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminContactFixJobList' }
+        '403': { description: Superadmin only }
+
+  /admin/jobs/{job_id}/contact:
+    patch:
+      operationId: adminPatchJobContact
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: job_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminJobContactPatch' }
+      responses:
+        '200': { description: Updated job row or deactivation summary }
+        '403': { description: Superadmin only }
+        '404': { description: Job not found }
+        '422': { description: Validation error }
+
   /admin/matches:
     get:
       operationId: adminListMatches
@@ -2315,6 +2392,21 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AdminMatchList' }
+        '403': { description: Superadmin only }
+
+  /admin/subscriptions/metrics:
+    get:
+      operationId: adminSubscriptionMetrics
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      description: |
+        MRR from SUM(tier_config.price_ngwee) for active subscriptions (÷ 100 → ZMW).
+        Churn = cancelled_this_month / active_at_month_start.
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminSubscriptionMetrics' }
         '403': { description: Superadmin only }
 
   /admin/subscriptions:
