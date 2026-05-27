@@ -15,7 +15,7 @@ export default function NewAdminJobPage() {
         <ol className="flex flex-wrap items-center gap-1">
           <li>
             <Link
-              href="/admin"
+              href="/admin/jobs"
               className="hover:text-foreground hover:underline"
             >
               Admin
@@ -24,7 +24,7 @@ export default function NewAdminJobPage() {
           <li aria-hidden="true">/</li>
           <li>
             <Link
-              href="/admin"
+              href="/admin/jobs"
               className="hover:text-foreground hover:underline"
             >
               Jobs

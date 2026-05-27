@@ -747,6 +747,44 @@ export interface AdminSubscriptionList {
   pages: number;
 }
 
+export interface AdminSubscriptionMetrics {
+  mrr_kwacha: number;
+  mrr_ngwee: number;
+  active_subscriptions: number;
+  cancelled_this_month: number;
+  active_at_month_start: number;
+  churn_rate: number;
+  month_start: string;
+}
+
+export interface AdminContactFixJobRow {
+  id: string;
+  title: string;
+  company: string | null;
+  source_url: string | null;
+  apply_url: string | null;
+  apply_email: string | null;
+  contact_phone: string | null;
+  posted_at: string | null;
+}
+
+export interface AdminContactFixJobList {
+  jobs: AdminContactFixJobRow[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+  fixed_count: number;
+}
+
+export interface AdminJobContactPatch {
+  apply_url?: string;
+  apply_email?: string;
+  contact_phone?: string;
+  mark_uncontactable?: boolean;
+  reason?: string;
+}
+
 export interface ScrapingSourceEntry {
   url: string;
   source_type: string;
@@ -826,6 +864,25 @@ export const admin = {
     if (params?.tier) q.set("tier", params.tier);
     return apiFetch<AdminUserList>(`/admin/users?${q}`, { token });
   },
+  jobsNeedsContactFix: (
+    token: string,
+    params?: { page?: number; per_page?: number }
+  ) => {
+    const q = new URLSearchParams();
+    if (params?.page) q.set("page", String(params.page));
+    if (params?.per_page) q.set("per_page", String(params.per_page));
+    return apiFetch<AdminContactFixJobList>(
+      `/admin/jobs/needs-contact-fix?${q}`,
+      { token }
+    );
+  },
+  patchJobContact: (token: string, jobId: string, data: AdminJobContactPatch) =>
+    apiFetch<Record<string, unknown>>(
+      `/admin/jobs/${encodeURIComponent(jobId)}/contact`,
+      { method: "PATCH", token, body: JSON.stringify(data) }
+    ),
+  subscriptionMetrics: (token: string) =>
+    apiFetch<AdminSubscriptionMetrics>("/admin/subscriptions/metrics", { token }),
   jobs: (
     token: string,
     params?: { page?: number; per_page?: number; expired?: boolean; is_active?: boolean }
