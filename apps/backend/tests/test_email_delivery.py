@@ -14,7 +14,7 @@ class TestCheckResendHealth:
     def test_missing_api_key(self):
         report = check_resend_health(
             resend_api_key="",
-            resend_from_email="Zed CV <noreply@zedcv.com>",
+            resend_from_email="Zed CV <info@vergeo.company>",
         )
         body = report.as_dict()
         assert body["status"] == "error"
@@ -24,11 +24,11 @@ class TestCheckResendHealth:
     @patch("resend.Domains.list")
     def test_ok_when_domain_verified(self, mock_list):
         mock_list.return_value = MagicMock(
-            data=[{"name": "zedcv.com", "status": "verified"}]
+            data=[{"name": "vergeo.company", "status": "verified"}]
         )
         report = check_resend_health(
             resend_api_key="re_test",
-            resend_from_email="Zed CV <noreply@zedcv.com>",
+            resend_from_email="Zed CV <info@vergeo.company>",
         )
         body = report.as_dict()
         assert body["status"] == "ok"
@@ -42,7 +42,7 @@ class TestCheckResendHealth:
         )
         report = check_resend_health(
             resend_api_key="re_test",
-            resend_from_email="noreply@zedcv.com",
+            resend_from_email="info@vergeo.company",
         )
         body = report.as_dict()
         assert body["status"] == "degraded"

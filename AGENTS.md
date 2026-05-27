@@ -161,6 +161,27 @@ cat > /sessions/.../mnt/ZedCV/path/to/file << 'PY_EOF'
 PY_EOF
 ```
 
+### 3.8 Email OTP returns 503 (`email_domain_unverified`)
+
+**Surface symptom:** `/auth/otp/request` with `channel: email` returns 503
+and RFC 7807 `detail` code `email_domain_unverified` (or generic
+`email_send_failed` from Resend's API message).
+
+**Likely cause:** `RESEND_FROM_EMAIL` uses an address on a domain that is
+not verified in Resend (e.g. `noreply@zedcv.com`). Resend rejects the
+send before delivery.
+
+**Diagnose:** `GET /api/v1/admin/email-health` (admin key). Expect
+`domain_verified: false` and `from_domain` mismatched with the Resend
+dashboard. Resend → Domains should list **vergeo.company** as `verified`.
+
+**Fix:**
+1. In Resend, add/verify **vergeo.company** (SPF, DKIM, DMARC at DNS).
+2. On OCI, set `RESEND_FROM_EMAIL=Zed CV <info@vergeo.company>` in
+   `apps/backend/.env`, then `docker compose up -d --force-recreate
+   zedcv-backend` (not `restart` — see §3.5).
+3. Smoke: request email OTP; confirm `delivered` in Resend logs.
+
 ---
 
 ## 4. Pre-commit checklist

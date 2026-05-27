@@ -85,6 +85,24 @@ Write-Host "JWT_SECRET=$jwt"
 Write-Host "WAHA_API_KEY=$waha"
 ```
 
+### 1.6 Resend (Email OTP + Digests)
+
+Transactional email (OTP, match digests, contact form) goes through [Resend](https://resend.com).
+
+1. Create an API key → `RESEND_API_KEY`
+2. In Resend → **Domains**, add **vergeo.company** and publish the DNS records (SPF, DKIM, DMARC) at your DNS host
+3. Wait until the dashboard shows **verified** (do not use `zedcv.com` until it is verified there too)
+4. Set on the backend (OCI `apps/backend/.env` and Vercel if applicable):
+
+```bash
+RESEND_API_KEY=re_...
+RESEND_FROM_EMAIL=Zed CV <info@vergeo.company>
+```
+
+**Verify:** `curl -s -H "X-Admin-Key: $ADMIN_API_KEY" https://api.zedcv.com/api/v1/admin/email-health | jq .domain_verified` → `true`
+
+See `AGENTS.md` §3.8 if email OTP returns 503.
+
 ---
 
 ## Phase 2: Push to GitHub

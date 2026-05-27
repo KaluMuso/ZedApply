@@ -139,9 +139,9 @@ class Settings(BaseSettings):
     # Superadmin phone (initial bootstrap)
     superadmin_phone: str = ""
 
-    # Email (Resend)
+    # Email (Resend) — sender must use a domain verified in Resend (vergeo.company).
     resend_api_key: str = ""
-    resend_from_email: str = "ZedApply <noreply@zedapply.com>"
+    resend_from_email: str = "Zed CV <info@vergeo.company>"
     # Published Resend template alias/id for daily match digests ({{{USER_NAME}}}, etc.).
     resend_daily_digest_template_id: str = "daily-job-matches"
     # Inbox the /contact form delivers to (task #65). Defaults to the
