@@ -319,3 +319,39 @@ async def send_otp_email(email: str, code: str) -> None:
             exc,
         )
         raise EmailDeliveryError(code_err, log_message=str(exc)) from exc
+
+
+async def send_employer_consent_email(
+    email: str,
+    *,
+    employer_name: str,
+    message_snippet: str,
+) -> bool:
+    """Mirror WhatsApp consent prompt for employer contact requests."""
+    if not _api_ready() or not email:
+        return False
+    settings = get_settings()
+    html = f"""
+    <h2>Employer contact request</h2>
+    <p><strong>{escape(employer_name)}</strong> wants to reach you via Zed Apply:</p>
+    <blockquote>{escape(message_snippet)}</blockquote>
+    <p>Reply <strong>YES</strong> on WhatsApp to share your phone and email, or <strong>NO</strong> to decline.</p>
+  """
+    return _send(email, f"{employer_name} wants to contact you — Zed Apply", html)
+
+
+async def send_employer_invite_email(
+    email: str,
+    *,
+    company_name: str,
+    invite_url: str,
+) -> bool:
+    if not _api_ready():
+        logger.warning("Resend not configured — skipping employer invite email")
+        return False
+    html = f"""
+    <h2>Join {escape(company_name)} on Zed Apply Employer</h2>
+    <p>You have been invited to collaborate on candidate search and outreach.</p>
+    <p><a href="{escape(invite_url, quote=True)}">Accept invitation</a></p>
+    """
+    return _send(email, f"Invitation — {company_name} on Zed Apply", html)
