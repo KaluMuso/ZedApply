@@ -29,8 +29,8 @@ Prioritized from the 2026-05-28 audit. **P0 = launch blocker.**
 - [ ] Employer consent E2E screenshot on prod WAHA
 - [ ] LLM prompt-injection guards on tailor CV / cover letter
 - [ ] Daily `llm_usage_log` cost review + alert threshold
-- [ ] Extend `/health` with `redis`, `vapid`, `email_domain_verified`
-- [ ] Fix or quarantine 2 failing backend tests (`test_notification_channels`, `test_seed_canonical_skills`)
+- [x] Extend `/health` with `redis_configured`, `vapid_configured`, `resend_configured` (env flags)
+- [x] Fix 2 failing backend tests (`test_notification_channels`, `test_seed_canonical_skills`)
 - [ ] Document running backfills via `docker exec` (not host `python3`)
 
 ---

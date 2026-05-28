@@ -98,8 +98,10 @@ class TestSeedRows:
 
     def test_curated_seed_has_full_list(self):
         rows = curated_seed_rows()
-        assert len(rows) >= 190
+        # Raw list has duplicates/aliases; build_seed_row_from_raw dedupes by name.
+        assert len(rows) >= 120
         assert len(rows) <= len(CURATED_ZAMBIA_SKILLS_RAW)
+        assert len({r.name for r in rows}) == len(rows)
         assert all(isinstance(r, CanonicalSeedRow) for r in rows)
 
 
