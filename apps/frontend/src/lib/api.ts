@@ -1504,6 +1504,21 @@ export const matches = {
     }),
 };
 
+export interface PushSubscribeBody {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+  expirationTime?: number | null;
+}
+
+export const push = {
+  subscribe: (token: string, body: PushSubscribeBody) =>
+    apiFetch<{ ok: boolean; message: string }>("/push/subscribe", {
+      method: "POST",
+      token,
+      body: JSON.stringify(body),
+    }),
+};
+
 // ── Subscription ──
 export interface Subscription {
   tier: string;

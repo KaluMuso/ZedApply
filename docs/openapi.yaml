@@ -55,6 +55,40 @@ components:
         domain_verified: { type: boolean, nullable: true }
         domains_listed: { type: integer, nullable: true }
 
+    PushSubscriptionKeys:
+      type: object
+      required: [p256dh, auth]
+      properties:
+        p256dh: { type: string }
+        auth: { type: string }
+
+    PushSubscribeRequest:
+      type: object
+      required: [endpoint, keys]
+      properties:
+        endpoint: { type: string }
+        keys: { $ref: '#/components/schemas/PushSubscriptionKeys' }
+        expirationTime: { type: integer, nullable: true }
+
+    PushSubscribeResponse:
+      type: object
+      required: [ok, message]
+      properties:
+        ok: { type: boolean }
+        message: { type: string }
+
+    PushTestRequest:
+      type: object
+      properties:
+        user_id: { type: string, format: uuid, nullable: true }
+
+    PushTestResponse:
+      type: object
+      required: [delivered, message]
+      properties:
+        delivered: { type: integer }
+        message: { type: string }
+
     OTPRequest:
       type: object
       required: [phone]
@@ -3263,6 +3297,40 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/NotificationDigestResponse' }
         '401': { description: Invalid ingest API key }
+
+  /push/subscribe:
+    post:
+      operationId: subscribeWebPush
+      summary: Store browser Push API subscription (VAPID) for the current user
+      tags: [Push]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PushSubscribeRequest' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PushSubscribeResponse' }
+
+  /admin/push/test:
+    post:
+      operationId: adminPushTest
+      summary: Send a test Web Push to an admin user (smoke test)
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PushTestRequest' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PushTestResponse' }
 
   /admin/batch-match:
     post:
