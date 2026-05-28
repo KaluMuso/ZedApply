@@ -22,10 +22,14 @@ const mockRouter = {
   back: vi.fn(),
   forward: vi.fn(),
 };
-vi.mock("next/navigation", () => ({
-  useRouter: () => mockRouter,
-  usePathname: () => "/matches",
-}));
+vi.mock("next/navigation", () => {
+  const params = new URLSearchParams();
+  return {
+    useRouter: () => mockRouter,
+    usePathname: () => "/matches",
+    useSearchParams: () => params,
+  };
+});
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 

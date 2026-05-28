@@ -16,6 +16,7 @@ globalThis.IntersectionObserver =
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
   usePathname: () => "/matches",
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";

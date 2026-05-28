@@ -82,4 +82,48 @@ describe("LoginPage", () => {
     await user.type(phoneInput, "971234567");
     expect(onPhoneChange).toHaveBeenCalled();
   });
+
+  it("disables submit while loading", () => {
+    render(
+      <LoginPage
+        {...baseProps}
+        phoneDigits="971234567"
+        email="user@example.com"
+        consentChecked
+        loading
+      />,
+    );
+    expect(screen.getByRole("button", { name: /send code/i })).toBeDisabled();
+  });
+
+  it("calls onOtpChannelChange when WhatsApp is selected on free tier", async () => {
+    const user = userEvent.setup();
+    const onOtpChannelChange = vi.fn();
+    render(
+      <LoginPage
+        {...baseProps}
+        isFreeTier
+        onOtpChannelChange={onOtpChannelChange}
+      />,
+    );
+    const whatsapp = screen.getByRole("radio", { name: /whatsapp/i });
+    await user.click(whatsapp);
+    expect(onOtpChannelChange).toHaveBeenCalledWith("whatsapp");
+  });
+
+  it("requires consent checkbox before submit is enabled", async () => {
+    const user = userEvent.setup();
+    const onConsentChange = vi.fn();
+    render(
+      <LoginPage
+        {...baseProps}
+        phoneDigits="971234567"
+        email="user@example.com"
+        onConsentChange={onConsentChange}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /send code/i })).toBeDisabled();
+    await user.click(screen.getByRole("checkbox"));
+    expect(onConsentChange).toHaveBeenCalledWith(true);
+  });
 });
