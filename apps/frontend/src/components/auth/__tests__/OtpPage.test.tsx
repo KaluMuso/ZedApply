@@ -71,4 +71,42 @@ describe("OtpPage", () => {
     await user.click(resendBtn);
     expect(onResend).not.toHaveBeenCalled();
   });
+
+  it("pastes a 6-digit code into all boxes", () => {
+    render(<OtpPageHarness {...baseProps} />);
+    const boxes = screen.getAllByRole("textbox");
+    fireEvent.paste(boxes[0], {
+      clipboardData: { getData: () => "654321" },
+    });
+    expect(boxes.map((b) => (b as HTMLInputElement).value).join("")).toBe("654321");
+  });
+
+  it("shows WhatsApp delivery copy when channel is whatsapp", () => {
+    render(<OtpPage {...baseProps} otpChannel="whatsapp" />);
+    expect(screen.getByText(/on whatsapp/i)).toBeInTheDocument();
+    expect(screen.getByText(/\+260 971234567/)).toBeInTheDocument();
+  });
+
+  it("calls onRememberChange when trust-device checkbox toggles", async () => {
+    const user = userEvent.setup();
+    const onRememberChange = vi.fn();
+    render(
+      <OtpPage {...baseProps} rememberDevice={false} onRememberChange={onRememberChange} />,
+    );
+    await user.click(screen.getByRole("checkbox"));
+    expect(onRememberChange).toHaveBeenCalledWith(true);
+  });
+
+  it("calls onBack when change number is clicked", async () => {
+    const user = userEvent.setup();
+    const onBack = vi.fn();
+    render(<OtpPage {...baseProps} onBack={onBack} />);
+    await user.click(screen.getByRole("button", { name: /change number/i }));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows verification error from parent", () => {
+    render(<OtpPage {...baseProps} error="Invalid or expired code" />);
+    expect(screen.getByText(/invalid or expired code/i)).toBeInTheDocument();
+  });
 });

@@ -95,4 +95,111 @@ describe("computeProfileCompleteness", () => {
     expect(percent).toBeGreaterThanOrEqual(30);
     expect(percent).toBeLessThanOrEqual(45);
   });
+
+  it("treats undefined users.education as incomplete unless CV or prefs fill it", () => {
+    const withoutEducation = computeProfileCompleteness({
+      profile: { ...baseProfile(), education: undefined },
+      preferences: emptyPreferences(),
+    });
+    const eduItem = withoutEducation.items.find((i) => i.id === "education_level");
+    expect(eduItem?.complete).toBe(false);
+
+    const fromCv = computeProfileCompleteness({
+      profile: {
+        ...baseProfile(),
+        education: undefined,
+        cv_sections: {
+          work_experience: [],
+          education: [{ degree: "BSc", institution: "UNZA" }],
+          certifications: [],
+          languages: [],
+          projects: [],
+          achievements: [],
+          publications: [],
+          memberships: [],
+          volunteer_work: [],
+          references: [],
+        },
+      },
+      preferences: emptyPreferences(),
+    });
+    expect(fromCv.items.find((i) => i.id === "education_level")?.complete).toBe(true);
+  });
+
+  it("counts education_level from preferences.extras", () => {
+    const prefs = emptyPreferences();
+    prefs.extras = { education_level: "Diploma" };
+    const result = computeProfileCompleteness({
+      profile: { ...baseProfile(), education: [] },
+      preferences: prefs,
+    });
+    expect(result.items.find((i) => i.id === "education_level")?.complete).toBe(true);
+  });
+
+  it("certifications complete from profile JSONB or cv_sections", () => {
+    const fromProfile = computeProfileCompleteness({
+      profile: { ...baseProfile(), certifications: [{ name: "PMP" }] },
+      preferences: emptyPreferences(),
+    });
+    expect(fromProfile.items.find((i) => i.id === "certifications")?.complete).toBe(true);
+
+    const fromCv = computeProfileCompleteness({
+      profile: {
+        ...baseProfile(),
+        certifications: undefined,
+        cv_sections: {
+          work_experience: [],
+          education: [],
+          certifications: [{ name: "AWS", issuer: "Amazon" }],
+          languages: [],
+          projects: [],
+          achievements: [],
+          publications: [],
+          memberships: [],
+          volunteer_work: [],
+          references: [],
+        },
+      },
+      preferences: emptyPreferences(),
+    });
+    expect(fromCv.items.find((i) => i.id === "certifications")?.complete).toBe(true);
+  });
+
+  it("willing_to_relocate completes when prefs were manually saved", () => {
+    const prefs = emptyPreferences();
+    prefs.willing_to_relocate = false;
+    prefs.manually_updated_at = "2026-05-01T00:00:00.000Z";
+    const result = computeProfileCompleteness({
+      profile: baseProfile(),
+      preferences: prefs,
+    });
+    expect(result.items.find((i) => i.id === "willing_to_relocate")?.complete).toBe(true);
+  });
+
+  it("languages require both language and proficiency strings", () => {
+    const prefs = emptyPreferences();
+    prefs.languages = [{ language: "English", proficiency: "native" }];
+    const ok = computeProfileCompleteness({ profile: baseProfile(), preferences: prefs });
+    expect(ok.items.find((i) => i.id === "languages")?.complete).toBe(true);
+
+    prefs.languages = [{ language: "Bemba", proficiency: "" }];
+    const bad = computeProfileCompleteness({ profile: baseProfile(), preferences: prefs });
+    expect(bad.items.find((i) => i.id === "languages")?.complete).toBe(false);
+  });
+
+  it("target salary completes when either min or max is set", () => {
+    const prefs = emptyPreferences();
+    prefs.salary_min = 100000;
+    const result = computeProfileCompleteness({ profile: baseProfile(), preferences: prefs });
+    expect(result.items.find((i) => i.id === "target_salary")?.complete).toBe(true);
+  });
+
+  it("returns null preferences as incomplete for preference-backed fields", () => {
+    const result = computeProfileCompleteness({
+      profile: baseProfile(),
+      preferences: null,
+    });
+    expect(result.items.find((i) => i.id === "preferred_industries")?.complete).toBe(false);
+    expect(result.items.find((i) => i.id === "notice_period")?.complete).toBe(false);
+  });
 });
