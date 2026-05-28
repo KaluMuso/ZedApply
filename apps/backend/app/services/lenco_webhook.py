@@ -127,11 +127,10 @@ def extract_event_fields(payload: dict) -> dict[str, Any]:
     event = (payload.get("event") or "").lower()
     status = (data.get("status") or "").lower()
 
-    is_paid = (
-        event == "collection.successful"
-        or status in {"successful", "success", "completed", "paid"}
-        or event.endswith(".successful")
-        or event.endswith(".success")
+    is_paid = event == "collection.successful" or (
+        event.startswith("collection.")
+        and status in {"successful", "success", "completed", "paid"}
+        and not event.endswith(".failed")
     )
     is_failed = (
         event == "collection.failed"
@@ -155,16 +154,22 @@ def extract_event_fields(payload: dict) -> dict[str, Any]:
 
 
 def _coerce_amount(v: Any) -> int | None:
-    """Coerce Lenco amount to int ngwee. Accepts int, float, or str."""
+    """Coerce Lenco amount to int ngwee.
+
+    Webhook/widget payloads use decimal kwacha strings (e.g. '250.00').
+    Some fixtures send integer ngwee (e.g. 12500). Values under 1000 as
+    int are treated as whole kwacha.
+    """
+    from app.services.lenco import amount_to_ngwee
+
     if v is None:
         return None
     if isinstance(v, int):
-        return v
+        return v if v >= 1000 else v * 100
     if isinstance(v, float):
+        if v < 1000:
+            return int(round(v * 100))
         return int(round(v))
     if isinstance(v, str):
-        try:
-            return int(round(float(v)))
-        except (TypeError, ValueError):
-            return None
+        return amount_to_ngwee({"amount": v})
     return None

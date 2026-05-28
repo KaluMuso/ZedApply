@@ -124,6 +124,22 @@ class TestExtractEventFields:
         assert fields["is_failed"] is True
         assert fields["is_paid"] is False
 
+    def test_transfer_successful_is_not_paid(self):
+        payload = {
+            "event": "transfer.successful",
+            "data": {"reference": "zedapply-pay-1", "status": "successful", "amount": "250.00"},
+        }
+        fields = extract_event_fields(payload)
+        assert fields["is_paid"] is False
+
+    def test_decimal_kwacha_amount_converts_to_ngwee(self):
+        payload = {
+            "event": "collection.successful",
+            "data": {"reference": "zedapply-abc", "status": "successful", "amount": "250.00"},
+        }
+        fields = extract_event_fields(payload)
+        assert fields["amount_ngwee"] == 25000
+
 
 class TestLencoWebhookRoute:
     def _post_lenco(self, client, body_dict: dict, *, sig: str | None = None):
