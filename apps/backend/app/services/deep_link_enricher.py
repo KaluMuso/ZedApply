@@ -48,7 +48,7 @@ def extract_apply_from_html(html: str, page_url: str) -> EnrichmentResult:
 
 def extract_linkedin_og(html: str) -> EnrichmentResult:
     """Best-effort enrichment from LinkedIn public page OG tags (no auth)."""
-    from app.services.deep_link_parsers import parse_linkedin
+    from app.services.deep_link_parsers_legacy import parse_linkedin
 
     return parse_linkedin(html, "https://www.linkedin.com/jobs/view/")
 
