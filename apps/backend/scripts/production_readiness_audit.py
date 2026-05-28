@@ -58,6 +58,12 @@ SCHEMA_SENTINELS: tuple[tuple[str, str], ...] = (
     ("jobs", "is_review_required"),
     ("jobs", "review_reason"),
     ("tier_config", "price_ngwee"),
+    ("cv_generations", "match_id"),
+    ("saved_jobs", "application_status"),
+    ("employers", "verified"),
+    ("cover_letter_versions", "version_number"),
+    ("cvs", "generated_pdf_path"),
+    ("web_push_subscriptions", "endpoint"),
 )
 
 

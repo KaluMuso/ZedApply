@@ -2,9 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system deps for python-docx, PyPDF2, Pillow
+# System deps: libmagic (CV MIME), WeasyPrint (PDF export: pango/cairo)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc libffi-dev libmagic1 && \
+    apt-get install -y --no-install-recommends \
+        gcc libffi-dev libmagic1 \
+        libpango-1.0-0 libpangocairo-1.0-0 libcairo2 libgdk-pixbuf-2.0-0 \
+        shared-mime-info && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Python deps
