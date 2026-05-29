@@ -425,6 +425,7 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
         verify_lenco_signature,
         extract_event_fields,
         add_lenco_webhook_breadcrumb,
+        report_lenco_webhook_failure,
     )
 
     settings = get_settings()
@@ -439,10 +440,10 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
 
     if settings.lenco_verify_signatures:
         if not settings.lenco_api_key and not settings.lenco_webhook_secret:
-            add_lenco_webhook_breadcrumb(
+            report_lenco_webhook_failure(
+                "lenco_webhook_verification_not_configured",
                 payload,
-                success=False,
-                detail="lenco_webhook_verification_not_configured",
+                level="error",
             )
             logging.error("Lenco webhook: signature verification not configured")
             raise HTTPException(
@@ -456,10 +457,10 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
             webhook_secret=settings.lenco_webhook_secret,
             api_key=settings.lenco_api_key,
         ):
-            add_lenco_webhook_breadcrumb(
+            report_lenco_webhook_failure(
+                "lenco_webhook_invalid_signature",
                 payload,
-                success=False,
-                detail="lenco_webhook_invalid_signature",
+                level="warning",
             )
             logging.warning("lenco_webhook_invalid_signature")
             raise HTTPException(status_code=401, detail="Invalid signature")
@@ -470,10 +471,10 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
         )
 
     if not payload:
-        add_lenco_webhook_breadcrumb(
+        report_lenco_webhook_failure(
+            "lenco_webhook_invalid_payload",
             payload,
-            success=False,
-            detail="lenco_webhook_invalid_payload",
+            level="warning",
         )
         logging.error("Lenco webhook: signed but unparseable body")
         return {"status": "invalid_payload"}

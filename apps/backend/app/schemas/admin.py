@@ -279,3 +279,9 @@ class DailyDigestSendResponse(BaseModel):
     skipped: int = 0
     failed: int = 0
     quiet_hours_skipped: int = 0
+
+
+class RenewalReminderSendResponse(BaseModel):
+    sent: int = 0
+    skipped: int = 0
+    failed: int = 0

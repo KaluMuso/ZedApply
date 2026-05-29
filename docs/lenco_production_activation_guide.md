@@ -102,7 +102,11 @@ No new payment workflow is required — webhooks hit FastAPI directly.
 | Workflow | Schedule | Purpose |
 |----------|----------|---------|
 | `ZedApply - Subscription Expiry Downgrade` | Daily 03:00 UTC | `downgrade_expired_subscriptions` RPC |
+| `ZedApply - Subscription Renewal Reminder` | Daily 08:00 UTC | Email users 3 days before period end |
 | Supabase heartbeat | Every 6h | Keeps free-tier DB alive |
+
+Import `infra/n8n/subscription_renewal_reminder_daily.json` and set `FASTAPI_URL` +
+`INGEST_API_KEY` (same as review-queue workflow).
 
 **In n8n UI:**
 
@@ -110,10 +114,11 @@ No new payment workflow is required — webhooks hit FastAPI directly.
 2. Set credentials: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
 3. Activate the workflow; run once manually and confirm HTTP 200.
 
-**Optional follow-ups (not blocking go-live):**
+**Optional follow-ups:**
 
-- Renewal reminder email 3 days before `subscription_expires_at`
-- Slack/WhatsApp alert if Lenco webhook 401 rate spikes (Sentry)
+- **Sentry alerts are automatic** for Lenco webhook failures (invalid signature,
+  missing verification config, bad payload). In Sentry → Alerts, create a rule on
+  message containing `Lenco webhook failure:`.
 
 ---
 

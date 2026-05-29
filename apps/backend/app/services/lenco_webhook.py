@@ -109,6 +109,29 @@ def add_lenco_webhook_breadcrumb(
         logger.debug("Sentry breadcrumb skipped for Lenco webhook", exc_info=True)
 
 
+def report_lenco_webhook_failure(
+    detail: str,
+    payload: dict[str, Any],
+    *,
+    level: str = "warning",
+) -> None:
+    """Breadcrumb + Sentry alert for Lenco webhook failures (signature, config, payload)."""
+    add_lenco_webhook_breadcrumb(payload, success=False, detail=detail)
+    try:
+        import sentry_sdk
+
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("lenco_webhook", detail)
+            scope.set_context("lenco_webhook", mask_lenco_webhook_payload(payload))
+            scope.fingerprint = ["lenco-webhook", detail]
+            sentry_sdk.capture_message(
+                f"Lenco webhook failure: {detail}",
+                level=level,
+            )
+    except Exception:
+        logger.debug("Sentry alert skipped for Lenco webhook", exc_info=True)
+
+
 def extract_event_fields(payload: dict) -> dict[str, Any]:
     """Normalise the Lenco v2 webhook payload into the fields we care about.
 

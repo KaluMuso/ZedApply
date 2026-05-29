@@ -1345,6 +1345,13 @@ components:
         skipped: { type: integer, minimum: 0 }
         failed: { type: integer, minimum: 0 }
 
+    RenewalReminderSendResponse:
+      type: object
+      properties:
+        sent: { type: integer, minimum: 0 }
+        skipped: { type: integer, minimum: 0 }
+        failed: { type: integer, minimum: 0 }
+
     ContactSubmission:
       type: object
       required: [name, email, message]
@@ -2927,6 +2934,26 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DailyDigestSendResponse' }
+        '401': { description: Invalid admin or ingest API key }
+
+  /admin/trigger-renewal-reminders:
+    post:
+      operationId: triggerRenewalReminders
+      summary: Cron — email renewal reminders before billing period ends
+      description: |
+        Emails paid users whose active subscription ends in SUBSCRIPTION_RENEWAL_REMINDER_DAYS
+        (default 3). Skips cancelled subscriptions. Dedupes via billing_email_log.
+      tags: [Admin Cron]
+      parameters:
+        - { name: ADMIN_API_KEY, in: header, required: false, schema: { type: string } }
+        - { name: X-ADMIN-API-KEY, in: header, required: false, schema: { type: string } }
+        - { name: INGEST_API_KEY, in: header, required: false, schema: { type: string } }
+        - { name: X-INGEST-API-KEY, in: header, required: false, schema: { type: string } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RenewalReminderSendResponse' }
         '401': { description: Invalid admin or ingest API key }
 
   /admin/trigger-daily-digest:

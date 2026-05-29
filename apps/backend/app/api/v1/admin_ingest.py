@@ -10,6 +10,7 @@ from app.schemas.admin import (
     DailyDigestBatchResponse,
     DailyDigestMessage,
     DailyDigestSendResponse,
+    RenewalReminderSendResponse,
 )
 from app.schemas.matching import BatchMatchAcceptedResponse
 from app.services.admin_alerts import check_review_queue_and_alert
@@ -143,3 +144,22 @@ async def batch_match(
         batch_run_id=batch_id,
         message="Batch matching started",
     )
+
+
+@router.post("/trigger-renewal-reminders", response_model=RenewalReminderSendResponse)
+async def trigger_renewal_reminders(
+    admin_api_key: str | None = Header(None, alias="ADMIN_API_KEY"),
+    x_admin_api_key: str | None = Header(None, alias="X-ADMIN-API-KEY"),
+    ingest_api_key: str | None = Header(None, alias="INGEST_API_KEY"),
+    x_ingest_api_key: str | None = Header(None, alias="X-INGEST-API-KEY"),
+    supabase=Depends(get_supabase),
+    settings: Settings = Depends(get_settings),
+):
+    """Daily cron: email paid users N days before billing period ends (default 3)."""
+    _require_cron_auth(
+        settings, admin_api_key, x_admin_api_key, ingest_api_key, x_ingest_api_key
+    )
+    from app.services.renewal_reminders import run_renewal_reminder_emails
+
+    stats = await run_renewal_reminder_emails(supabase)
+    return RenewalReminderSendResponse(**stats)
