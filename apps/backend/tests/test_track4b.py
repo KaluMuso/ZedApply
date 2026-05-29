@@ -217,13 +217,16 @@ def test_match_crediting_unique_pairs_and_new_only():
     first = [{"job_id": "j1", "final_score": 88, "vector_score": 80, "skill_score": 90, "bonus_score": 5},
              {"job_id": "j2", "final_score": 82, "vector_score": 78, "skill_score": 86, "bonus_score": 4}]
     asyncio.run(store_matches("u1", "cv1", first, supabase))
-    assert asyncio.run(credit_matches_for_cycle("u1", ["j1", "j2"], supabase)) == 2
-    assert asyncio.run(credit_matches_for_cycle("u1", ["j1", "j2"], supabase)) == 0
+    assert asyncio.run(credit_matches_for_cycle("u1", ["j1", "j2"], supabase)) == [
+        "j1",
+        "j2",
+    ]
+    assert asyncio.run(credit_matches_for_cycle("u1", ["j1", "j2"], supabase)) == []
 
     third = [{"job_id": "j2", "final_score": 82, "vector_score": 78, "skill_score": 86, "bonus_score": 4},
              {"job_id": "j3", "final_score": 80, "vector_score": 76, "skill_score": 84, "bonus_score": 4}]
     asyncio.run(store_matches("u1", "cv1", third, supabase))
-    assert asyncio.run(credit_matches_for_cycle("u1", ["j2", "j3"], supabase)) == 1
+    assert asyncio.run(credit_matches_for_cycle("u1", ["j2", "j3"], supabase)) == ["j3"]
 
 
 def test_tier_quota_inserts_but_does_not_credit_after_cap():
@@ -242,7 +245,7 @@ def test_tier_quota_inserts_but_does_not_credit_after_cap():
     )
     asyncio.run(store_matches("u1", "cv1", [{"job_id": "new", "final_score": 90, "vector_score": 90, "skill_score": 90, "bonus_score": 0}], supabase))
     assert any(row["job_id"] == "new" for row in supabase.rows("matches"))
-    assert asyncio.run(credit_matches_for_cycle("u1", ["new"], supabase, now=now)) == 0
+    assert asyncio.run(credit_matches_for_cycle("u1", ["new"], supabase, now=now)) == []
     assert next(row for row in supabase.rows("matches") if row["job_id"] == "new").get("credited_at") is None
 
 
