@@ -171,6 +171,9 @@ def create_app() -> FastAPI:
 
     @application.get("/api/v1/health")
     async def health_check():
+        import os
+
+        from app.services.web_push import vapid_configured
         from app.services.whatsapp import check_waha_health
         from app.core.deps import get_supabase
 
@@ -190,6 +193,9 @@ def create_app() -> FastAPI:
             "version": settings.app_version,
             "supabase": supabase_ok,
             "waha": waha_ok,
+            "redis_configured": bool(os.environ.get("REDIS_URL", "").strip()),
+            "vapid_configured": vapid_configured(settings),
+            "resend_configured": bool(settings.resend_api_key.strip()),
         }
 
     if settings.debug:

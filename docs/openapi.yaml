@@ -2043,6 +2043,15 @@ components:
         version: { type: string }
         supabase: { type: boolean }
         waha: { type: boolean }
+        redis_configured:
+          type: boolean
+          description: True when REDIS_URL is set (shared rate-limit storage).
+        vapid_configured:
+          type: boolean
+          description: True when VAPID keys are set for web push.
+        resend_configured:
+          type: boolean
+          description: True when RESEND_API_KEY is set (email OTP/digests).
 
 paths:
   /health:

@@ -13,6 +13,9 @@ class TestHealth:
         body = resp.json()
         assert body["status"] in ("healthy", "degraded", "unhealthy")
         assert "version" in body
+        assert "redis_configured" in body
+        assert "vapid_configured" in body
+        assert "resend_configured" in body
 
     def test_health_no_auth_required(self, client):
         """Health endpoint should be accessible without auth."""
