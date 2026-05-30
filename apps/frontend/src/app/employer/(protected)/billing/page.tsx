@@ -5,9 +5,15 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { employer, type EmployerSubscription, type EmployerTier } from "@/lib/api";
 import { profile } from "@/lib/api";
+import {
+  getLencoScriptUrl,
+  isLencoReady,
+  openLencoCheckout,
+  setLencoMerchantLabel,
+} from "@/lib/lenco";
+import type { LencoPayOptions } from "@/types/lenco-pay";
 
-const LENCO_SCRIPT =
-  process.env.NEXT_PUBLIC_LENCO_SCRIPT_URL ?? "https://pay.sandbox.lenco.co/js/v1/inline.js";
+const LENCO_SCRIPT = getLencoScriptUrl();
 
 function kwacha(ngwee: number) {
   return ngwee / 100;
@@ -30,7 +36,7 @@ export default function EmployerBillingPage() {
   }, [refresh]);
 
   async function startCheckout(tier: EmployerTier) {
-    if (!token || !window.LencoPay) return;
+    if (!token || !isLencoReady()) return;
     setPaying(tier);
     setMessage(null);
     try {
@@ -39,16 +45,18 @@ export default function EmployerBillingPage() {
       const email =
         prof?.email?.trim() || `employer+${user?.id?.slice(0, 8) ?? "user"}@zedapply.com`;
 
-      window.label = checkout.label;
-      window.LencoPay.getPaid({
+      const amount = kwacha(checkout.amount_ngwee);
+      setLencoMerchantLabel(checkout.label);
+
+      const lencoOptions: LencoPayOptions = {
         key: checkout.public_key,
         label: checkout.label,
         reference: checkout.reference,
         email,
-        amount: kwacha(checkout.amount_ngwee),
+        amount,
         currency: "ZMW",
         channels: ["card", "mobile-money"],
-        onSuccess: async (response: { reference: string }) => {
+        onSuccess: async (response) => {
           try {
             const result = await employer.verifyPayment(token, {
               reference: response.reference,
@@ -63,7 +71,9 @@ export default function EmployerBillingPage() {
           }
         },
         onClose: () => setPaying(null),
-      });
+      };
+
+      openLencoCheckout(lencoOptions);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Checkout failed");
       setPaying(null);
