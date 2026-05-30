@@ -119,4 +119,39 @@ describe("NotificationsSection", () => {
       });
     });
   });
+
+  it("updates weekly job alerts and quiet hours", async () => {
+    const user = userEvent.setup();
+    render(<NotificationsSection />);
+    await waitFor(() => expect(screen.getByText("Weekly job alerts")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("checkbox", { name: /weekly job alerts/i }));
+    await waitFor(() => {
+      expect(mockUserPrefsPatch).toHaveBeenCalledWith("test-token", {
+        alert_frequency: "weekly",
+      });
+    });
+
+    const quietStart = screen.getByDisplayValue("20:00");
+    await user.clear(quietStart);
+    await user.type(quietStart, "21:30");
+    await waitFor(() => {
+      expect(mockUserPrefsPatch).toHaveBeenCalledWith("test-token", {
+        quiet_hours_start: "21:30",
+      });
+    });
+  });
+
+  it("toggles product update notifications", async () => {
+    const user = userEvent.setup();
+    render(<NotificationsSection />);
+    await waitFor(() => expect(screen.getByText("Product updates and offers")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("checkbox", { name: /product updates and offers/i }));
+    await waitFor(() => {
+      expect(mockUserPrefsPatch).toHaveBeenCalledWith("test-token", {
+        notify_product_updates: true,
+      });
+    });
+  });
 });

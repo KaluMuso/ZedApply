@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  jobOgImageUrl,
   pageMetadata,
   SITE_DEFAULT_TITLE,
+  SITE_URL,
   siteDefaultMetadata,
 } from "../site-metadata";
 
@@ -33,5 +35,13 @@ describe("pageMetadata", () => {
     expect(meta.title).toBe("Jobs");
     expect(meta.openGraph?.title).toBe("Jobs - Zed Apply");
     expect(meta.twitter?.title).toBe("Jobs - Zed Apply");
+  });
+});
+
+describe("jobOgImageUrl", () => {
+  it("builds an absolute OG image URL with encoded job id", () => {
+    expect(jobOgImageUrl("job/123?x=1")).toBe(
+      `${SITE_URL}/api/og?jobId=job%2F123%3Fx%3D1`,
+    );
   });
 });
