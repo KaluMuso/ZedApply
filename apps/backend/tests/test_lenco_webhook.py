@@ -13,6 +13,9 @@ from app.services.lenco_webhook import (
     extract_event_fields,
     derive_lenco_webhook_hash_key,
     mask_lenco_webhook_payload,
+    is_valid_uuid,
+    parse_zedapply_consumer_user_id,
+    resolve_lenco_webhook_payment,
 )
 
 TEST_API_KEY = "test-lenco-api-secret-key"
@@ -98,6 +101,46 @@ class TestMaskLencoWebhookPayload:
         assert masked["reference"] == "***1234"
         assert masked["amount"] == "***2500"
         assert masked["status"] == "successful"
+
+
+class TestLencoReferenceParsing:
+    def test_is_valid_uuid(self):
+        assert is_valid_uuid("5d6c1f43-f440-48fe-b4c8-88364544ee3d") is True
+        assert is_valid_uuid("zedapply-5d6c1f43-f440-48fe-b4c8-88364544ee3d-1") is False
+
+    def test_parse_widget_reference_user_id(self):
+        user_id = "5d6c1f43-f440-48fe-b4c8-88364544ee3d"
+        ref = f"zedapply-{user_id}-1780091173119"
+        assert parse_zedapply_consumer_user_id(ref) == user_id
+
+    def test_parse_skips_employer_and_legacy_short_refs(self):
+        assert parse_zedapply_consumer_user_id("zedapply-emp-abc-1") is None
+        assert parse_zedapply_consumer_user_id("zedapply-pay-1") is None
+
+
+class TestResolveLencoWebhookPayment:
+    def test_skips_invalid_uuid_id_lookup(self, fake_supabase):
+        user_id = "5d6c1f43-f440-48fe-b4c8-88364544ee3d"
+        ref = f"zedapply-{user_id}-1780091173119"
+        fake_supabase.set_table("payments", FakeSupabaseQuery(data=[]))
+        fake_supabase.set_table(
+            "subscriptions",
+            FakeSupabaseQuery(
+                data=[{"id": "sub-1", "user_id": user_id, "tier": "free"}]
+            ),
+        )
+        payment = resolve_lenco_webhook_payment(
+            fake_supabase,
+            ref,
+            None,
+            amount_ngwee=12500,
+            webhook_payload={"event": "collection.successful"},
+            allow_create=True,
+        )
+        assert payment is not None
+        assert payment["user_id"] == user_id
+        assert payment["provider_ref"] == ref
+        assert payment["status"] == "pending"
 
 
 class TestExtractEventFields:
@@ -375,6 +418,67 @@ class TestLencoWebhookRoute:
         )
         assert resp.status_code == 200
         assert resp.json()["status"] == "already_processed"
+
+    @patch("app.services.email.send_payment_confirmation_email")
+    @patch("app.services.whatsapp.send_whatsapp_message")
+    def test_webhook_widget_reference_format_activates_without_uuid_crash(
+        self, _mock_wa, _mock_email, client, fake_supabase, monkeypatch
+    ):
+        """Regression: zedapply-{userId}-{ts} must not hit payments.id with bad UUID."""
+        from app.core.config import get_settings
+
+        get_settings.cache_clear()
+        monkeypatch.setenv("LENCO_API_KEY", TEST_API_KEY)
+
+        user_id = "5d6c1f43-f440-48fe-b4c8-88364544ee3d"
+        ref = f"zedapply-{user_id}-1780091173119"
+        body_dict = {
+            "event": "collection.successful",
+            "data": {
+                "reference": ref,
+                "transactionRef": "LEN-widget",
+                "status": "successful",
+                "amount": "125.00",
+            },
+        }
+        body_bytes = json.dumps(body_dict).encode("utf-8")
+
+        fake_supabase.set_table("payments", FakeSupabaseQuery(data=[]))
+        fake_supabase.set_table(
+            "subscriptions",
+            FakeSupabaseQuery(
+                data=[
+                    {
+                        "id": "sub-widget",
+                        "user_id": user_id,
+                        "tier": "free",
+                        "current_period_end": None,
+                    }
+                ]
+            ),
+        )
+        subs_spy = _UpdateSpyQuery(
+            data=[{"id": "sub-widget", "user_id": user_id}]
+        )
+        fake_supabase.set_table("subscriptions", subs_spy)
+        fake_supabase.set_table(
+            "users",
+            _UpdateSpyQuery(
+                data=[{"id": user_id, "phone": "+260971234567"}]
+            ),
+        )
+
+        resp = client.post(
+            "/api/v1/webhooks/lenco",
+            headers={
+                "x-lenco-signature": _sign(body_bytes),
+                "Content-Type": "application/json",
+            },
+            content=body_bytes,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "completed"
+        assert subs_spy.update_calls[0]["tier"] == "starter"
 
     def test_webhook_skips_signature_when_verify_disabled(
         self, client, fake_supabase, monkeypatch

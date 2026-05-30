@@ -528,37 +528,19 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
         # Lenco stops retrying.
         return {"status": "no_company_ref"}
 
-    # Widget flow stores the widget reference on provider_ref; legacy rows
-    # used payment id as company_ref.
-    payment_result = (
-        supabase.table("payments")
-        .select("*, subscriptions(id, user_id, tier, current_period_end)")
-        .eq("provider_ref", company_ref)
-        .limit(1)
-        .execute()
-    )
-    if not payment_result.data:
-        payment_result = (
-            supabase.table("payments")
-            .select("*, subscriptions(id, user_id, tier, current_period_end)")
-            .eq("id", company_ref)
-            .limit(1)
-            .execute()
-        )
-    if not payment_result.data and fields.get("lenco_ref"):
-        payment_result = (
-            supabase.table("payments")
-            .select("*, subscriptions(id, user_id, tier, current_period_end)")
-            .eq("provider_ref", fields["lenco_ref"])
-            .limit(1)
-            .execute()
-        )
+    from app.services.lenco_webhook import resolve_lenco_webhook_payment
 
-    if not payment_result.data:
+    payment = resolve_lenco_webhook_payment(
+        supabase,
+        company_ref,
+        fields.get("lenco_ref"),
+        amount_ngwee=fields.get("amount_ngwee"),
+        webhook_payload=payload,
+        allow_create=bool(fields.get("is_paid")),
+    )
+    if not payment:
         logging.warning("Lenco webhook: no matching payment for ref=%s", company_ref)
         return {"status": "no_matching_payment"}
-
-    payment = payment_result.data[0]
     payment_id = payment["id"]
     user_id = payment["user_id"]
 

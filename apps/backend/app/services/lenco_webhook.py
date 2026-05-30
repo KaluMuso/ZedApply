@@ -13,9 +13,176 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+import uuid
 from typing import Any
 
+from supabase import Client
+
 logger = logging.getLogger(__name__)
+
+_PAYMENT_SELECT = "*, subscriptions(id, user_id, tier, current_period_end)"
+
+
+def is_valid_uuid(value: str) -> bool:
+    """Return True when value is a Postgres-compatible UUID string."""
+    try:
+        uuid.UUID(str(value))
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
+def parse_zedapply_consumer_user_id(reference: str) -> str | None:
+    """Extract user_id from pricing widget refs: zedapply-{uuid}-{unix_ms}."""
+    if not reference or reference.startswith("zedapply-emp-"):
+        return None
+    if not reference.startswith("zedapply-"):
+        return None
+    parts = reference[len("zedapply-") :].split("-")
+    if len(parts) < 6:
+        return None
+    candidate = "-".join(parts[:5])
+    return candidate if is_valid_uuid(candidate) else None
+
+
+def _payment_lookup(
+    supabase: Client,
+    *,
+    column: str,
+    value: str,
+) -> dict[str, Any] | None:
+    if column == "id" and not is_valid_uuid(value):
+        return None
+    result = (
+        supabase.table("payments")
+        .select(_PAYMENT_SELECT)
+        .eq(column, value)
+        .limit(1)
+        .execute()
+    )
+    if result.data:
+        return result.data[0]
+    return None
+
+
+def _ensure_pending_lenco_payment(
+    supabase: Client,
+    *,
+    user_id: str,
+    company_ref: str,
+    amount_ngwee: int,
+    webhook_payload: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Create a pending Lenco payment when the webhook beats verify-payment."""
+    sub_result = (
+        supabase.table("subscriptions")
+        .select("id, user_id, tier, current_period_end")
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    if not sub_result.data:
+        logger.warning(
+            "Lenco webhook: no subscription for user %s (ref=%s)",
+            user_id,
+            company_ref,
+        )
+        return None
+
+    subscription_row = sub_result.data[0]
+    insert = (
+        supabase.table("payments")
+        .insert(
+            {
+                "user_id": user_id,
+                "subscription_id": subscription_row["id"],
+                "amount": amount_ngwee,
+                "currency": "ZMW",
+                "payment_method": "lenco",
+                "provider": "lenco",
+                "provider_ref": company_ref,
+                "status": "pending",
+                "webhook_data": webhook_payload,
+            }
+        )
+        .execute()
+    )
+    if not insert.data:
+        return None
+    payment = insert.data[0]
+    payment["subscriptions"] = subscription_row
+    return payment
+
+
+def resolve_lenco_webhook_payment(
+    supabase: Client,
+    company_ref: str,
+    lenco_ref: str | None,
+    *,
+    amount_ngwee: int | None = None,
+    webhook_payload: dict[str, Any] | None = None,
+    allow_create: bool = False,
+) -> dict[str, Any] | None:
+    """Find (or optionally create) the payment row for a Lenco webhook delivery.
+
+    Lookup order:
+      1. payments.provider_ref == company_ref (widget reference)
+      2. payments.id == company_ref (legacy — UUID only)
+      3. payments.provider_ref == lenco_ref (Lenco transaction id)
+      4. Parse zedapply-{user_uuid}-{ts} and match provider_ref / pending row
+      5. When allow_create, insert pending row for parsed user (webhook race)
+    """
+    payment = _payment_lookup(supabase, column="provider_ref", value=company_ref)
+    if payment:
+        return payment
+
+    payment = _payment_lookup(supabase, column="id", value=company_ref)
+    if payment:
+        return payment
+
+    if lenco_ref:
+        payment = _payment_lookup(supabase, column="provider_ref", value=lenco_ref)
+        if payment:
+            return payment
+
+    user_id = parse_zedapply_consumer_user_id(company_ref)
+    if user_id:
+        payment = (
+            supabase.table("payments")
+            .select(_PAYMENT_SELECT)
+            .eq("user_id", user_id)
+            .eq("provider_ref", company_ref)
+            .limit(1)
+            .execute()
+        )
+        if payment.data:
+            return payment.data[0]
+
+        pending = (
+            supabase.table("payments")
+            .select(_PAYMENT_SELECT)
+            .eq("user_id", user_id)
+            .eq("provider", "lenco")
+            .eq("status", "pending")
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if pending.data:
+            row = pending.data[0]
+            if row.get("provider_ref") in (company_ref, None, ""):
+                return row
+
+        if allow_create and amount_ngwee is not None and webhook_payload is not None:
+            return _ensure_pending_lenco_payment(
+                supabase,
+                user_id=user_id,
+                company_ref=company_ref,
+                amount_ngwee=amount_ngwee,
+                webhook_payload=webhook_payload,
+            )
+
+    return None
 
 
 def derive_lenco_webhook_hash_key(
