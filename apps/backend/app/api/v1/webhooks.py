@@ -289,15 +289,18 @@ async def dpo_webhook(request: Request, supabase=Depends(get_supabase)):
         .execute()
     )
 
-    # If no match by token, try by payment ID in company_ref
+    # Legacy DPO rows used payment UUID as company_ref — never cast widget refs.
     if not payment_result.data and parsed.get("company_ref"):
-        payment_result = (
-            supabase.table("payments")
-            .select("*, subscriptions(id, user_id, tier, current_period_end)")
-            .eq("id", parsed["company_ref"])
-            .limit(1)
-            .execute()
-        )
+        from app.services.lenco_payment_ref import is_uuid_string
+
+        if is_uuid_string(parsed["company_ref"]):
+            payment_result = (
+                supabase.table("payments")
+                .select("*, subscriptions(id, user_id, tier, current_period_end)")
+                .eq("id", parsed["company_ref"])
+                .limit(1)
+                .execute()
+            )
 
     if not payment_result.data:
         logging.warning(f"DPO webhook: no matching payment for token={parsed['transaction_token']}")
@@ -501,37 +504,29 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
         # Lenco stops retrying.
         return {"status": "no_company_ref"}
 
-    # Widget flow stores the widget reference on provider_ref; legacy rows
-    # used payment id as company_ref.
-    payment_result = (
-        supabase.table("payments")
-        .select("*, subscriptions(id, user_id, tier, current_period_end)")
-        .eq("provider_ref", company_ref)
-        .limit(1)
-        .execute()
+    from app.services.lenco_payment_ref import (
+        ensure_pending_payment_for_widget_ref,
+        find_lenco_payment_row,
     )
-    if not payment_result.data:
-        payment_result = (
-            supabase.table("payments")
-            .select("*, subscriptions(id, user_id, tier, current_period_end)")
-            .eq("id", company_ref)
-            .limit(1)
-            .execute()
-        )
-    if not payment_result.data and fields.get("lenco_ref"):
-        payment_result = (
-            supabase.table("payments")
-            .select("*, subscriptions(id, user_id, tier, current_period_end)")
-            .eq("provider_ref", fields["lenco_ref"])
-            .limit(1)
-            .execute()
-        )
 
-    if not payment_result.data:
+    payment = find_lenco_payment_row(
+        supabase,
+        company_ref=company_ref,
+        lenco_ref=fields.get("lenco_ref"),
+    )
+    if not payment and fields.get("is_paid"):
+        amount_for_insert = fields.get("amount_ngwee") or 0
+        if amount_for_insert > 0:
+            payment = ensure_pending_payment_for_widget_ref(
+                supabase,
+                company_ref=company_ref,
+                amount_ngwee=amount_for_insert,
+                webhook_payload=payload,
+            )
+
+    if not payment:
         logging.warning("Lenco webhook: no matching payment for ref=%s", company_ref)
         return {"status": "no_matching_payment"}
-
-    payment = payment_result.data[0]
     payment_id = payment["id"]
     user_id = payment["user_id"]
 

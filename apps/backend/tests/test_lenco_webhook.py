@@ -360,6 +360,54 @@ class TestLencoWebhookRoute:
         assert resp.status_code == 200
         assert resp.json()["status"] == "already_processed"
 
+    @patch("app.services.email.send_payment_confirmation_email")
+    @patch("app.services.whatsapp.send_whatsapp_message")
+    def test_webhook_widget_reference_does_not_query_payments_id_as_uuid(
+        self, _mock_wa, _mock_email, client, fake_supabase, monkeypatch
+    ):
+        """Regression: zedapply-{user_uuid}-{ts} must not be used as payments.id."""
+        from app.core.config import get_settings
+        import uuid as uuid_mod
+
+        get_settings.cache_clear()
+        monkeypatch.setenv("LENCO_API_KEY", TEST_API_KEY)
+
+        user_id = str(uuid_mod.uuid4())
+        company_ref = f"zedapply-{user_id}-1717000000000"
+        body_dict = {
+            "event": "collection.successful",
+            "data": {
+                "reference": company_ref,
+                "transactionRef": "LEN-widget",
+                "status": "successful",
+                "amount": 12500,
+            },
+        }
+        body_bytes = json.dumps(body_dict).encode("utf-8")
+
+        payments_q = FakeSupabaseQuery(data=[])
+        subs_q = FakeSupabaseQuery(
+            data=[{"id": "sub-widget", "user_id": user_id, "tier": "free"}]
+        )
+        users_q = FakeSupabaseQuery(
+            data=[{"id": user_id, "phone": "+260971234567", "subscription_started_at": None}]
+        )
+        fake_supabase.set_table("payments", payments_q)
+        fake_supabase.set_table("subscriptions", subs_q)
+        fake_supabase.set_table("users", users_q)
+
+        resp = client.post(
+            "/api/v1/webhooks/lenco",
+            headers={
+                "x-lenco-signature": _sign(body_bytes),
+                "Content-Type": "application/json",
+            },
+            content=body_bytes,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "completed"
+        assert payments_q._data[0]["provider_ref"] == company_ref
+
     def test_webhook_skips_signature_when_verify_disabled(
         self, client, fake_supabase, monkeypatch
     ):
