@@ -9,6 +9,7 @@ Daily digests prefer a published Resend template (`resend_daily_digest_template_
 with variables USER_NAME, MATCH_COUNT, MATCHES_HTML, APP_URL.
 """
 import logging
+from datetime import datetime
 from html import escape
 from pathlib import Path
 from typing import Any, Optional
@@ -258,6 +259,73 @@ async def send_match_digest_email(user_id: str, matches: list[dict], supabase) -
     <p><a href="{settings.app_url}/matches">View all matches</a></p>
     """
     return _send(email, f"{len(matches)} new job matches", html)
+
+
+    return _send(email, f"Zed CV — {label} plan activated", html)
+
+
+async def send_renewal_reminder_email(
+    *,
+    user_id: str,
+    tier: str,
+    tier_label: str,
+    price_ngwee: int,
+    period_end: datetime,
+    supabase,
+) -> bool:
+    """Remind a paid user their billing period ends soon — manual renew on /pricing."""
+    enabled, email = await _resolve_recipient(user_id, supabase)
+    if not enabled or not email:
+        return False
+
+    settings = get_settings()
+    end_label = period_end.strftime("%d %b %Y")
+    kwacha = price_ngwee // 100
+    period_end_date = period_end.date().isoformat()
+    idempotency_key = f"renewal-reminder-{user_id}-{period_end_date}"
+
+    html = f"""
+    <h2>Your Zed Apply plan ends soon</h2>
+    <p>Hi,</p>
+    <p>Your <strong>{tier_label}</strong> plan is scheduled to end on
+    <strong>{end_label}</strong>.</p>
+    <p>Zed Apply does not auto-charge mobile money — to keep your paid benefits
+    (extra matches, cover letters, interview prep), renew on the pricing page before
+    your period ends.</p>
+    <p>Renewal price: <strong>K{kwacha:,}/month</strong></p>
+    <p><a href="{settings.app_url}/pricing">Renew on Zed Apply</a> ·
+    <a href="{settings.app_url}/settings/billing">Billing settings</a></p>
+    <p style="font-size:12px;color:#666;">Already cancelled? You can ignore this email —
+    your account will revert to the Free plan when the period ends.</p>
+    """
+    return _send(
+        email,
+        f"Zed Apply — renew your {tier_label} plan by {end_label}",
+        html,
+        idempotency_key=idempotency_key,
+    )
+
+
+async def send_invoice_email(invoice: dict, supabase) -> bool:
+    """Email HTML invoice/receipt for a completed payment."""
+    user_id = invoice.get("user_id")
+    if not user_id:
+        return False
+    enabled, email = await _resolve_recipient(user_id, supabase)
+    if not enabled or not email:
+        return False
+
+    from app.services.invoice import render_invoice_html
+
+    html = render_invoice_html(invoice)
+    inv_no = invoice.get("invoice_number", "receipt")
+    tier = invoice.get("tier_label", "plan")
+    kwacha = int(invoice.get("amount_kwacha") or 0)
+    return _send(
+        email,
+        f"Zed Apply invoice {inv_no} — {tier} (K{kwacha})",
+        html,
+    )
 
 
 async def send_payment_confirmation_email(
