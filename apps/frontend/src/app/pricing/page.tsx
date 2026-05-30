@@ -19,10 +19,17 @@ import {
   formatPriceLabel,
   UNLIMITED_MATCHES,
 } from "@/lib/tier-config";
+import {
+  getLencoPublicKey,
+  getLencoScriptUrl,
+  isLencoReady,
+  lencoPhone,
+  openLencoCheckout,
+  setLencoMerchantLabel,
+} from "@/lib/lenco";
+import type { LencoPayOptions } from "@/types/lenco-pay";
 
-const LENCO_WIDGET_URL =
-  process.env.NEXT_PUBLIC_LENCO_WIDGET_URL?.trim() ||
-  "https://pay.sandbox.lenco.co/js/v1/inline.js";
+const LENCO_SCRIPT_URL = getLencoScriptUrl();
 
 const TIER_RANK: Record<string, number> = {
   free: 0,
@@ -172,19 +179,6 @@ function splitName(fullName: string | null): { firstName: string; lastName: stri
   return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
 }
 
-function lencoPhone(phone: string | null | undefined): string {
-  const raw = (phone || "").trim();
-  if (!raw) return "0961111111";
-  if (raw.startsWith("+260")) return `0${raw.slice(4)}`;
-  if (raw.startsWith("260")) return `0${raw.slice(3)}`;
-  if (raw.startsWith("0")) return raw;
-  return `0${raw}`;
-}
-
-function isLencoReady(): boolean {
-  return typeof window !== "undefined" && typeof window.LencoPay?.getPaid === "function";
-}
-
 export default function PricingPage() {
   const router = useRouter();
   const { token, user, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -271,7 +265,7 @@ export default function PricingPage() {
       return;
     }
 
-    const publicKey = process.env.NEXT_PUBLIC_LENCO_PUBLIC_KEY?.trim();
+    const publicKey = getLencoPublicKey();
     if (!publicKey) {
       notify.error("Payments are not configured. Please try again later.");
       return;
@@ -296,10 +290,15 @@ export default function PricingPage() {
       const { firstName, lastName } = splitName(prof?.full_name ?? null);
       const reference = `zedapply-${user.id}-${Date.now()}`;
       const amount = amountKwacha(tier);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        notify.error("Invalid plan amount. Please refresh and try again.");
+        setPayingTier(null);
+        return;
+      }
 
-      window.label = "ZedApply";
+      setLencoMerchantLabel("ZedApply");
 
-      window.LencoPay!.getPaid({
+      const checkout: LencoPayOptions = {
         key: publicKey,
         label: "ZedApply",
         reference,
@@ -348,7 +347,9 @@ export default function PricingPage() {
             "Payment processing — you will be upgraded shortly",
           );
         },
-      });
+      };
+
+      openLencoCheckout(checkout);
     } catch (err) {
       console.error("[upgrade-click] failed", err);
       notify.error(
@@ -396,7 +397,7 @@ export default function PricingPage() {
   return (
     <div className="max-w-[1280px] mx-auto px-6 py-12 md:py-20">
       <Script
-        src={LENCO_WIDGET_URL}
+        src={LENCO_SCRIPT_URL}
         strategy="afterInteractive"
         onLoad={() => {
           console.log("[lenco-script] loaded");
