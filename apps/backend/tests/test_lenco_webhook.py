@@ -421,52 +421,39 @@ class TestLencoWebhookRoute:
 
     @patch("app.services.email.send_payment_confirmation_email")
     @patch("app.services.whatsapp.send_whatsapp_message")
-    def test_webhook_widget_reference_format_activates_without_uuid_crash(
+    def test_webhook_widget_reference_does_not_query_payments_id_as_uuid(
         self, _mock_wa, _mock_email, client, fake_supabase, monkeypatch
     ):
-        """Regression: zedapply-{userId}-{ts} must not hit payments.id with bad UUID."""
+        """Regression: zedapply-{user_uuid}-{ts} must not be used as payments.id."""
         from app.core.config import get_settings
+        import uuid as uuid_mod
 
         get_settings.cache_clear()
         monkeypatch.setenv("LENCO_API_KEY", TEST_API_KEY)
 
-        user_id = "5d6c1f43-f440-48fe-b4c8-88364544ee3d"
-        ref = f"zedapply-{user_id}-1780091173119"
+        user_id = str(uuid_mod.uuid4())
+        company_ref = f"zedapply-{user_id}-1717000000000"
         body_dict = {
             "event": "collection.successful",
             "data": {
-                "reference": ref,
+                "reference": company_ref,
                 "transactionRef": "LEN-widget",
                 "status": "successful",
-                "amount": "125.00",
+                "amount": 12500,
             },
         }
         body_bytes = json.dumps(body_dict).encode("utf-8")
 
-        fake_supabase.set_table("payments", FakeSupabaseQuery(data=[]))
-        fake_supabase.set_table(
-            "subscriptions",
-            FakeSupabaseQuery(
-                data=[
-                    {
-                        "id": "sub-widget",
-                        "user_id": user_id,
-                        "tier": "free",
-                        "current_period_end": None,
-                    }
-                ]
-            ),
+        payments_q = FakeSupabaseQuery(data=[])
+        subs_q = FakeSupabaseQuery(
+            data=[{"id": "sub-widget", "user_id": user_id, "tier": "free"}]
         )
-        subs_spy = _UpdateSpyQuery(
-            data=[{"id": "sub-widget", "user_id": user_id}]
+        users_q = FakeSupabaseQuery(
+            data=[{"id": user_id, "phone": "+260971234567", "subscription_started_at": None}]
         )
-        fake_supabase.set_table("subscriptions", subs_spy)
-        fake_supabase.set_table(
-            "users",
-            _UpdateSpyQuery(
-                data=[{"id": user_id, "phone": "+260971234567"}]
-            ),
-        )
+        fake_supabase.set_table("payments", payments_q)
+        fake_supabase.set_table("subscriptions", subs_q)
+        fake_supabase.set_table("users", users_q)
 
         resp = client.post(
             "/api/v1/webhooks/lenco",
@@ -478,7 +465,7 @@ class TestLencoWebhookRoute:
         )
         assert resp.status_code == 200
         assert resp.json()["status"] == "completed"
-        assert subs_spy.update_calls[0]["tier"] == "starter"
+        assert payments_q._data[0]["provider_ref"] == company_ref
 
     def test_webhook_skips_signature_when_verify_disabled(
         self, client, fake_supabase, monkeypatch
