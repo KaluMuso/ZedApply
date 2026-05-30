@@ -32,6 +32,7 @@ from app.api.v1 import (
     tier_config_routes,
     whatsapp_scraper_webhook,
     analytics,
+    employers,
 )
 
 TRUSTED_HOSTS = [
@@ -96,6 +97,12 @@ def create_app() -> FastAPI:
 
     application.include_router(job_cover_letter.router, prefix="/api/v1")
     application.include_router(matches.router, prefix="/api/v1")
+    from app.api.v1 import match_cover_letter
+
+    application.include_router(match_cover_letter.router, prefix="/api/v1")
+    from app.api.v1 import push
+
+    application.include_router(push.router, prefix="/api/v1")
     application.include_router(cv.router, prefix="/api/v1")
     application.include_router(profile.router, prefix="/api/v1")
     application.include_router(subscription.router, prefix="/api/v1")
@@ -120,6 +127,7 @@ def create_app() -> FastAPI:
     application.include_router(stats.router, prefix="/api/v1")
     application.include_router(preferences.router, prefix="/api/v1")
     application.include_router(users.router, prefix="/api/v1")
+    application.include_router(employers.router, prefix="/api/v1")
     application.include_router(webhooks.router, prefix="/api/v1")
     application.include_router(
         whatsapp_scraper_webhook.router, prefix="/api/v1"
@@ -163,6 +171,9 @@ def create_app() -> FastAPI:
 
     @application.get("/api/v1/health")
     async def health_check():
+        import os
+
+        from app.services.web_push import vapid_configured
         from app.services.whatsapp import check_waha_health
         from app.core.deps import get_supabase
 
@@ -182,6 +193,9 @@ def create_app() -> FastAPI:
             "version": settings.app_version,
             "supabase": supabase_ok,
             "waha": waha_ok,
+            "redis_configured": bool(os.environ.get("REDIS_URL", "").strip()),
+            "vapid_configured": vapid_configured(settings),
+            "resend_configured": bool(settings.resend_api_key.strip()),
         }
 
     if settings.debug:

@@ -4,10 +4,11 @@ Move from sandbox integrations to production credentials and soft launch.
 Run `python scripts/production_readiness_audit.py` from `apps/backend/` before
 each phase and after deploys.
 
-**Repo migrations:** `001`–`055` under `infra/supabase/migrations/` (latest
-schema: `055_free_tier_promo.sql`). If prod already has that schema under
-**old** duplicate prefixes, run **only** `059_audit_idempotent.sql` to verify —
-see `docs/migrations.md`. Do not re-apply renumbered files.
+**Repo migrations:** `001`–`080` under `infra/supabase/migrations/` (latest:
+`080_apply_url_backfill_log.sql`). Apply any pending files on Supabase before
+enabling features that depend on them (074–079 for Wave B/D). If prod already
+has schema under **old** duplicate prefixes, run **only** `059_audit_idempotent.sql`
+to verify — see `docs/migrations.md`. Do not re-apply renumbered files.
 
 ---
 

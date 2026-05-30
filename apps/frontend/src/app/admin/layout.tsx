@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { pageMetadata } from "@/lib/site-metadata";
 import { AdminGuard } from "./admin-guard";
+import { AdminShell } from "./_components/AdminShell";
 
 export const metadata: Metadata = pageMetadata({
   title: "Admin",
@@ -8,5 +9,9 @@ export const metadata: Metadata = pageMetadata({
 });
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  return <AdminGuard>{children}</AdminGuard>;
+  return (
+    <AdminGuard>
+      <AdminShell>{children}</AdminShell>
+    </AdminGuard>
+  );
 }

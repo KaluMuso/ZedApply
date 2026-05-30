@@ -17,7 +17,7 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
       return;
     }
     if (!isAuthenticated || !token) {
-      router.replace("/auth?next=/admin");
+      router.replace("/auth?next=/admin/overview");
       return;
     }
     profileApi
@@ -44,11 +44,11 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
     );
   }
   return (
-    <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 py-8">
+    <div className="px-4 sm:px-6 py-8">
       {pendingReviewCount > 0 && (
         <Link
           href="/admin/jobs/review"
-          className="mb-4 flex items-center justify-between rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900"
+          className="mb-4 flex max-w-7xl mx-auto items-center justify-between rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900"
         >
           <span>{pendingReviewCount} jobs need review</span>
           <span aria-hidden="true">&rarr;</span>

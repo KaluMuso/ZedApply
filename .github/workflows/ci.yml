@@ -55,6 +55,28 @@ jobs:
         run: npm ci
       - name: Lint
         run: npm run lint
+      - name: Detect coverage skip
+        id: skip_cov
+        run: |
+          MSG="${{ github.event.head_commit.message }}"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            MSG="$(git log -1 --pretty=%B)"
+          fi
+          if echo "$MSG" | grep -q '\[skip-coverage\]'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Unit tests with coverage gate
+        if: steps.skip_cov.outputs.skip != 'true'
+        run: npm run test:coverage
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+      - name: Unit tests (coverage skipped)
+        if: steps.skip_cov.outputs.skip == 'true'
+        run: npm test
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
 
   frontend-build:
     needs: frontend-test

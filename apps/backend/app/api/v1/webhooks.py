@@ -153,6 +153,23 @@ async def whatsapp_webhook(request: Request, supabase=Depends(get_supabase)):
         return {"status": "ignored"}
 
     phone = f"+{from_number}"
+
+    # Employer contact consent (YES / NO) — must run before generic commands.
+    if message_body in ("yes", "no"):
+        from app.services.employer_contact import resolve_consent_reply
+
+        try:
+            result = await resolve_consent_reply(
+                supabase, phone=phone, reply=message_body.upper()
+            )
+            if result is not None:
+                return {
+                    "status": "ok",
+                    "employer_consent": bool(result.get("candidate_consented")),
+                }
+        except Exception:
+            logger.exception("Employer consent webhook handler failed")
+
     command = COMMANDS.get(message_body, "unknown")
 
     if command == "welcome":
@@ -444,6 +461,10 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
                 "lenco_webhook_verification_not_configured",
                 payload,
                 level="error",
+            add_lenco_webhook_breadcrumb(
+                payload,
+                success=False,
+                detail="lenco_webhook_verification_not_configured",
             )
             logging.error("Lenco webhook: signature verification not configured")
             raise HTTPException(
@@ -461,6 +482,10 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
                 "lenco_webhook_invalid_signature",
                 payload,
                 level="warning",
+            add_lenco_webhook_breadcrumb(
+                payload,
+                success=False,
+                detail="lenco_webhook_invalid_signature",
             )
             logging.warning("lenco_webhook_invalid_signature")
             raise HTTPException(status_code=401, detail="Invalid signature")
@@ -475,6 +500,10 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
             "lenco_webhook_invalid_payload",
             payload,
             level="warning",
+        add_lenco_webhook_breadcrumb(
+            payload,
+            success=False,
+            detail="lenco_webhook_invalid_payload",
         )
         logging.error("Lenco webhook: signed but unparseable body")
         return {"status": "invalid_payload"}

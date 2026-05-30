@@ -257,6 +257,63 @@ class AdminSubscriptionUpdate(BaseModel):
     tier: str = Field(..., pattern="^(free|starter|professional|super_standard)$")
 
 
+class AdminContactFixJobRow(BaseModel):
+    id: str
+    title: str
+    company: Optional[str] = None
+    source_url: Optional[str] = None
+    apply_url: Optional[str] = None
+    apply_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    posted_at: Optional[datetime] = None
+
+
+class AdminContactFixJobList(BaseModel):
+    jobs: list[AdminContactFixJobRow]
+    total: int
+    page: int
+    per_page: int
+    pages: int
+    fixed_count: int = Field(
+        0,
+        description="Jobs no longer in queue (approx. total_at_start - total remaining)",
+    )
+
+
+class AdminJobContactPatch(BaseModel):
+    apply_url: Optional[str] = Field(None, max_length=2000)
+    apply_email: Optional[str] = Field(None, max_length=255)
+    contact_phone: Optional[str] = Field(None, max_length=20)
+    mark_uncontactable: bool = False
+    reason: Optional[str] = Field(
+        None,
+        max_length=120,
+        description="Optional note when mark_uncontactable=true",
+    )
+
+    @field_validator("contact_phone", mode="before")
+    @classmethod
+    def _normalize_phone(cls, value: object) -> Optional[str]:
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        return normalize_zambian_e164_phone(str(value))
+
+
+class AdminSubscriptionMetrics(BaseModel):
+    mrr_kwacha: float = Field(
+        description="Monthly recurring revenue (ZMW) from active subs × tier_config.price_ngwee",
+    )
+    mrr_ngwee: int = 0
+    active_subscriptions: int = 0
+    cancelled_this_month: int = 0
+    active_at_month_start: int = 0
+    churn_rate: float = Field(
+        0.0,
+        description="cancelled_this_month / active_at_month_start (0–1)",
+    )
+    month_start: str
+
+
 class DailyDigestMessage(BaseModel):
     user_id: str
     phone: str

@@ -775,6 +775,44 @@ export interface AdminSubscriptionList {
   pages: number;
 }
 
+export interface AdminSubscriptionMetrics {
+  mrr_kwacha: number;
+  mrr_ngwee: number;
+  active_subscriptions: number;
+  cancelled_this_month: number;
+  active_at_month_start: number;
+  churn_rate: number;
+  month_start: string;
+}
+
+export interface AdminContactFixJobRow {
+  id: string;
+  title: string;
+  company: string | null;
+  source_url: string | null;
+  apply_url: string | null;
+  apply_email: string | null;
+  contact_phone: string | null;
+  posted_at: string | null;
+}
+
+export interface AdminContactFixJobList {
+  jobs: AdminContactFixJobRow[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+  fixed_count: number;
+}
+
+export interface AdminJobContactPatch {
+  apply_url?: string;
+  apply_email?: string;
+  contact_phone?: string;
+  mark_uncontactable?: boolean;
+  reason?: string;
+}
+
 export interface ScrapingSourceEntry {
   url: string;
   source_type: string;
@@ -854,6 +892,25 @@ export const admin = {
     if (params?.tier) q.set("tier", params.tier);
     return apiFetch<AdminUserList>(`/admin/users?${q}`, { token });
   },
+  jobsNeedsContactFix: (
+    token: string,
+    params?: { page?: number; per_page?: number }
+  ) => {
+    const q = new URLSearchParams();
+    if (params?.page) q.set("page", String(params.page));
+    if (params?.per_page) q.set("per_page", String(params.per_page));
+    return apiFetch<AdminContactFixJobList>(
+      `/admin/jobs/needs-contact-fix?${q}`,
+      { token }
+    );
+  },
+  patchJobContact: (token: string, jobId: string, data: AdminJobContactPatch) =>
+    apiFetch<Record<string, unknown>>(
+      `/admin/jobs/${encodeURIComponent(jobId)}/contact`,
+      { method: "PATCH", token, body: JSON.stringify(data) }
+    ),
+  subscriptionMetrics: (token: string) =>
+    apiFetch<AdminSubscriptionMetrics>("/admin/subscriptions/metrics", { token }),
   jobs: (
     token: string,
     params?: { page?: number; per_page?: number; expired?: boolean; is_active?: boolean }
@@ -1117,6 +1174,46 @@ export interface CVGenerationDetail extends CVGenerationSummary {
   sections?: CVSections | null;
 }
 
+export interface BuildFromScratchPayload {
+  summary: string;
+  basics: {
+    full_name: string;
+    phone: string;
+    email: string;
+    location: string;
+    headline: string;
+  };
+  experience: Array<{
+    title: string;
+    company: string;
+    location: string;
+    start_date: string;
+    end_date: string;
+    achievements: string[];
+  }>;
+  education: Array<{
+    degree: string;
+    institution: string;
+    location: string;
+    start_date: string;
+    end_date: string;
+    gpa: string;
+  }>;
+  skills: string[];
+  style: {
+    template: "modern" | "classic" | "compact";
+    accent_color: string;
+    show_summary: boolean;
+  };
+}
+
+export interface BuildFromScratchResult {
+  cv_id: string;
+  pdf_url: string;
+  storage_path: string;
+  render_time_ms: number;
+}
+
 export const cv = {
   upload: async (token: string, file: File): Promise<CVUploadResult> => {
     const formData = new FormData();
@@ -1150,7 +1247,54 @@ export const cv = {
     apiFetch<{ generations: CVGenerationSummary[] }>("/cv/generations", { token }),
   getGeneration: (token: string, id: string) =>
     apiFetch<CVGenerationDetail>(`/cv/generations/${encodeURIComponent(id)}`, { token }),
+  buildFromScratch: (token: string, data: BuildFromScratchPayload) =>
+    apiFetch<BuildFromScratchResult>("/cv/build-from-scratch", {
+      method: "POST",
+      token,
+      body: JSON.stringify(data),
+    }),
+  suggestSummary: (
+    token: string,
+    data: { strengths: string[]; headline?: string; full_name?: string }
+  ) =>
+    apiFetch<{ summary: string }>("/cv/suggest-summary", {
+      method: "POST",
+      token,
+      body: JSON.stringify(data),
+    }),
+  suggestBullets: (
+    token: string,
+    data: { title: string; company: string; context?: string }
+  ) =>
+    apiFetch<{ bullets: string[] }>("/cv/suggest-bullets", {
+      method: "POST",
+      token,
+      body: JSON.stringify(data),
+    }),
+  suggestSkills: (token: string, q: string, limit = 12) =>
+    apiFetch<{ skills: Array<{ name: string }> }>(
+      `/cv/skills/suggest?q=${encodeURIComponent(q)}&limit=${limit}`,
+      { token }
+    ),
+  tailorForMatch: (token: string, matchId: string) =>
+    apiFetch<MatchTailorCvResult>(
+      `/matches/${encodeURIComponent(matchId)}/tailor-cv`,
+      { method: "POST", token, body: "{}" }
+    ),
 };
+
+export interface MatchTailorCvResult {
+  generation_id: string;
+  markdown: string;
+  word_count: number;
+  job_title: string;
+  company?: string | null;
+  cached?: boolean;
+  duration_ms?: number | null;
+  estimated_cost_usd?: number | null;
+  prompt_tokens?: number | null;
+  completion_tokens?: number | null;
+}
 
 // ── Jobs ──
 
@@ -1257,7 +1401,20 @@ export const jobs = {
 
 export const savedJobs = {
   list: (token: string) =>
-    apiFetch<{ jobs: Job[] }>("/users/me/saved-jobs", { token }),
+    apiFetch<SavedJobsListResponse>("/users/me/saved-jobs", { token }),
+  updateStatus: (
+    token: string,
+    jobId: string,
+    body: ApplicationStatusUpdate,
+  ) =>
+    apiFetch<ApplicationStatusResponse>(
+      `/users/me/saved-jobs/${jobId}/status`,
+      {
+        method: "PATCH",
+        token,
+        body: body as unknown as ApiJsonBody,
+      },
+    ),
   save: (token: string, jobId: string) =>
     apiFetch<{ saved: boolean }>(`/jobs/${jobId}/save`, {
       method: "POST",
@@ -1266,6 +1423,41 @@ export const savedJobs = {
   unsave: (token: string, jobId: string) =>
     apiFetch<void>(`/jobs/${jobId}/save`, { method: "DELETE", token }),
 };
+
+export type ApplicationStatus =
+  | "saved"
+  | "applied"
+  | "interviewing"
+  | "offered"
+  | "closed_won"
+  | "closed_lost";
+
+export interface SavedJobApplication {
+  job: Job;
+  application_status: ApplicationStatus;
+  status_updated_at: string | null;
+  application_notes: string | null;
+  interview_date: string | null;
+}
+
+export interface SavedJobsListResponse {
+  jobs: Job[];
+  applications?: SavedJobApplication[];
+}
+
+export interface ApplicationStatusUpdate {
+  status: ApplicationStatus;
+  notes?: string | null;
+  interview_date?: string | null;
+}
+
+export interface ApplicationStatusResponse {
+  job_id: string;
+  application_status: ApplicationStatus;
+  status_updated_at: string | null;
+  application_notes: string | null;
+  interview_date: string | null;
+}
 
 // ── Matches ──
 export interface MatchData {
@@ -1344,6 +1536,21 @@ export const matches = {
     apiFetch<{ message: string; estimated_seconds?: number }>("/matches/trigger", {
       method: "POST",
       token,
+    }),
+};
+
+export interface PushSubscribeBody {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+  expirationTime?: number | null;
+}
+
+export const push = {
+  subscribe: (token: string, body: PushSubscribeBody) =>
+    apiFetch<{ ok: boolean; message: string }>("/push/subscribe", {
+      method: "POST",
+      token,
+      body: JSON.stringify(body),
     }),
 };
 
@@ -1481,6 +1688,36 @@ export const dataRights = {
 };
 
 // ── Cover letter ──
+export interface CoverLetterVersionDetail {
+  id: string;
+  version_number: number;
+  parent_version_id: string | null;
+  generated_by: "ai" | "user_edit";
+  created_at: string;
+  label: string;
+  content_md: string;
+}
+
+export interface CoverLetterVersionsResponse {
+  versions: CoverLetterVersionDetail[];
+  latest: CoverLetterVersionDetail | null;
+}
+
+export interface CoverLetterSaveResult {
+  id: string;
+  version_number: number;
+  generated_by: "ai" | "user_edit";
+  created_at: string;
+  word_count: number;
+}
+
+export interface MatchCoverLetterGenerateResult {
+  content: string;
+  word_count: number;
+  version_id: string;
+  version_number: number;
+}
+
 export const coverLetter = {
   generate: (token: string, jobId: string) =>
     apiFetch<{ content: string; word_count: number; document_id: string }>(
@@ -1488,6 +1725,37 @@ export const coverLetter = {
       {
         method: "POST",
         token,
+      }
+    ),
+  generateForMatch: (token: string, matchId: string) =>
+    apiFetch<MatchCoverLetterGenerateResult>(
+      `/matches/${encodeURIComponent(matchId)}/cover-letter/generate`,
+      { method: "POST", token }
+    ),
+  listVersions: (token: string, matchId: string) =>
+    apiFetch<CoverLetterVersionsResponse>(
+      `/matches/${encodeURIComponent(matchId)}/cover-letter/versions`,
+      { token }
+    ),
+  save: (
+    token: string,
+    matchId: string,
+    body: {
+      content_md: string;
+      parent_version_id?: string | null;
+      source?: "ai" | "user_edit";
+    }
+  ) =>
+    apiFetch<CoverLetterSaveResult>(
+      `/matches/${encodeURIComponent(matchId)}/cover-letter/save`,
+      {
+        method: "POST",
+        token,
+        body: JSON.stringify({
+          content_md: body.content_md,
+          parent_version_id: body.parent_version_id ?? null,
+          source: body.source ?? "user_edit",
+        }),
       }
     ),
 };
@@ -1742,4 +2010,138 @@ export const adminLegal = {
       token,
       body: JSON.stringify(data),
     }),
+};
+
+// ── Employer portal (B2B) ──
+export type EmployerTier = "lite" | "pro";
+export type EmployerRole = "owner" | "admin" | "recruiter" | "viewer";
+
+export interface EmployerSummary {
+  id: string;
+  company_name: string;
+  industry?: string | null;
+  size_band?: string | null;
+  website?: string | null;
+  verified: boolean;
+}
+
+export interface EmployerMe {
+  employer: EmployerSummary;
+  seats: Array<{
+    id: string;
+    user_id: string;
+    role: EmployerRole;
+    invite_email?: string | null;
+    accepted_at?: string | null;
+  }>;
+  my_role: EmployerRole;
+}
+
+export interface CandidatePreview {
+  candidate_id: string;
+  headline?: string | null;
+  location?: string | null;
+  years_experience?: number | null;
+  skills: string[];
+  match_hint?: string | null;
+}
+
+export interface ContactRequestRow {
+  id: string;
+  candidate_user_id: string;
+  message_text: string;
+  channel: string;
+  status: string;
+  candidate_consented?: boolean | null;
+  candidate_phone?: string | null;
+  candidate_email?: string | null;
+  candidate_name?: string | null;
+}
+
+export interface EmployerSubscription {
+  tier: EmployerTier | null;
+  status: string;
+  active: boolean;
+  contacts_used: number;
+  contacts_limit: number;
+  price_ngwee: number;
+  current_period_end?: string | null;
+}
+
+export interface EmployerCheckout {
+  reference: string;
+  amount_ngwee: number;
+  tier: EmployerTier;
+  public_key: string;
+  label: string;
+}
+
+export const employer = {
+  register: (
+    token: string,
+    body: {
+      company_name: string;
+      industry?: string;
+      size_band?: string;
+      website?: string;
+    },
+  ) =>
+    apiFetch<{ employer: EmployerSummary }>("/employers/register", {
+      method: "POST",
+      token,
+      body,
+    }),
+
+  me: (token: string) => apiFetch<EmployerMe>("/employers/me", { token }),
+
+  invite: (token: string, body: { email: string; role?: EmployerRole }) =>
+    apiFetch<{ seat_id: string; message: string }>("/employers/me/invite", {
+      method: "POST",
+      token,
+      body,
+    }),
+
+  search: (token: string, params?: { skills?: string; location?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.skills) q.set("skills", params.skills);
+    if (params?.location) q.set("location", params.location);
+    if (params?.limit) q.set("limit", String(params.limit));
+    const qs = q.toString();
+    return apiFetch<{ results: CandidatePreview[]; total: number }>(
+      `/employers/candidates/search${qs ? `?${qs}` : ""}`,
+      { token },
+    );
+  },
+
+  requestContact: (
+    token: string,
+    candidateId: string,
+    body: { message_text: string; channel?: "whatsapp" | "email" | "both" },
+  ) =>
+    apiFetch<ContactRequestRow>(`/employers/candidates/${candidateId}/contact`, {
+      method: "POST",
+      token,
+      body,
+    }),
+
+  contacts: (token: string) =>
+    apiFetch<{ contacts: ContactRequestRow[]; total: number }>("/employers/me/contacts", {
+      token,
+    }),
+
+  subscription: (token: string) =>
+    apiFetch<EmployerSubscription>("/employers/me/subscription", { token }),
+
+  checkout: (token: string, tier: EmployerTier) =>
+    apiFetch<EmployerCheckout>("/employers/me/subscription/checkout", {
+      method: "POST",
+      token,
+      body: { tier },
+    }),
+
+  verifyPayment: (token: string, body: { reference: string; tier: EmployerTier }) =>
+    apiFetch<{ status: string; tier: string; reference: string; message: string }>(
+      "/employers/me/subscription/verify-payment",
+      { method: "POST", token, body },
+    ),
 };

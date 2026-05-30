@@ -1,4 +1,4 @@
-"use client";
+import { redirect } from "next/navigation";
 
 import { useEffect, useState } from "react";
 import { admin, type AdminStats, type AdminTierBreakdown } from "@/lib/api";
@@ -80,4 +80,6 @@ export default function AdminPage() {
       </Tabs>
     </div>
   );
+export default function AdminIndexPage() {
+  redirect("/admin/overview");
 }

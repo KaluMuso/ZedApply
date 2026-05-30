@@ -55,6 +55,40 @@ components:
         domain_verified: { type: boolean, nullable: true }
         domains_listed: { type: integer, nullable: true }
 
+    PushSubscriptionKeys:
+      type: object
+      required: [p256dh, auth]
+      properties:
+        p256dh: { type: string }
+        auth: { type: string }
+
+    PushSubscribeRequest:
+      type: object
+      required: [endpoint, keys]
+      properties:
+        endpoint: { type: string }
+        keys: { $ref: '#/components/schemas/PushSubscriptionKeys' }
+        expirationTime: { type: integer, nullable: true }
+
+    PushSubscribeResponse:
+      type: object
+      required: [ok, message]
+      properties:
+        ok: { type: boolean }
+        message: { type: string }
+
+    PushTestRequest:
+      type: object
+      properties:
+        user_id: { type: string, format: uuid, nullable: true }
+
+    PushTestResponse:
+      type: object
+      required: [delivered, message]
+      properties:
+        delivered: { type: integer }
+        message: { type: string }
+
     OTPRequest:
       type: object
       required: [phone]
@@ -745,6 +779,79 @@ components:
         company: { type: string, maxLength: 255 }
         job_description: { type: string, maxLength: 10000 }
 
+    MatchTailorCvResponse:
+      type: object
+      required: [generation_id, markdown, word_count, job_title]
+      properties:
+        generation_id: { type: string, format: uuid }
+        markdown: { type: string }
+        word_count: { type: integer }
+        job_title: { type: string }
+        company: { type: string }
+        cached: { type: boolean, default: false }
+        duration_ms: { type: integer }
+        estimated_cost_usd: { type: number, format: float }
+        prompt_tokens: { type: integer }
+        completion_tokens: { type: integer }
+
+    CoverLetterVersionSummary:
+      type: object
+      required: [id, version_number, generated_by, created_at, label]
+      properties:
+        id: { type: string, format: uuid }
+        version_number: { type: integer }
+        parent_version_id: { type: string, format: uuid, nullable: true }
+        generated_by: { type: string, enum: [ai, user_edit] }
+        created_at: { type: string, format: date-time }
+        label: { type: string, example: "v2 — 2026-05-27 14:32 (edited)" }
+
+    CoverLetterVersionDetail:
+      allOf:
+        - { $ref: '#/components/schemas/CoverLetterVersionSummary' }
+        - type: object
+          required: [content_md]
+          properties:
+            content_md: { type: string }
+
+    CoverLetterVersionsResponse:
+      type: object
+      required: [versions]
+      properties:
+        versions:
+          type: array
+          items: { $ref: '#/components/schemas/CoverLetterVersionDetail' }
+        latest:
+          oneOf:
+            - { $ref: '#/components/schemas/CoverLetterVersionDetail' }
+            - { type: 'null' }
+
+    CoverLetterSaveRequest:
+      type: object
+      required: [content_md]
+      properties:
+        content_md: { type: string, maxLength: 50000 }
+        parent_version_id: { type: string, format: uuid, nullable: true }
+        source: { type: string, enum: [ai, user_edit], default: user_edit }
+
+    CoverLetterSaveResponse:
+      type: object
+      required: [id, version_number, generated_by, created_at, word_count]
+      properties:
+        id: { type: string, format: uuid }
+        version_number: { type: integer }
+        generated_by: { type: string, enum: [ai, user_edit] }
+        created_at: { type: string, format: date-time }
+        word_count: { type: integer }
+
+    MatchCoverLetterGenerateResponse:
+      type: object
+      required: [content, word_count, version_id, version_number]
+      properties:
+        content: { type: string }
+        word_count: { type: integer }
+        version_id: { type: string, format: uuid }
+        version_number: { type: integer }
+
     CVGenerateResponse:
       type: object
       properties:
@@ -777,6 +884,122 @@ components:
         generations:
           type: array
           items: { $ref: '#/components/schemas/CVGenerationSummary' }
+
+    ScratchBasics:
+      type: object
+      required: [full_name]
+      properties:
+        full_name: { type: string, maxLength: 200 }
+        phone: { type: string, maxLength: 20 }
+        email: { type: string, maxLength: 254 }
+        location: { type: string, maxLength: 200 }
+        headline: { type: string, maxLength: 300 }
+
+    ScratchExperience:
+      type: object
+      required: [title, company]
+      properties:
+        title: { type: string, maxLength: 200 }
+        company: { type: string, maxLength: 200 }
+        location: { type: string, maxLength: 200 }
+        start_date: { type: string, maxLength: 40 }
+        end_date: { type: string, maxLength: 40 }
+        achievements:
+          type: array
+          items: { type: string }
+          maxItems: 20
+
+    ScratchEducation:
+      type: object
+      required: [degree, institution]
+      properties:
+        degree: { type: string, maxLength: 200 }
+        institution: { type: string, maxLength: 200 }
+        location: { type: string, maxLength: 200 }
+        start_date: { type: string, maxLength: 40 }
+        end_date: { type: string, maxLength: 40 }
+        gpa: { type: string, maxLength: 20 }
+
+    ScratchStyle:
+      type: object
+      properties:
+        template: { type: string, enum: [modern, classic, compact], default: modern }
+        accent_color: { type: string, maxLength: 20, default: '#0E5C3A' }
+        show_summary: { type: boolean, default: true }
+
+    BuildFromScratchRequest:
+      type: object
+      required: [basics]
+      properties:
+        summary: { type: string, maxLength: 5000 }
+        basics: { $ref: '#/components/schemas/ScratchBasics' }
+        experience:
+          type: array
+          items: { $ref: '#/components/schemas/ScratchExperience' }
+          maxItems: 15
+        education:
+          type: array
+          items: { $ref: '#/components/schemas/ScratchEducation' }
+          maxItems: 10
+        skills:
+          type: array
+          items: { type: string }
+          maxItems: 50
+        style: { $ref: '#/components/schemas/ScratchStyle' }
+
+    BuildFromScratchResponse:
+      type: object
+      required: [cv_id, pdf_url, storage_path, render_time_ms]
+      properties:
+        cv_id: { type: string, format: uuid }
+        pdf_url: { type: string, format: uri }
+        storage_path: { type: string }
+        render_time_ms: { type: integer, minimum: 0 }
+
+    SuggestSummaryRequest:
+      type: object
+      required: [strengths]
+      properties:
+        strengths:
+          type: array
+          items: { type: string }
+          minItems: 1
+          maxItems: 3
+        headline: { type: string, maxLength: 300 }
+        full_name: { type: string, maxLength: 200 }
+
+    SuggestSummaryResponse:
+      type: object
+      required: [summary]
+      properties:
+        summary: { type: string }
+
+    SuggestBulletsRequest:
+      type: object
+      required: [title, company]
+      properties:
+        title: { type: string, maxLength: 200 }
+        company: { type: string, maxLength: 200 }
+        context: { type: string, maxLength: 2000 }
+
+    SuggestBulletsResponse:
+      type: object
+      required: [bullets]
+      properties:
+        bullets:
+          type: array
+          items: { type: string }
+
+    SkillSuggestResponse:
+      type: object
+      properties:
+        skills:
+          type: array
+          items:
+            type: object
+            required: [name]
+            properties:
+              name: { type: string }
 
     CVGenerationDetail:
       type: object
@@ -851,6 +1074,48 @@ components:
         page: { type: integer }
         per_page: { type: integer }
         pages: { type: integer }
+
+    AdminSubscriptionMetrics:
+      type: object
+      properties:
+        mrr_kwacha: { type: number, description: 'MRR in ZMW (price_ngwee sum / 100)' }
+        mrr_ngwee: { type: integer }
+        active_subscriptions: { type: integer }
+        cancelled_this_month: { type: integer }
+        active_at_month_start: { type: integer }
+        churn_rate: { type: number, minimum: 0, maximum: 1 }
+        month_start: { type: string, format: date }
+
+    AdminContactFixJobRow:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        company: { type: string, nullable: true }
+        source_url: { type: string, nullable: true }
+        apply_url: { type: string, nullable: true }
+        apply_email: { type: string, nullable: true }
+        contact_phone: { type: string, nullable: true }
+        posted_at: { type: string, format: date-time, nullable: true }
+
+    AdminContactFixJobList:
+      type: object
+      properties:
+        jobs: { type: array, items: { $ref: '#/components/schemas/AdminContactFixJobRow' } }
+        total: { type: integer }
+        page: { type: integer }
+        per_page: { type: integer }
+        pages: { type: integer }
+        fixed_count: { type: integer }
+
+    AdminJobContactPatch:
+      type: object
+      properties:
+        apply_url: { type: string, maxLength: 2000, nullable: true }
+        apply_email: { type: string, format: email, nullable: true }
+        contact_phone: { type: string, maxLength: 20, nullable: true }
+        mark_uncontactable: { type: boolean, default: false }
+        reason: { type: string, maxLength: 120, nullable: true }
 
     TierConfigRow:
       type: object
@@ -1212,6 +1477,41 @@ components:
         jobs:
           type: array
           items: { $ref: '#/components/schemas/Job' }
+        applications:
+          type: array
+          items: { $ref: '#/components/schemas/SavedJobApplication' }
+
+    SavedJobApplication:
+      type: object
+      properties:
+        job: { $ref: '#/components/schemas/Job' }
+        application_status:
+          type: string
+          enum: [saved, applied, interviewing, offered, closed_won, closed_lost]
+        status_updated_at: { type: string, format: date-time, nullable: true }
+        application_notes: { type: string, nullable: true }
+        interview_date: { type: string, format: date, nullable: true }
+
+    ApplicationStatusUpdate:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [saved, applied, interviewing, offered, closed_won, closed_lost]
+        notes: { type: string, nullable: true }
+        interview_date: { type: string, format: date, nullable: true }
+
+    ApplicationStatusResponse:
+      type: object
+      properties:
+        job_id: { type: string, format: uuid }
+        application_status:
+          type: string
+          enum: [saved, applied, interviewing, offered, closed_won, closed_lost]
+        status_updated_at: { type: string, format: date-time, nullable: true }
+        application_notes: { type: string, nullable: true }
+        interview_date: { type: string, format: date, nullable: true }
 
     MatchResult:
       type: object
@@ -1368,6 +1668,137 @@ components:
       type: object
       properties:
         success: { type: boolean }
+        message: { type: string }
+
+    EmployerRegisterBody:
+      type: object
+      required: [company_name]
+      properties:
+        company_name: { type: string, minLength: 2, maxLength: 200 }
+        industry: { type: string, maxLength: 120 }
+        size_band:
+          type: string
+          enum: ['1-10', '11-50', '51-200', '201-1000', '1000+']
+        website: { type: string, maxLength: 500 }
+
+    EmployerSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        company_name: { type: string }
+        industry: { type: string, nullable: true }
+        size_band: { type: string, nullable: true }
+        website: { type: string, nullable: true }
+        verified: { type: boolean }
+        created_at: { type: string, format: date-time, nullable: true }
+
+    EmployerSeat:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        role: { type: string, enum: [owner, admin, recruiter, viewer] }
+        invited_at: { type: string, format: date-time, nullable: true }
+        accepted_at: { type: string, format: date-time, nullable: true }
+        invite_email: { type: string, format: email, nullable: true }
+
+    EmployerMeResponse:
+      type: object
+      properties:
+        employer: { $ref: '#/components/schemas/EmployerSummary' }
+        seats: { type: array, items: { $ref: '#/components/schemas/EmployerSeat' } }
+        my_role: { type: string, enum: [owner, admin, recruiter, viewer] }
+
+    EmployerInviteBody:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+        role: { type: string, enum: [owner, admin, recruiter, viewer], default: recruiter }
+
+    CandidatePreview:
+      type: object
+      properties:
+        candidate_id: { type: string, format: uuid }
+        headline: { type: string, nullable: true }
+        location: { type: string, nullable: true }
+        years_experience: { type: integer, nullable: true }
+        skills: { type: array, items: { type: string } }
+        match_hint: { type: string, nullable: true }
+
+    CandidateSearchResponse:
+      type: object
+      properties:
+        results: { type: array, items: { $ref: '#/components/schemas/CandidatePreview' } }
+        total: { type: integer }
+
+    ContactRequestBody:
+      type: object
+      required: [message_text]
+      properties:
+        message_text: { type: string, minLength: 10, maxLength: 2000 }
+        channel: { type: string, enum: [whatsapp, email, both], default: both }
+
+    ContactRequestRow:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        candidate_user_id: { type: string, format: uuid }
+        message_text: { type: string }
+        channel: { type: string }
+        sent_at: { type: string, format: date-time, nullable: true }
+        candidate_responded_at: { type: string, format: date-time, nullable: true }
+        candidate_consented: { type: boolean, nullable: true }
+        status: { type: string, enum: [pending, consented, declined, expired, unavailable, draft] }
+        candidate_phone: { type: string, nullable: true, description: Only when status=consented }
+        candidate_email: { type: string, nullable: true }
+        candidate_name: { type: string, nullable: true }
+
+    EmployerContactsResponse:
+      type: object
+      properties:
+        contacts: { type: array, items: { $ref: '#/components/schemas/ContactRequestRow' } }
+        total: { type: integer }
+
+    EmployerSubscriptionResponse:
+      type: object
+      properties:
+        tier: { type: string, enum: [lite, pro], nullable: true }
+        status: { type: string }
+        active: { type: boolean }
+        current_period_end: { type: string, format: date-time, nullable: true }
+        contacts_used: { type: integer }
+        contacts_limit: { type: integer }
+        price_ngwee: { type: integer, description: 'K500 lite = 50000, K2500 pro = 250000' }
+
+    EmployerCheckoutBody:
+      type: object
+      required: [tier]
+      properties:
+        tier: { type: string, enum: [lite, pro] }
+
+    EmployerCheckoutResponse:
+      type: object
+      properties:
+        reference: { type: string }
+        amount_ngwee: { type: integer }
+        tier: { type: string, enum: [lite, pro] }
+        public_key: { type: string }
+        label: { type: string }
+
+    EmployerVerifyPaymentBody:
+      type: object
+      required: [reference, tier]
+      properties:
+        reference: { type: string, minLength: 8, maxLength: 128 }
+        tier: { type: string, enum: [lite, pro] }
+
+    EmployerVerifyPaymentResponse:
+      type: object
+      properties:
+        status: { type: string }
+        tier: { type: string }
+        reference: { type: string }
         message: { type: string }
 
     Subscription:
@@ -1679,6 +2110,15 @@ components:
         version: { type: string }
         supabase: { type: boolean }
         waha: { type: boolean }
+        redis_configured:
+          type: boolean
+          description: True when REDIS_URL is set (shared rate-limit storage).
+        vapid_configured:
+          type: boolean
+          description: True when VAPID keys are set for web push.
+        resend_configured:
+          type: boolean
+          description: True when RESEND_API_KEY is set (email OTP/digests).
 
 paths:
   /health:
@@ -1898,6 +2338,32 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SavedJobsList' }
+
+  /users/me/saved-jobs/{job_id}/status:
+    patch:
+      operationId: updateSavedJobStatus
+      summary: Update application Kanban status, notes, and interview date
+      tags: [Users]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApplicationStatusUpdate' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplicationStatusResponse' }
+        '404':
+          description: Saved job not found
+        '422':
+          description: Invalid status transition
 
   /users/me/consent:
     get:
@@ -2353,6 +2819,41 @@ paths:
               schema: { $ref: '#/components/schemas/BulkDeactivateResponse' }
         '403': { description: Superadmin only }
 
+  /admin/jobs/needs-contact-fix:
+    get:
+      operationId: adminListJobsNeedsContactFix
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      description: |
+        Paginated queue of active jobs missing a non-aggregator apply URL or contact phone.
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 1, minimum: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, default: 1, minimum: 1, maximum: 50 } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminContactFixJobList' }
+        '403': { description: Superadmin only }
+
+  /admin/jobs/{job_id}/contact:
+    patch:
+      operationId: adminPatchJobContact
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: job_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminJobContactPatch' }
+      responses:
+        '200': { description: Updated job row or deactivation summary }
+        '403': { description: Superadmin only }
+        '404': { description: Job not found }
+        '422': { description: Validation error }
+
   /admin/matches:
     get:
       operationId: adminListMatches
@@ -2367,6 +2868,21 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AdminMatchList' }
+        '403': { description: Superadmin only }
+
+  /admin/subscriptions/metrics:
+    get:
+      operationId: adminSubscriptionMetrics
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      description: |
+        MRR from SUM(tier_config.price_ngwee) for active subscriptions (÷ 100 → ZMW).
+        Churn = cancelled_this_month / active_at_month_start.
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminSubscriptionMetrics' }
         '403': { description: Superadmin only }
 
   /admin/subscriptions:
@@ -2614,6 +3130,70 @@ paths:
               schema: { $ref: '#/components/schemas/CVGenerationDetail' }
         '404': { description: Generation not found }
 
+  /cv/skills/suggest:
+    get:
+      operationId: suggestCvSkills
+      summary: Autocomplete canonical skills for the manual CV wizard
+      tags: [CV]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 12, minimum: 1, maximum: 25 } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SkillSuggestResponse' }
+
+  /cv/suggest-summary:
+    post:
+      operationId: suggestCvSummary
+      summary: LLM-assisted professional summary from top strengths
+      tags: [CV]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SuggestSummaryRequest' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuggestSummaryResponse' }
+
+  /cv/suggest-bullets:
+    post:
+      operationId: suggestCvBullets
+      summary: LLM-suggested achievement bullets for a work experience entry
+      tags: [CV]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SuggestBulletsRequest' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuggestBulletsResponse' }
+
+  /cv/build-from-scratch:
+    post:
+      operationId: buildCvFromScratch
+      summary: Render manual wizard CV to PDF and store in Supabase Storage
+      tags: [CV]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BuildFromScratchRequest' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BuildFromScratchResponse' }
+        '422': { description: Validation error }
+
   /jobs:
     get:
       operationId: listJobs
@@ -2787,6 +3367,93 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/MatchList' }
 
+  /matches/{match_id}/tailor-cv:
+    post:
+      operationId: tailorCvForMatch
+      summary: Generate a markdown CV tailored to a specific match (Professional+)
+      tags: [Matching]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: match_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MatchTailorCvResponse' }
+        '403':
+          description: Tier gate — Professional or Super Standard required
+        '404':
+          description: Match or job not found
+        '422':
+          description: No primary CV uploaded
+        '503':
+          description: LLM generation failed or degraded
+
+  /matches/{match_id}/cover-letter/versions:
+    get:
+      operationId: getMatchCoverLetterVersions
+      summary: List cover letter versions for a match (Professional+ editor)
+      tags: [Matching]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: match_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CoverLetterVersionsResponse' }
+        '403':
+          description: Professional tier required
+        '404':
+          description: Match not found
+
+  /matches/{match_id}/cover-letter/save:
+    post:
+      operationId: saveMatchCoverLetter
+      summary: Save a new cover letter version for a match
+      tags: [Matching]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: match_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CoverLetterSaveRequest' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CoverLetterSaveResponse' }
+        '403':
+          description: Professional tier required
+        '404':
+          description: Match not found
+        '422':
+          description: Empty content or word limit exceeded
+
+  /matches/{match_id}/cover-letter/generate:
+    post:
+      operationId: generateMatchCoverLetter
+      summary: Generate a tailored cover letter and store as a new AI version
+      tags: [Matching]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: match_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MatchCoverLetterGenerateResponse' }
+        '403':
+          description: Professional tier required
+        '404':
+          description: Match or job not found
+        '422':
+          description: No CV uploaded
+        '503':
+          description: LLM unavailable
+
   /matches/{user_id}:
     get:
       operationId: getMatchesForUser
@@ -2862,6 +3529,40 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/NotificationDigestResponse' }
         '401': { description: Invalid ingest API key }
+
+  /push/subscribe:
+    post:
+      operationId: subscribeWebPush
+      summary: Store browser Push API subscription (VAPID) for the current user
+      tags: [Push]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PushSubscribeRequest' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PushSubscribeResponse' }
+
+  /admin/push/test:
+    post:
+      operationId: adminPushTest
+      summary: Send a test Web Push to an admin user (smoke test)
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PushTestRequest' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PushTestResponse' }
 
   /admin/batch-match:
     post:
@@ -3282,6 +3983,146 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SubscriptionCancelResponse' }
         '400': { description: Free plan cannot be cancelled }
+  /employers/register:
+    post:
+      operationId: employerRegister
+      summary: Register employer company (caller becomes owner)
+      tags: [Employers]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployerRegisterBody'
+      responses:
+        '201':
+          description: Employer created
+        '409':
+          description: User already linked to an employer
+
+  /employers/me:
+    get:
+      operationId: employerMe
+      tags: [Employers]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Current employer profile and team seats
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployerMeResponse' }
+
+  /employers/me/invite:
+    post:
+      operationId: employerInvite
+      tags: [Employers]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmployerInviteBody' }
+      responses:
+        '200':
+          description: Invitation sent
+
+  /employers/candidates/search:
+    get:
+      operationId: employerCandidateSearch
+      tags: [Employers]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: skills
+          schema: { type: string }
+        - in: query
+          name: location
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20, maximum: 50 }
+      responses:
+        '200':
+          description: Anonymized candidate previews
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CandidateSearchResponse' }
+        '402':
+          description: Active employer subscription required
+
+  /employers/candidates/{candidate_id}/contact:
+    post:
+      operationId: employerRequestContact
+      tags: [Employers]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: candidate_id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContactRequestBody' }
+      responses:
+        '200':
+          description: Consent flow initiated (WhatsApp + email)
+
+  /employers/me/contacts:
+    get:
+      operationId: employerContacts
+      tags: [Employers]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Contact request log (PII only when consented)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployerContactsResponse' }
+
+  /employers/me/subscription:
+    get:
+      operationId: employerSubscription
+      tags: [Employers]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Employer subscription status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployerSubscriptionResponse' }
+
+  /employers/me/subscription/checkout:
+    post:
+      operationId: employerSubscriptionCheckout
+      tags: [Employers]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmployerCheckoutBody' }
+      responses:
+        '200':
+          description: Lenco widget checkout parameters
+
+  /employers/me/subscription/verify-payment:
+    post:
+      operationId: employerVerifyPayment
+      tags: [Employers]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmployerVerifyPaymentBody' }
+      responses:
+        '200':
+          description: Subscription activated
+        '202':
+          description: Payment processing
 
   /webhooks/dpo:
     post:

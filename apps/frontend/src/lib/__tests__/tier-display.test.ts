@@ -13,4 +13,20 @@ describe("formatTierNavSubtitle", () => {
       "Super Standard",
     );
   });
+
+  it("returns label only when matchesLimit is omitted", () => {
+    expect(formatTierNavSubtitle("professional")).toBe("Professional");
+  });
+
+  it("falls back to humanized tier slug for unknown tiers", () => {
+    expect(formatTierNavSubtitle("legacy_tier", 0, 10)).toBe(
+      "legacy tier · 0 of 10 matches",
+    );
+  });
+
+  it("shows unlimited wording without usage counts for super tier", () => {
+    expect(formatTierNavSubtitle("super_standard", 5, 99999)).toBe(
+      "Super Standard · unlimited matches",
+    );
+  });
 });

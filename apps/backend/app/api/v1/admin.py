@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from app.core.config import Settings, get_settings
 from app.core.deps import get_supabase, require_admin
+from app.schemas.push import PushTestRequest, PushTestResponse
 from app.services.matching import get_credited_match_count
 from app.schemas.admin import (
     AdminParserStats,
@@ -39,6 +40,10 @@ from app.schemas.admin import (
     AdminSubscriptionRow,
     AdminSubscriptionList,
     AdminSubscriptionUpdate,
+    AdminSubscriptionMetrics,
+    AdminContactFixJobRow,
+    AdminContactFixJobList,
+    AdminJobContactPatch,
     AdminWelcomeBonusUpdate,
     AdminJobReviewRow,
     AdminJobReviewQueue,
@@ -462,6 +467,35 @@ async def email_health(settings: Settings = Depends(get_settings)):
     return report.as_dict()
 
 
+@router.post("/push/test")
+async def admin_push_test(
+    body: PushTestRequest | None = None,
+    current_user: dict = Depends(require_admin),
+    supabase=Depends(get_supabase),
+    settings: Settings = Depends(get_settings),
+):
+    """Send a test Web Push to the admin (or body.user_id) for smoke testing."""
+    from app.services.web_push import send_test_push, vapid_configured
+
+    if not vapid_configured(settings):
+        return PushTestResponse(
+            delivered=0,
+            message="VAPID keys not configured (VAPID_PRIVATE_KEY / VAPID_PUBLIC_KEY)",
+        )
+
+    target_id = (body.user_id if body and body.user_id else None) or str(current_user["id"])
+    delivered = await send_test_push(target_id, supabase, settings=settings)
+    if delivered == 0:
+        return PushTestResponse(
+            delivered=0,
+            message=f"No active subscriptions for user {target_id}",
+        )
+    return PushTestResponse(
+        delivered=delivered,
+        message=f"Test push sent to {delivered} device(s)",
+    )
+
+
 @router.post("/waha/bootstrap-session")
 async def bootstrap_waha_session_endpoint(
     session: str = Query("default", description="WAHA session name to ensure WORKING"),
@@ -874,6 +908,155 @@ async def list_jobs(
         for j in (result.data or [])
     ]
     return AdminJobList(jobs=rows, total=total, page=page, per_page=per_page, pages=pages)
+
+
+_CONTACT_FIX_SELECT = (
+    "id, title, company, source_url, apply_url, apply_email, contact_phone, "
+    "is_active, posted_at"
+)
+
+
+def _load_needs_contact_fix_queue(supabase) -> list[dict]:
+    """Scan active jobs and return rows still needing manual contact entry."""
+    from app.services.admin_contact_fix import job_needs_contact_fix
+
+    queue: list[dict] = []
+    batch_size = 500
+    offset = 0
+    while True:
+        res = (
+            supabase.table("jobs")
+            .select(_CONTACT_FIX_SELECT)
+            .eq("is_active", True)
+            .order("posted_at", desc=True)
+            .range(offset, offset + batch_size - 1)
+            .execute()
+        )
+        batch = res.data or []
+        if not batch:
+            break
+        queue.extend(row for row in batch if job_needs_contact_fix(row))
+        if len(batch) < batch_size:
+            break
+        offset += batch_size
+    return queue
+
+
+@router.get("/jobs/needs-contact-fix", response_model=AdminContactFixJobList)
+async def list_jobs_needs_contact_fix(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(1, ge=1, le=50),
+    supabase=Depends(get_supabase),
+):
+    """Paginated queue of active jobs missing employer apply URL or phone."""
+    queue = _load_needs_contact_fix_queue(supabase)
+    total = len(queue)
+    pages = math.ceil(total / per_page) if total > 0 else 1
+    start = (page - 1) * per_page
+    slice_rows = queue[start : start + per_page]
+    rows = [
+        AdminContactFixJobRow(
+            id=j["id"],
+            title=j["title"],
+            company=j.get("company"),
+            source_url=j.get("source_url"),
+            apply_url=j.get("apply_url"),
+            apply_email=j.get("apply_email"),
+            contact_phone=j.get("contact_phone"),
+            posted_at=j.get("posted_at"),
+        )
+        for j in slice_rows
+    ]
+    return AdminContactFixJobList(
+        jobs=rows,
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=pages,
+        fixed_count=0,
+    )
+
+
+@router.patch("/jobs/{job_id}/contact")
+async def patch_job_contact(
+    job_id: str,
+    body: AdminJobContactPatch,
+    current_user: dict = Depends(require_admin),
+    supabase=Depends(get_supabase),
+):
+    """Save apply contacts for bulk-fix, or mark job un-contactable (deactivate)."""
+    existing_res = (
+        supabase.table("jobs")
+        .select("id, is_active, apply_url, apply_email, contact_phone")
+        .eq("id", job_id)
+        .limit(1)
+        .execute()
+    )
+    if not existing_res.data:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    if body.mark_uncontactable:
+        reason = (body.reason or "").strip() or "manual_uncontactable"
+        result = (
+            supabase.table("jobs")
+            .update(
+                {
+                    "is_active": False,
+                    "deactivation_reason": reason,
+                    "updated_by_user_id": current_user["id"],
+                    "updated_at": now,
+                }
+            )
+            .eq("id", job_id)
+            .execute()
+        )
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Job not found")
+        _emit_analytics_event(
+            supabase,
+            "admin_job_marked_uncontactable",
+            {"job_id": job_id, "reason": reason, "admin_user_id": current_user["id"]},
+            current_user["id"],
+        )
+        return {"id": job_id, "is_active": False, "deactivation_reason": reason}
+
+    patch = body.model_dump(
+        exclude_unset=True,
+        exclude_none=True,
+        exclude={"mark_uncontactable", "reason"},
+    )
+    if not patch:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide apply_url, apply_email, and/or contact_phone",
+        )
+
+    merged_url = patch.get("apply_url", existing_res.data[0].get("apply_url"))
+    merged_email = patch.get("apply_email", existing_res.data[0].get("apply_email"))
+    merged_phone = patch.get("contact_phone", existing_res.data[0].get("contact_phone"))
+    has_url = bool(merged_url and str(merged_url).strip())
+    has_email = bool(merged_email and str(merged_email).strip())
+    has_phone = bool(merged_phone and str(merged_phone).strip())
+    if not (has_url or has_email or has_phone):
+        raise HTTPException(
+            status_code=422,
+            detail="At least one of apply_url, apply_email, or contact_phone is required",
+        )
+
+    patch["updated_by_user_id"] = current_user["id"]
+    patch["updated_at"] = now
+    result = supabase.table("jobs").update(patch).eq("id", job_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Job not found")
+    _emit_analytics_event(
+        supabase,
+        "admin_job_contact_fixed",
+        {"job_id": job_id, "admin_user_id": current_user["id"], "fields": list(patch.keys())},
+        current_user["id"],
+    )
+    return result.data[0]
 
 
 @router.get("/jobs/review-queue", response_model=AdminJobReviewQueue)
@@ -1618,6 +1801,72 @@ async def list_subscriptions(
         page=page,
         per_page=per_page,
         pages=pages,
+    )
+
+
+@router.get("/subscriptions/metrics", response_model=AdminSubscriptionMetrics)
+async def subscription_metrics(supabase=Depends(get_supabase)):
+    """MRR and monthly churn for the admin subscriptions dashboard."""
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_start_iso = month_start.isoformat()
+
+    tier_rows = supabase.table("tier_config").select("tier, price_ngwee").execute()
+    price_by_tier = {
+        r["tier"]: int(r.get("price_ngwee") or 0) for r in (tier_rows.data or [])
+    }
+
+    active_res = (
+        supabase.table("subscriptions")
+        .select("tier")
+        .eq("status", "active")
+        .execute()
+    )
+    active_rows = active_res.data or []
+    mrr_ngwee = sum(price_by_tier.get(r.get("tier", "free"), 0) for r in active_rows)
+    active_count = len(active_rows)
+
+    cancelled_res = (
+        supabase.table("subscriptions")
+        .select("id", count="exact")
+        .eq("status", "cancelled")
+        .gte("cancelled_at", month_start_iso)
+        .execute()
+    )
+    cancelled_this_month = cancelled_res.count or 0
+
+    # Active at month start: created before month_start and (still active or cancelled this month).
+    subs_snapshot = (
+        supabase.table("subscriptions")
+        .select("status, created_at, cancelled_at")
+        .execute()
+    )
+    active_at_month_start = 0
+    for row in subs_snapshot.data or []:
+        created = row.get("created_at")
+        if not created or str(created) >= month_start_iso:
+            continue
+        status = row.get("status")
+        if status == "active":
+            active_at_month_start += 1
+            continue
+        if status == "cancelled":
+            cancelled_at = row.get("cancelled_at")
+            if cancelled_at and str(cancelled_at) >= month_start_iso:
+                active_at_month_start += 1
+    if active_at_month_start <= 0:
+        churn_rate = 0.0
+    else:
+        churn_rate = round(cancelled_this_month / active_at_month_start, 4)
+
+    return AdminSubscriptionMetrics(
+        mrr_kwacha=round(mrr_ngwee / 100, 2),
+        mrr_ngwee=mrr_ngwee,
+        active_subscriptions=active_count,
+        cancelled_this_month=cancelled_this_month,
+        active_at_month_start=active_at_month_start,
+        churn_rate=churn_rate,
+        month_start=month_start.date().isoformat(),
     )
 
 

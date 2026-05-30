@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { RefreshCountdownRing } from "@/components/RefreshCountdownRing";
 import { SaveJobButton } from "@/components/SaveJobButton";
 import { formatMatchRelativeTime } from "@/lib/formatMatchRelativeTime";
@@ -31,12 +31,16 @@ import Link from "next/link";
 import { notify } from "@/lib/toast";
 import { InterviewPrepModal } from "./_components/InterviewPrepModal";
 import { MatchExplanationModal } from "./_components/MatchExplanationModal";
+import { TailoredCvModal } from "@/components/matches/TailoredCvModal";
+import { CoverLetterMatchModal } from "@/components/matches/CoverLetterMatchModal";
+import { canTailorCvForMatch, canUseCoverLetterEditor } from "@/lib/tier-gating";
 import { CountdownRing } from "@/components/CountdownRing";
 import { formatMatchedRelative } from "@/lib/formatMatchedRelative";
 import { isJobPastClosing } from "@/lib/isJobPastClosing";
 import { isJobHiddenFromUserFeed } from "@/lib/isJobHiddenFromUserFeed";
 import { trackApplyClick } from "@/lib/trackApplyClick";
 import { ApplyModal } from "@/components/jobs/ApplyModal";
+import { PushPermissionPrompt } from "@/components/notifications/PushPermissionPrompt";
 
 // Human-friendly tier label. Free → "Free", super_standard → "Super",
 // etc. Falls back to the raw key if we don't recognize it so we don't
@@ -67,6 +71,7 @@ const TIER_LABELS: Record<string, string> = {
 
 export default function MatchesPageClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { token, isAuthenticated, isLoading: authLoading, logout } = useAuth();
   const [data, setData] = useState<MatchRefreshResponse | null>(null);
   const [sub, setSub] = useState<Subscription | null>(null);
@@ -78,6 +83,8 @@ export default function MatchesPageClient() {
   const [scoreFilter, setScoreFilter] = useState(0);
   const [sort, setSort] = useState<"score" | "closing">("score");
   const [prepFor, setPrepFor] = useState<MatchData | null>(null);
+  const [tailorFor, setTailorFor] = useState<MatchData | null>(null);
+  const [coverLetterFor, setCoverLetterFor] = useState<MatchData | null>(null);
   const [applyJob, setApplyJob] = useState<MatchData["job"] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshCooldown, setRefreshCooldown] = useState(false);
@@ -96,6 +103,7 @@ export default function MatchesPageClient() {
   const autoTriggeredRef = useRef(false);
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const refreshStartedAtRef = useRef<number | null>(null);
+  const deepLinkHandledRef = useRef(false);
 
   const loadMatches = useCallback(async (authToken: string) => {
     const [matchesRes, subRes, prefsRes, autoPrefsRes] = await Promise.allSettled([
@@ -142,6 +150,17 @@ export default function MatchesPageClient() {
       cancelled = true;
     };
   }, [token]);
+
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (!openId || !data?.matches?.length || deepLinkHandledRef.current) return;
+    const match = data.matches.find((m) => m.id === openId);
+    if (match) {
+      deepLinkHandledRef.current = true;
+      setDetailMatch(match);
+      router.replace("/matches", { scroll: false });
+    }
+  }, [searchParams, data?.matches, router]);
 
   useEffect(
     () => () => {
@@ -422,6 +441,7 @@ export default function MatchesPageClient() {
 
   return (
     <div className="max-w-[1280px] mx-auto px-6 py-8 md:py-12">
+      <PushPermissionPrompt creditedMatchCount={matchesUsed} />
       {/* Header */}
       <div
         className="matches-header grid gap-8 items-start mb-10"
@@ -875,6 +895,50 @@ export default function MatchesPageClient() {
                       below SS see a clear upgrade affordance instead of
                       clicking a button that just 403s. Backend enforcement
                       remains the source of truth. */}
+                  {canTailorCvForMatch(sub?.tier) ? (
+                    <button
+                      type="button"
+                      onClick={() => setTailorFor(match)}
+                      className="btn btn-accent btn-sm w-40"
+                      title="Generate a CV tailored to this role"
+                      data-testid="match-tailor-cv"
+                    >
+                      Tailor my CV <Icon name="file" size={13} />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm w-40"
+                      disabled
+                      title="Professional or Super Standard — tailored CV per match. Upgrade at /pricing."
+                      style={{ opacity: 0.55, cursor: "not-allowed" }}
+                      data-testid="match-tailor-cv-locked"
+                    >
+                      Tailor my CV
+                    </button>
+                  )}
+                  {canUseCoverLetterEditor(sub?.tier) ? (
+                    <button
+                      type="button"
+                      onClick={() => setCoverLetterFor(match)}
+                      className="btn btn-outline btn-sm w-40"
+                      title="Generate and edit a cover letter for this match"
+                      data-testid="match-cover-letter"
+                    >
+                      Cover letter <Icon name="file" size={13} />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm w-40"
+                      disabled
+                      title="Professional or Super Standard — cover letter editor. Upgrade at /pricing."
+                      style={{ opacity: 0.55, cursor: "not-allowed" }}
+                      data-testid="match-cover-letter-locked"
+                    >
+                      Cover letter
+                    </button>
+                  )}
                   {sub?.tier === "super_standard" ? (
                     <button
                       onClick={() => setPrepFor(match)}
@@ -930,6 +994,29 @@ export default function MatchesPageClient() {
           jobId={prepFor.job.id}
           jobTitle={prepFor.job.title}
           company={prepFor.job.company}
+        />
+      )}
+
+      {token && tailorFor && (
+        <TailoredCvModal
+          open={!!tailorFor}
+          onClose={() => setTailorFor(null)}
+          token={token}
+          matchId={tailorFor.id}
+          jobTitle={tailorFor.job.title}
+          company={tailorFor.job.company}
+        />
+      )}
+
+      {token && coverLetterFor && (
+        <CoverLetterMatchModal
+          open={!!coverLetterFor}
+          onClose={() => setCoverLetterFor(null)}
+          token={token}
+          matchId={coverLetterFor.id}
+          jobTitle={coverLetterFor.job.title}
+          company={coverLetterFor.job.company}
+          subscriptionTier={sub?.tier}
         />
       )}
 

@@ -11,11 +11,13 @@ with variables USER_NAME, MATCH_COUNT, MATCHES_HTML, APP_URL.
 import logging
 from datetime import datetime
 from html import escape
+from pathlib import Path
 from typing import Any, Optional
 
 import resend
 
 from app.core.config import get_settings
+from app.core.deps import get_supabase
 from app.services.email_delivery import (
     EMAIL_PROVIDER_UNAVAILABLE,
     EmailDeliveryError,
@@ -23,6 +25,10 @@ from app.services.email_delivery import (
 )
 
 logger = logging.getLogger(__name__)
+
+_WELCOME_TEMPLATE = (
+    Path(__file__).resolve().parent.parent / "templates" / "emails" / "welcome.html"
+)
 
 
 def _api_ready() -> bool:
@@ -119,23 +125,51 @@ def _digest_matches_html(matches: list[dict[str, Any]]) -> str:
     return f"<ol>{''.join(rows)}</ol>"
 
 
-async def send_welcome_email(user_id: str, supabase) -> bool:
-    enabled, email = await _resolve_recipient(user_id, supabase)
-    if not enabled or not email:
-        return False
-    settings = get_settings()
-    html = f"""
-    <h2>Welcome to Zed CV</h2>
-    <p>Your CV is in. Our AI will start matching you to jobs across Zambia within minutes.</p>
-    <p>What's next:</p>
-    <ul>
-      <li>Wait for your first match digest (usually within 24 hours).</li>
-      <li>Reply <strong>matches</strong> on WhatsApp to see top matches anytime.</li>
-      <li>Visit <a href="{settings.app_url}/matches">your dashboard</a> for full match details.</li>
-    </ul>
-    <p>— The Zed CV team</p>
-    """
-    return _send(email, "Welcome to Zed CV", html)
+def _render_welcome_html(first_name: str) -> str:
+    raw = _WELCOME_TEMPLATE.read_text(encoding="utf-8")
+    return raw.replace("{{first_name}}", escape(first_name))
+
+
+async def send_welcome_email(
+    user_id: str,
+    full_name: str | None,
+    email: str | None,
+) -> None:
+    """Post-signup welcome email. Sets users.welcome_email_sent on success."""
+    if not email:
+        return
+
+    first_name = (full_name or "").split()[0] if (full_name or "").strip() else "there"
+    html = _render_welcome_html(first_name)
+    subject = "Welcome to ZedApply"
+    ok = _send(
+        email,
+        subject,
+        html,
+        idempotency_key=f"welcome-email/{user_id}",
+    )
+    if not ok:
+        logger.warning("welcome email send failed user_id=%s to=%s", user_id, email)
+        return
+
+    logger.info("welcome email sent user_id=%s to=%s", user_id, email)
+    supabase = get_supabase()
+    supabase.table("users").update({"welcome_email_sent": True}).eq("id", user_id).execute()
+
+
+def _digest_upcoming_html(upcoming: list[dict[str, Any]]) -> str:
+    if not upcoming:
+        return ""
+    rows: list[str] = []
+    for item in upcoming[:5]:
+        title = escape(str(item.get("job_title") or "Role"))
+        company = escape(str(item.get("job_company") or ""))
+        when = escape(str(item.get("interview_date") or "soon"))
+        rows.append(f"<li><strong>{title}</strong> at {company} — interview {when}</li>")
+    return (
+        "<h3>Upcoming interviews (next 48h)</h3>"
+        f"<ul>{''.join(rows)}</ul>"
+    )
 
 
 async def send_daily_digest_email(
@@ -146,9 +180,11 @@ async def send_daily_digest_email(
     supabase,
     *,
     digest_date: str,
+    upcoming_interviews: list[dict[str, Any]] | None = None,
 ) -> bool:
     """Daily cron digest via Resend template (falls back to inline HTML)."""
-    if not matches or not email:
+    upcoming = upcoming_interviews or []
+    if (not matches and not upcoming) or not email:
         return False
     enabled, resolved = await _resolve_recipient(user_id, supabase)
     if not enabled:
@@ -158,8 +194,14 @@ async def send_daily_digest_email(
         return False
 
     settings = get_settings()
-    subject = f"{len(matches)} new job matches for you"
+    subject_parts: list[str] = []
+    if upcoming:
+        subject_parts.append(f"{len(upcoming)} upcoming interview(s)")
+    if matches:
+        subject_parts.append(f"{len(matches)} new job matches")
+    subject = " · ".join(subject_parts) if subject_parts else "Your ZedApply digest"
     idempotency_key = f"daily-digest-email/{user_id}/{digest_date}"
+    upcoming_html = _digest_upcoming_html(upcoming)
     template_id = (settings.resend_daily_digest_template_id or "").strip()
     if template_id:
         return _send_with_template(
@@ -169,17 +211,25 @@ async def send_daily_digest_email(
                 "USER_NAME": display_name,
                 "MATCH_COUNT": str(len(matches)),
                 "MATCHES_HTML": _digest_matches_html(matches),
+                "UPCOMING_INTERVIEWS_HTML": upcoming_html,
                 "APP_URL": settings.app_url,
             },
             subject=subject,
             idempotency_key=idempotency_key,
         )
 
+    matches_block = (
+        f"<p>Here are your {len(matches)} new matches for today:</p>"
+        f"{_digest_matches_html(matches)}"
+        if matches
+        else ""
+    )
     html = f"""
     <h2>Good morning {escape(display_name)}!</h2>
-    <p>Here are your {len(matches)} new matches for today:</p>
-    {_digest_matches_html(matches)}
-    <p><a href="{settings.app_url}/matches">View all matches</a></p>
+    {upcoming_html}
+    {matches_block}
+    <p><a href="{settings.app_url}/applications">View application board</a> ·
+    <a href="{settings.app_url}/matches">View all matches</a></p>
     """
     return _send(to, subject, html, idempotency_key=idempotency_key)
 
@@ -337,3 +387,39 @@ async def send_otp_email(email: str, code: str) -> None:
             exc,
         )
         raise EmailDeliveryError(code_err, log_message=str(exc)) from exc
+
+
+async def send_employer_consent_email(
+    email: str,
+    *,
+    employer_name: str,
+    message_snippet: str,
+) -> bool:
+    """Mirror WhatsApp consent prompt for employer contact requests."""
+    if not _api_ready() or not email:
+        return False
+    settings = get_settings()
+    html = f"""
+    <h2>Employer contact request</h2>
+    <p><strong>{escape(employer_name)}</strong> wants to reach you via Zed Apply:</p>
+    <blockquote>{escape(message_snippet)}</blockquote>
+    <p>Reply <strong>YES</strong> on WhatsApp to share your phone and email, or <strong>NO</strong> to decline.</p>
+  """
+    return _send(email, f"{employer_name} wants to contact you — Zed Apply", html)
+
+
+async def send_employer_invite_email(
+    email: str,
+    *,
+    company_name: str,
+    invite_url: str,
+) -> bool:
+    if not _api_ready():
+        logger.warning("Resend not configured — skipping employer invite email")
+        return False
+    html = f"""
+    <h2>Join {escape(company_name)} on Zed Apply Employer</h2>
+    <p>You have been invited to collaborate on candidate search and outreach.</p>
+    <p><a href="{escape(invite_url, quote=True)}">Accept invitation</a></p>
+    """
+    return _send(email, f"Invitation — {company_name} on Zed Apply", html)
