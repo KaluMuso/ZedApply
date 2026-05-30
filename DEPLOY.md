@@ -278,35 +278,209 @@ UPDATE users SET role = 'superadmin' WHERE phone = '+260XXXXXXXXX';
 
 ## Maintenance
 
-### Updating the App
+### OCI production redeploy runbook (`ubuntu@OCI`)
 
-> **Production reality note (2026-05-17):**
-> The runbook above assumes the compose stack lives in `~/zedcv/infra/production/`. The current OCI box actually runs the stack from `~/n8n-docker/` (the n8n compose stack was extended to include `zedcv-backend` rather than spinning up a second project). Source still lives in `~/zedcv/`. Until the layouts re-converge, use the actual paths below.
+Use this after every merge to `master` that touches the backend (including **pywebpush** / Web Push, **WeasyPrint** PDF libs in the Dockerfile, **Lenco** webhook fixes, or any `apps/backend/.env` change).
 
-**Actual prod redeploy commands (as run today):**
+**Layout on the live box:**
+
+| Path | Role |
+|------|------|
+| `~/zedcv/` | Git clone — source for `docker compose build` |
+| `~/n8n-docker/` | Compose project — `zedcv-backend`, WAHA, n8n |
+| `~/zedcv/apps/backend/.env` | Backend secrets (mounted via compose `env_file`) |
+
+**Critical:** `docker compose restart` does **not** reload `.env` or pick up new code. You must **`build`** then **`up -d --force-recreate`**.
+
+#### 1. Copy-paste deploy sequence
 
 ```bash
-ssh ubuntu@YOUR_SERVER_IP
+# From your laptop (or any machine with SSH access)
+ssh ubuntu@YOUR_OCI_PUBLIC_IP
 
-# 1. Pull source
+# 0. (Optional) If you edited secrets on the host — edit BEFORE recreate:
+#    nano ~/zedcv/apps/backend/.env
+#    Required for a full-green deploy: DEBUG=false, REDIS_URL, RESEND_API_KEY,
+#    RESEND_FROM_EMAIL, VAPID_* (if push enabled), Lenco prod keys (#172+).
+
+# 1. Pull latest backend source
 cd ~/zedcv && git pull origin master
 
-# 2. Rebuild + restart only the backend service. ~/n8n-docker/docker-compose.yml
-#    references ../zedcv as the build context, so step 1's pull is what
-#    actually changes the container contents — step 2 rebuilds the image.
+# 2. Rebuild image + recreate container (re-reads .env)
 cd ~/n8n-docker
 docker compose build zedcv-backend
 docker compose up -d --force-recreate zedcv-backend
+
+# 3. Production readiness audit — FULL (needs Supabase + WAHA from container .env)
+docker exec zedcv-backend python scripts/production_readiness_audit.py
+# Expect exit code 0 (no red checks). Re-run after fixing .env / WAHA / migrations.
+
+# 4. Public health check
+curl -s https://api.zedapply.com/api/v1/health | jq .
+
+# 5. Confirm integration flags match .env (see table below)
+#    redis_configured  ← non-empty REDIS_URL in container
+#    vapid_configured  ← VAPID_PRIVATE_KEY + VAPID_PUBLIC_KEY + VAPID_CLAIMS_EMAIL
+#    resend_configured ← non-empty RESEND_API_KEY
 ```
 
-**Greenfield runbook (the repo's documented path — kept for reference):**
+**If the image still looks stale** (missing scripts, old code paths):
+
+```bash
+cd ~/n8n-docker
+docker compose build --no-cache zedcv-backend
+docker compose up -d --force-recreate zedcv-backend
+```
+
+#### 2. Expected healthy `/health` JSON
+
+When Supabase and WAHA are both up:
+
+```json
+{
+  "status": "healthy",
+  "version": "0.1.0",
+  "supabase": true,
+  "waha": true,
+  "redis_configured": true,
+  "vapid_configured": true,
+  "resend_configured": true
+}
+```
+
+| Field | `true` when | Notes |
+|-------|-------------|--------|
+| `status` | `healthy` | `supabase` **and** `waha` both true |
+| `status` | `degraded` | Supabase OK, WAHA down — OTP/digests fail until WAHA fixed |
+| `status` | `unhealthy` | Supabase heartbeat RPC failed |
+| `redis_configured` | `REDIS_URL` set in container env | Shared rate limits across workers / recreates |
+| `vapid_configured` | All three VAPID vars set | Matches `vapid_configured()` in `web_push.py` |
+| `resend_configured` | `RESEND_API_KEY` non-empty | Email OTP/digests; also verify domain via `/admin/email-health` |
+
+`version` comes from `APP_VERSION` / settings — value may differ from the example.
+
+#### 3. `production_readiness_audit.py` — expected results
+
+Run **inside** the container (not host `python3` — host Python lacks `pydantic`, `pywebpush`, etc.).
+
+**Green (required for go-live):**
+
+| Check | Meaning |
+|-------|---------|
+| `DEBUG=false` | Production mode |
+| `LENCO_API_URL (production)` | Host contains `api.lenco.co` |
+| `LENCO_API_KEY set` | Key present (post–#172 cutover) |
+| `SENTRY_DSN set` | Error tracking wired |
+| `REDIS_URL set` | Recommended — shared rate limits |
+| `Migrations on disk` | SQL files visible (yellow OK in slim image if DB probes pass) |
+| `DB schema sentinels` | Migrations through latest applied on Supabase |
+| `tier_config rows` | All four consumer tiers present |
+| `Active jobs have apply path` | No active jobs missing `apply_url` / `apply_email` |
+| `RLS on 10 audited tables` | `schema_guard_rls` RPC passes |
+| `WAHA session WORKING` | At least one session in `WORKING` state |
+
+**Yellow (acceptable short-term, fix before marketing push):**
+
+| Check | Meaning |
+|-------|---------|
+| `LENCO_API_URL` still `sandbox.lenco.co` | Sandbox payments only |
+| `LENCO_API_KEY set` empty | Lenco disabled until key added |
+| `SENTRY_DSN set` empty | No Sentry (local/dev only) |
+| `REDIS_URL set` empty | In-memory rate limits — reset on recreate |
+| `Migrations on disk` yellow | Container has no `infra/supabase/migrations` — rely on DB probes |
+| `Supabase checks` skipped | Only when `--skip-db` — **do not use for prod deploy** |
+
+**Red (block deploy / fix before taking payments):**
+
+| Check | Action |
+|-------|--------|
+| `DEBUG=true` | Set `DEBUG=false` in `.env`, force-recreate |
+| `DB schema sentinels` missing columns | Apply pending migrations in Supabase |
+| `tier_config rows` missing tiers | Seed/fix `tier_config` |
+| `Active jobs have apply path` | Run backfills or deactivate bad jobs |
+| `RLS on 10 audited tables` | Apply migration 043+ / fix RLS |
+| `WAHA session WORKING` | See WAHA recovery below |
+
+Exit code: **0** if no red; **1** if any red.
+
+#### 4. Ops scripts — always via `docker exec`
+
+Do **not** run `python3 scripts/...` on the Ubuntu host unless you have a venv with `requirements.txt` installed. On OCI, host Python often fails with missing `pydantic` / deps.
+
+```bash
+# Audit (full)
+docker exec zedcv-backend python scripts/production_readiness_audit.py
+
+# Backfills — dry-run first, then --apply where supported
+docker exec zedcv-backend python scripts/backfill_apply_urls_v2.py --dry-run
+docker exec zedcv-backend python scripts/backfill_job_quality.py --dry-run
+docker exec zedcv-backend python scripts/backfill_job_enrichment.py --dry-run
+# docker exec -it zedcv-backend python scripts/backfill_apply_urls_v2.py --apply
+```
+
+#### 5. WAHA recovery when `"waha": false`
+
+1. Check WAHA container: `cd ~/n8n-docker && docker compose logs waha --tail 50`
+2. Bootstrap session (admin key from `~/zedcv/apps/backend/.env` → `ADMIN_API_KEY`):
+
+```bash
+curl -sS -X POST "https://api.zedapply.com/api/v1/admin/waha/bootstrap-session?session=default&timeout=45" \
+  -H "X-ADMIN-API-KEY: $ADMIN_API_KEY" | jq .
+```
+
+3. Re-check health: `curl -s https://api.zedapply.com/api/v1/health | jq .waha`
+4. If still false: scan QR at WAHA dashboard (`https://waha.vergeo.company`) or restart backend (startup hook re-runs bootstrap):
+
+```bash
+cd ~/n8n-docker && docker compose restart zedcv-backend
+```
+
+See `AGENTS.md` §3.3 for full WAHA failure-mode notes. Session files: `/home/ubuntu/n8n-docker/waha_data/sessions`.
+
+#### 6. Rollback
+
+```bash
+ssh ubuntu@YOUR_OCI_PUBLIC_IP
+
+# Record current SHA before deploy (for rollback target)
+cd ~/zedcv && git rev-parse HEAD
+
+# Roll back source to previous known-good commit
+cd ~/zedcv && git fetch origin master && git checkout <previous-sha>
+
+# Rebuild + recreate on the old code
+cd ~/n8n-docker
+docker compose build zedcv-backend
+docker compose up -d --force-recreate zedcv-backend
+
+# Verify
+docker exec zedcv-backend python scripts/production_readiness_audit.py
+curl -s https://api.zedapply.com/api/v1/health | jq .
+```
+
+- **`.env` rollback:** restore `apps/backend/.env` from backup, then `force-recreate` only (no git change).
+- **Supabase:** do **not** revert applied migrations — forward-fix with a new migration.
+- **Vercel frontend:** promote previous deployment in the Vercel dashboard if the release included frontend changes.
+
+---
+
+### Updating the App (short reference)
+
+> **Production reality:** stack runs from `~/n8n-docker/`; source in `~/zedcv/`. Full steps: [OCI production redeploy runbook](#oci-production-redeploy-runbook-ubuntuoci) above.
+
+```bash
+cd ~/zedcv && git pull origin master
+cd ~/n8n-docker && docker compose build zedcv-backend && docker compose up -d --force-recreate zedcv-backend
+docker exec zedcv-backend python scripts/production_readiness_audit.py
+curl -s https://api.zedapply.com/api/v1/health | jq .
+```
+
+**Greenfield runbook** (new VM, not the current OCI box):
 
 ```bash
 cd ~/zedcv/infra/production
 docker compose -f docker-compose.prod.yml up -d --build
 ```
-
-If you're standing up a new prod box, prefer the greenfield path so you stay in lockstep with the checked-in compose files. If you're maintaining the current OCI box, use the actual-prod commands above.
 
 ### Viewing Logs
 
