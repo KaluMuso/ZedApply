@@ -1,27 +1,37 @@
 {
-  "name": "ZedApply - Supabase Heartbeat",
+  "name": "Zed CV - Supabase Heartbeat",
   "nodes": [
     {
-      "parameters": { "rule": { "interval": [{ "field": "hours", "hoursInterval": 6 }] } },
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "hours", "hoursInterval": 6 }]
+        }
+      },
       "name": "Every 6 Hours",
       "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
-      "position": [250, 300]
+      "typeVersion": 1.3,
+      "position": [256, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const supabaseUrl = $env.SUPABASE_URL ?? \"\";\nconst supabaseKey =\n  $env.SUPABASE_ANON_KEY ||\n  $env.SUPABASE_KEY ||\n  $env.SUPABASE_SERVICE_ROLE_KEY ||\n  $env.SUPABASE_SERVICE_KEY ||\n  \"\";\nconst fastapiUrl = $env.FASTAPI_URL ?? \"http://backend:8000\";\n\nif (!supabaseUrl || !supabaseKey) {\n  throw new Error(\n    \"Missing SUPABASE_URL or Supabase API key (set SUPABASE_ANON_KEY or SUPABASE_KEY in n8n env)\",\n  );\n}\n\nreturn [{ json: { supabaseUrl, supabaseKey, fastapiUrl } }];"
+      },
+      "name": "Load Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 400]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/heartbeat",
+        "url": "={{ $json.supabaseUrl }}/rest/v1/rpc/heartbeat",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY || $env.SUPABASE_SERVICE_KEY }}"
-            },
+            { "name": "apikey", "value": "={{ $json.supabaseKey }}" },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY || $env.SUPABASE_SERVICE_KEY }}"
+              "value": "={{ \"Bearer \" + $json.supabaseKey }}"
             },
             { "name": "Content-Type", "value": "application/json" }
           ]
@@ -32,19 +42,27 @@
       },
       "name": "Supabase Heartbeat",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [480, 300]
+      "typeVersion": 4.4,
+      "position": [704, 304],
+      "executeOnce": true
     },
     {
-      "parameters": { "method": "GET", "url": "={{ $env.FASTAPI_URL }}/api/v1/health" },
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.fastapiUrl }}/api/v1/health"
+      },
       "name": "API Health Check",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [480, 500]
+      "typeVersion": 4.4,
+      "position": [704, 496],
+      "executeOnce": true
     }
   ],
   "connections": {
     "Every 6 Hours": {
+      "main": [[{ "node": "Load Config", "type": "main", "index": 0 }]]
+    },
+    "Load Config": {
       "main": [
         [
           { "node": "Supabase Heartbeat", "type": "main", "index": 0 },

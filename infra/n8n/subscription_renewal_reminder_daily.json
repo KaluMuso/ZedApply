@@ -9,33 +9,47 @@
       },
       "name": "Daily 08:00 UTC",
       "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
+      "typeVersion": 1.3,
       "position": [250, 300]
     },
     {
       "parameters": {
+        "jsCode": "const fastapiUrl = $env.FASTAPI_URL ?? \"http://backend:8000\";\nconst ingestApiKey = $env.INGEST_API_KEY ?? \"\";\n\nif (!ingestApiKey) {\n  throw new Error(\"Missing INGEST_API_KEY in n8n environment\");\n}\n\nreturn [{ json: { fastapiUrl, ingestApiKey } }];"
+      },
+      "name": "Load Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
         "method": "POST",
-        "url": "={{ $env.FASTAPI_URL }}/api/v1/admin/trigger-renewal-reminders",
+        "url": "={{ $json.fastapiUrl }}/api/v1/admin/trigger-renewal-reminders",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "INGEST_API_KEY", "value": "={{ $env.INGEST_API_KEY }}" },
-            { "name": "X-INGEST-API-KEY", "value": "={{ $env.INGEST_API_KEY }}" },
+            { "name": "X-INGEST-API-KEY", "value": "={{ $json.ingestApiKey }}" },
+            { "name": "INGEST_API_KEY", "value": "={{ $json.ingestApiKey }}" },
             { "name": "Content-Type", "value": "application/json" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{}"
+        "jsonBody": "{}",
+        "options": { "timeout": 120000 }
       },
       "name": "Send Renewal Reminder Emails",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [520, 300]
+      "typeVersion": 4.4,
+      "position": [560, 300],
+      "executeOnce": true
     }
   ],
   "connections": {
     "Daily 08:00 UTC": {
+      "main": [[{ "node": "Load Config", "type": "main", "index": 0 }]]
+    },
+    "Load Config": {
       "main": [[{ "node": "Send Renewal Reminder Emails", "type": "main", "index": 0 }]]
     }
   },

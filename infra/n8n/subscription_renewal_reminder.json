@@ -14,12 +14,22 @@
     },
     {
       "parameters": {
+        "jsCode": "const fastapiUrl = $env.FASTAPI_URL ?? \"http://backend:8000\";\nconst ingestApiKey = $env.INGEST_API_KEY ?? \"\";\n\nif (!ingestApiKey) {\n  throw new Error(\"Missing INGEST_API_KEY in n8n environment\");\n}\n\nreturn [{ json: { fastapiUrl, ingestApiKey } }];"
+      },
+      "name": "Load Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
         "method": "POST",
-        "url": "={{ $env.FASTAPI_URL }}/api/v1/admin/trigger-renewal-reminders",
+        "url": "={{ $json.fastapiUrl }}/api/v1/admin/trigger-renewal-reminders",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "INGEST_API_KEY", "value": "={{ $env.INGEST_API_KEY }}" }
+            { "name": "X-INGEST-API-KEY", "value": "={{ $json.ingestApiKey }}" },
+            { "name": "INGEST_API_KEY", "value": "={{ $json.ingestApiKey }}" }
           ]
         },
         "options": { "timeout": 120000 }
@@ -27,12 +37,19 @@
       "name": "Send Renewal Reminder Emails",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
-      "position": [480, 300]
+      "position": [560, 300],
+      "executeOnce": true
     }
   ],
   "connections": {
     "Every Day at 9AM": {
+      "main": [[{ "node": "Load Config", "type": "main", "index": 0 }]]
+    },
+    "Load Config": {
       "main": [[{ "node": "Send Renewal Reminder Emails", "type": "main", "index": 0 }]]
     }
+  },
+  "settings": {
+    "executionOrder": "v1"
   }
 }
