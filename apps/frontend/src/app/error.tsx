@@ -4,13 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/ui/Icon";
 
-// Branded /500-style fallback. App Router renders this when a server or
-// client component below it throws. We surface `error.digest` (Next.js's
-// own reference ID, stable per build) as the bug-report reference. Once
-// @sentry/nextjs is wired on the client (separate slice), the same UI
-// can swap in Sentry's lastEventId() so users can quote a real Sentry
-// event ID instead — the public contract here is just "show the
-// reference, let the user copy it."
+// Segment error boundary (layout/page children). Root layout failures use
+// global-error.tsx, which reports to Sentry and surfaces the event ID.
 
 export default function GlobalError({
   error,

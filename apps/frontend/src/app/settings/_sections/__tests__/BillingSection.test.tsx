@@ -80,7 +80,7 @@ describe("BillingSection", () => {
   it("lists completed payments as invoices", async () => {
     render(<BillingSection />);
     await waitFor(() => expect(screen.getByText("K125")).toBeInTheDocument());
-    expect(screen.getByText(/paid/i)).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: /paid/i })).toBeInTheDocument();
     expect(screen.getAllByText(/mtn mobile money/i).length).toBeGreaterThan(0);
   });
 

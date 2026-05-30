@@ -109,6 +109,29 @@ def add_lenco_webhook_breadcrumb(
         logger.debug("Sentry breadcrumb skipped for Lenco webhook", exc_info=True)
 
 
+def report_lenco_webhook_failure(
+    detail: str,
+    payload: dict[str, Any],
+    *,
+    level: str = "warning",
+) -> None:
+    """Breadcrumb + Sentry alert for Lenco webhook failures (signature, config, payload)."""
+    add_lenco_webhook_breadcrumb(payload, success=False, detail=detail)
+    try:
+        import sentry_sdk
+
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("lenco_webhook", detail)
+            scope.set_context("lenco_webhook", mask_lenco_webhook_payload(payload))
+            scope.fingerprint = ["lenco-webhook", detail]
+            sentry_sdk.capture_message(
+                f"Lenco webhook failure: {detail}",
+                level=level,
+            )
+    except Exception:
+        logger.debug("Sentry alert skipped for Lenco webhook", exc_info=True)
+
+
 def extract_event_fields(payload: dict) -> dict[str, Any]:
     """Normalise the Lenco v2 webhook payload into the fields we care about.
 
@@ -127,11 +150,10 @@ def extract_event_fields(payload: dict) -> dict[str, Any]:
     event = (payload.get("event") or "").lower()
     status = (data.get("status") or "").lower()
 
-    is_paid = (
-        event == "collection.successful"
-        or status in {"successful", "success", "completed", "paid"}
-        or event.endswith(".successful")
-        or event.endswith(".success")
+    is_paid = event == "collection.successful" or (
+        event.startswith("collection.")
+        and status in {"successful", "success", "completed", "paid"}
+        and not event.endswith(".failed")
     )
     is_failed = (
         event == "collection.failed"
@@ -155,16 +177,22 @@ def extract_event_fields(payload: dict) -> dict[str, Any]:
 
 
 def _coerce_amount(v: Any) -> int | None:
-    """Coerce Lenco amount to int ngwee. Accepts int, float, or str."""
+    """Coerce Lenco amount to int ngwee.
+
+    Webhook/widget payloads use decimal kwacha strings (e.g. '250.00').
+    Some fixtures send integer ngwee (e.g. 12500). Values under 1000 as
+    int are treated as whole kwacha.
+    """
+    from app.services.lenco import amount_to_ngwee
+
     if v is None:
         return None
     if isinstance(v, int):
-        return v
+        return v if v >= 1000 else v * 100
     if isinstance(v, float):
+        if v < 1000:
+            return int(round(v * 100))
         return int(round(v))
     if isinstance(v, str):
-        try:
-            return int(round(float(v)))
-        except (TypeError, ValueError):
-            return None
+        return amount_to_ngwee({"amount": v})
     return None

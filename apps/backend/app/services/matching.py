@@ -334,20 +334,23 @@ async def credit_matches_for_cycle(
     supabase: Client,
     *,
     now: datetime | None = None,
-) -> int:
-    """Mark newly-delivered unique job matches as credited for this month."""
+) -> list[str]:
+    """Mark newly-delivered unique job matches as credited for this month.
+
+    Returns job_ids that received credited_at in this call (empty if none).
+    """
     unique_job_ids = list(dict.fromkeys([jid for jid in job_ids if jid]))
     if not unique_job_ids:
-        return 0
+        return []
 
     _, quota, active = await get_user_tier_limit(user_id, supabase)
     if not active:
-        return 0
+        return []
 
     credited = await get_credited_match_count(user_id, supabase, now=now)
     remaining = max(0, quota - credited)
     if remaining <= 0:
-        return 0
+        return []
 
     match_rows = (
         supabase.table("matches")
@@ -363,9 +366,9 @@ async def credit_matches_for_cycle(
     }
 
     now_iso = (now or datetime.now(timezone.utc)).isoformat()
-    newly_credited = 0
+    newly_credited_ids: list[str] = []
     for job_id in unique_job_ids:
-        if newly_credited >= remaining:
+        if len(newly_credited_ids) >= remaining:
             break
         row = rows_by_job.get(job_id)
         if row and row.get("credited_at"):
@@ -376,8 +379,8 @@ async def credit_matches_for_cycle(
         else:
             query = query.eq("user_id", user_id).eq("job_id", job_id)
         query.is_("credited_at", "null").execute()
-        newly_credited += 1
-    return newly_credited
+        newly_credited_ids.append(job_id)
+    return newly_credited_ids
 
 
 async def check_match_quota(user_id: str, supabase: Client) -> tuple[bool, int]:
