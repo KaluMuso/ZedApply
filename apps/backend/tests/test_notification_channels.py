@@ -43,7 +43,12 @@ class TestDigestCronEndpoints:
         with patch(
             "app.api.v1.admin_ingest.run_email_daily_digest",
             new_callable=AsyncMock,
-            return_value={"sent": 2, "skipped": 1, "failed": 0, "quiet_hours_skipped": 0},
+            return_value={
+                "sent": 2,
+                "skipped": 1,
+                "failed": 0,
+                "quiet_hours_skipped": 0,
+            },
         ):
             resp = client.post(
                 "/api/v1/admin/trigger-daily-digest-email",

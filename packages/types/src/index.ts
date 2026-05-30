@@ -59,7 +59,15 @@ export interface PaymentInitiateResponse { transaction_token: string; payment_ur
 export interface CoverLetterRequest { job_id: string; tone?: CoverLetterTone; }
 export interface CoverLetterResponse { content: string; word_count: number; }
 
-export interface HealthCheck { status: "healthy" | "degraded" | "unhealthy"; version: string; supabase: boolean; waha: boolean; }
+export interface HealthCheck {
+  status: "healthy" | "degraded" | "unhealthy";
+  version: string;
+  supabase: boolean;
+  waha: boolean;
+  redis_configured?: boolean;
+  vapid_configured?: boolean;
+  resend_configured?: boolean;
+}
 export interface ProblemDetail {
   type: string;
   title: string;

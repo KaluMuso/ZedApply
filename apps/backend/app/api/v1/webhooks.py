@@ -10,7 +10,7 @@ from app.services.tier_config import (
     get_tier_prices,
 )
 from app.services.whatsapp import send_whatsapp_message, send_match_digest
-from app.services.email import send_payment_confirmation_email
+from app.services.email import send_payment_confirmation_email, send_invoice_email
 
 logger = logging.getLogger(__name__)
 
@@ -401,6 +401,17 @@ async def dpo_webhook(request: Request, supabase=Depends(get_supabase)):
         except Exception as e:
             logging.error(f"Failed to send payment confirmation email: {e}")
 
+        try:
+            from app.services.invoice import load_payment_invoice
+
+            invoice = await load_payment_invoice(
+                supabase, user_id=user_id, payment_id=payment_id
+            )
+            if invoice:
+                await send_invoice_email(invoice, supabase)
+        except Exception as e:
+            logging.error(f"Failed to send invoice email: {e}")
+
         logging.info(f"Payment completed: user={user_id}, tier={new_tier}")
         return {"status": "completed"}
 
@@ -431,6 +442,7 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
         verify_lenco_signature,
         extract_event_fields,
         add_lenco_webhook_breadcrumb,
+        report_lenco_webhook_failure,
     )
 
     settings = get_settings()
@@ -445,6 +457,10 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
 
     if settings.lenco_verify_signatures:
         if not settings.lenco_api_key and not settings.lenco_webhook_secret:
+            report_lenco_webhook_failure(
+                "lenco_webhook_verification_not_configured",
+                payload,
+                level="error",
             add_lenco_webhook_breadcrumb(
                 payload,
                 success=False,
@@ -462,6 +478,10 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
             webhook_secret=settings.lenco_webhook_secret,
             api_key=settings.lenco_api_key,
         ):
+            report_lenco_webhook_failure(
+                "lenco_webhook_invalid_signature",
+                payload,
+                level="warning",
             add_lenco_webhook_breadcrumb(
                 payload,
                 success=False,
@@ -476,6 +496,10 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
         )
 
     if not payload:
+        report_lenco_webhook_failure(
+            "lenco_webhook_invalid_payload",
+            payload,
+            level="warning",
         add_lenco_webhook_breadcrumb(
             payload,
             success=False,
@@ -628,6 +652,17 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
             await send_payment_confirmation_email(user_id, new_tier, amount_ngwee, supabase)
         except Exception as e:
             logging.error(f"Failed to send Lenco payment email: {e}")
+
+        try:
+            from app.services.invoice import load_payment_invoice
+
+            invoice = await load_payment_invoice(
+                supabase, user_id=user_id, payment_id=payment_id
+            )
+            if invoice:
+                await send_invoice_email(invoice, supabase)
+        except Exception as e:
+            logging.error(f"Failed to send Lenco invoice email: {e}")
 
         logging.info("Lenco payment completed: user=%s tier=%s", user_id, new_tier)
         return {"status": "completed"}

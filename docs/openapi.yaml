@@ -715,9 +715,39 @@ components:
         currency: { type: string }
         payment_method: { type: string }
         provider: { type: string }
+        provider_ref: { type: string, nullable: true }
+        invoice_number: { type: string, nullable: true }
         status: { type: string }
         created_at: { type: string, format: date-time }
         completed_at: { type: string, format: date-time }
+
+    AdminPaymentDetail:
+      allOf:
+        - { $ref: '#/components/schemas/AdminPaymentRow' }
+        - type: object
+          properties:
+            user_email: { type: string, nullable: true }
+            user_full_name: { type: string, nullable: true }
+            webhook_summary: { type: object, nullable: true, additionalProperties: true }
+            tier_inferred: { type: string, nullable: true }
+
+    AdminBillingHealth:
+      type: object
+      properties:
+        lenco_environment: { type: string }
+        lenco_api_url: { type: string }
+        lenco_api_key_set: { type: boolean }
+        lenco_public_key_set: { type: boolean }
+        lenco_webhook_secret_set: { type: boolean }
+        lenco_verify_signatures: { type: boolean }
+        lenco_production_ready: { type: boolean }
+        webhook_url_expected: { type: string }
+        payments_pending: { type: integer }
+        payments_failed_24h: { type: integer }
+        payments_completed_24h: { type: integer }
+        lenco_completed_24h: { type: integer }
+        subscriptions_cancelling: { type: integer }
+        checked_at: { type: string, format: date-time }
 
     AdminPaymentList:
       type: object
@@ -1039,6 +1069,8 @@ components:
         matches_used: { type: integer }
         matches_limit: { type: integer }
         current_period_end: { type: string, format: date-time }
+        cancelled_at: { type: string, format: date-time, nullable: true }
+        lenco_subscription_ref: { type: string, nullable: true }
         created_at: { type: string, format: date-time }
 
     AdminSubscriptionList:
@@ -1621,6 +1653,13 @@ components:
         skipped: { type: integer, minimum: 0 }
         failed: { type: integer, minimum: 0 }
 
+    RenewalReminderSendResponse:
+      type: object
+      properties:
+        sent: { type: integer, minimum: 0 }
+        skipped: { type: integer, minimum: 0 }
+        failed: { type: integer, minimum: 0 }
+
     ContactSubmission:
       type: object
       required: [name, email, message]
@@ -2023,6 +2062,34 @@ components:
           items: { $ref: '#/components/schemas/PaymentHistoryRow' }
         total: { type: integer }
 
+    InvoiceDetail:
+      type: object
+      properties:
+        invoice_number: { type: string }
+        payment_id: { type: string, format: uuid }
+        reference: { type: string }
+        status: { type: string }
+        amount_ngwee: { type: integer }
+        amount_kwacha: { type: integer }
+        currency: { type: string, default: ZMW }
+        tier: { type: string }
+        tier_label: { type: string }
+        payment_method: { type: string }
+        provider: { type: string, nullable: true }
+        issued_at: { type: string, format: date-time, nullable: true }
+        customer_name: { type: string }
+        customer_email: { type: string, nullable: true }
+        customer_phone: { type: string, nullable: true }
+
+    SubscriptionCancelResponse:
+      type: object
+      properties:
+        status: { type: string, enum: [cancelled, already_cancelled] }
+        message: { type: string }
+        tier: { type: string }
+        active_until: { type: string, format: date-time, nullable: true }
+        cancelled_at: { type: string, format: date-time }
+
     CoverLetterRequest:
       type: object
       required: [job_id]
@@ -2051,6 +2118,15 @@ components:
         version: { type: string }
         supabase: { type: boolean }
         waha: { type: boolean }
+        redis_configured:
+          type: boolean
+          description: True when REDIS_URL is set (shared rate-limit storage).
+        vapid_configured:
+          type: boolean
+          description: True when VAPID keys are set for web push.
+        resend_configured:
+          type: boolean
+          description: True when RESEND_API_KEY is set (email OTP/digests).
 
 paths:
   /health:
@@ -2938,6 +3014,38 @@ paths:
         '403': { description: Superadmin only }
         '422': { description: Validation error }
 
+  /admin/billing/health:
+    get:
+      operationId: adminBillingHealth
+      summary: Lenco config snapshot and payment anomaly counts
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminBillingHealth' }
+        '403': { description: Superadmin only }
+
+  /admin/payments/{payment_id}:
+    get:
+      operationId: adminGetPaymentDetail
+      summary: Payment detail with webhook summary for support
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: payment_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminPaymentDetail' }
+        '404': { description: Payment not found }
+        '403': { description: Superadmin only }
+
   /admin/payments:
     get:
       operationId: adminListPayments
@@ -2947,6 +3055,7 @@ paths:
         - { name: page, in: query, schema: { type: integer, default: 1 } }
         - { name: per_page, in: query, schema: { type: integer, default: 25 } }
         - { name: status, in: query, schema: { type: string, enum: [pending, completed, failed, refunded] } }
+        - { name: provider, in: query, schema: { type: string, description: "e.g. lenco, dpo_pay" } }
       responses:
         '200':
           content:
@@ -3556,6 +3665,26 @@ paths:
               schema: { $ref: '#/components/schemas/DailyDigestSendResponse' }
         '401': { description: Invalid admin or ingest API key }
 
+  /admin/trigger-renewal-reminders:
+    post:
+      operationId: triggerRenewalReminders
+      summary: Cron — email renewal reminders before billing period ends
+      description: |
+        Emails paid users whose active subscription ends in SUBSCRIPTION_RENEWAL_REMINDER_DAYS
+        (default 3). Skips cancelled subscriptions. Dedupes via billing_email_log.
+      tags: [Admin Cron]
+      parameters:
+        - { name: ADMIN_API_KEY, in: header, required: false, schema: { type: string } }
+        - { name: X-ADMIN-API-KEY, in: header, required: false, schema: { type: string } }
+        - { name: INGEST_API_KEY, in: header, required: false, schema: { type: string } }
+        - { name: X-INGEST-API-KEY, in: header, required: false, schema: { type: string } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RenewalReminderSendResponse' }
+        '401': { description: Invalid admin or ingest API key }
+
   /admin/trigger-daily-digest:
     get:
       operationId: triggerDailyDigest
@@ -3816,6 +3945,72 @@ paths:
         '502':
           description: Lenco upstream error
 
+  /subscription/payments/{payment_id}/invoice:
+    get:
+      operationId: getPaymentInvoice
+      summary: Invoice metadata for a completed payment
+      tags: [Subscription]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: payment_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InvoiceDetail' }
+        '404': { description: Payment or invoice not found }
+
+  /subscription/payments/{payment_id}/invoice/download:
+    get:
+      operationId: downloadPaymentInvoice
+      summary: Download HTML invoice (print to PDF)
+      tags: [Subscription]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: payment_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: HTML invoice attachment
+          content:
+            text/html:
+              schema: { type: string }
+        '404': { description: Invoice not found }
+
+  /subscription/payments/{payment_id}/invoice/email:
+    post:
+      operationId: emailPaymentInvoice
+      summary: Email invoice copy to the user
+      tags: [Subscription]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: payment_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Invoice email sent
+        '404': { description: Invoice not found }
+        '503': { description: Email delivery failed }
+
+  /subscription/cancel:
+    post:
+      operationId: cancelSubscription
+      summary: Cancel paid plan at period end
+      tags: [Subscription]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SubscriptionCancelResponse' }
+        '400': { description: Free plan cannot be cancelled }
   /employers/register:
     post:
       operationId: employerRegister

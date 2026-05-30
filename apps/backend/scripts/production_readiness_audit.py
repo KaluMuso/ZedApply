@@ -58,6 +58,12 @@ SCHEMA_SENTINELS: tuple[tuple[str, str], ...] = (
     ("jobs", "is_review_required"),
     ("jobs", "review_reason"),
     ("tier_config", "price_ngwee"),
+    ("cv_generations", "match_id"),
+    ("saved_jobs", "application_status"),
+    ("employers", "verified"),
+    ("cover_letter_versions", "version_number"),
+    ("cvs", "generated_pdf_path"),
+    ("web_push_subscriptions", "endpoint"),
 )
 
 
@@ -120,6 +126,17 @@ def check_sentry(settings: Any | None) -> CheckResult:
     if dsn.strip():
         return CheckResult("SENTRY_DSN set", "green", "DSN configured")
     return CheckResult("SENTRY_DSN set", "yellow", "empty — error tracking disabled")
+
+
+def check_redis_url() -> CheckResult:
+    url = os.getenv("REDIS_URL", "").strip()
+    if url:
+        return CheckResult("REDIS_URL set", "green", "shared rate-limit storage")
+    return CheckResult(
+        "REDIS_URL set",
+        "yellow",
+        "unset — rate limits reset on container recreate",
+    )
 
 
 def check_lenco_key(settings: Any | None) -> CheckResult:
@@ -283,6 +300,7 @@ def run_audit(*, skip_db: bool) -> list[CheckResult]:
         check_lenco_url(settings),
         check_lenco_key(settings),
         check_sentry(settings),
+        check_redis_url(),
         check_migration_files(),
     ]
 

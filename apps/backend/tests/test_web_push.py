@@ -92,3 +92,14 @@ class TestHighMatchNotify:
             )
         assert sent == 1
         send_push.assert_awaited_once()
+
+    def test_notify_only_queries_passed_job_ids(self):
+        from app.services.notifications import notify_high_match_web_pushes
+
+        supabase = MagicMock()
+        in_mock = supabase.table.return_value.select.return_value.eq.return_value.in_
+        in_mock.return_value.gte.return_value.not_.is_.return_value.execute.return_value = MagicMock(
+            data=[]
+        )
+        asyncio.run(notify_high_match_web_pushes("u1", ["j-new"], supabase))
+        in_mock.assert_called_with("job_id", ["j-new"])
