@@ -6,7 +6,7 @@ Use this before every production deploy and before taking paying customers.
 
 ## Pre-merge (CI)
 
-- [ ] `pytest apps/backend/tests/` — 0 failures (867+ passing baseline)
+- [ ] `pytest apps/backend/tests/` — 0 failures (940+ passing baseline; do not regress)
 - [ ] `npm run lint` — no errors
 - [ ] `npm run test:coverage` — scoped thresholds pass (or `[skip-coverage]` only for emergencies)
 - [ ] `npm run build` — succeeds (Vercel parity)

@@ -347,6 +347,56 @@ describe("additional API modules", () => {
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe(`${API_BASE}/jobs/job-1/save`);
   });
 
+  it("savedJobs.list GETs /users/me/saved-jobs with applications", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({
+        jobs: [],
+        applications: [
+          {
+            job: {
+              id: "job-1",
+              title: "Analyst",
+              company: "ACME",
+              location: "Lusaka",
+              closing_date: null,
+              quality_score: 80,
+              skills: [],
+              description: null,
+            },
+            application_status: "applied",
+            status_updated_at: "2026-05-01T00:00:00Z",
+            application_notes: null,
+            interview_date: null,
+          },
+        ],
+      }),
+    );
+    const res = await savedJobs.list("tok");
+    expect(res.applications?.[0]?.application_status).toBe("applied");
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe(`${API_BASE}/users/me/saved-jobs`);
+  });
+
+  it("savedJobs.updateStatus PATCHes kanban status", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({
+        job_id: "job-1",
+        application_status: "interviewing",
+        status_updated_at: "2026-05-02T00:00:00Z",
+        application_notes: "Phone screen",
+        interview_date: "2026-05-10",
+      }),
+    );
+    const res = await savedJobs.updateStatus("tok", "job-1", {
+      status: "interviewing",
+      notes: "Phone screen",
+      interview_date: "2026-05-10",
+    });
+    expect(res.application_status).toBe("interviewing");
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe(
+      `${API_BASE}/users/me/saved-jobs/job-1/status`,
+    );
+  });
+
   it("cv.analyze POSTs empty JSON object", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       jsonResponse({
