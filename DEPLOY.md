@@ -2,6 +2,8 @@
 
 Complete step-by-step guide to deploy Zed CV from scratch. Budget: ~$30/month.
 
+For **staging** (Supabase branch, preview env vars, smoke list), see **[docs/staging.md](docs/staging.md)**. For ops procedures (WAHA recovery, Lenco smoke, migrations), see **[docs/RUNBOOK_INDEX.md](docs/RUNBOOK_INDEX.md)**.
+
 ---
 
 ## Architecture Overview

@@ -235,6 +235,8 @@ because each item has caught a real bug.
 
 - `CLAUDE.md` — short project rules (always loaded into Claude's context)
 - `AI_CONTEXT.md` — full architecture, request flows, schema
+- `docs/RUNBOOK_INDEX.md` — ops index (Lenco smoke, WAHA, Resend, migrations, backfill, n8n ingest rotation)
+- `docs/staging.md` — staging Supabase branch / env matrix / smoke checklist
 - `docs/ZED_CV_BIRDS_EYE_VIEW.md` — exec/handoff summary
 - `docs/openapi.yaml` — API contract; this is canon for both sides
 - `docs/CODE_REVIEW_PROMPT.md` — what a code review on this repo checks for

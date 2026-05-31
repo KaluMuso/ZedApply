@@ -9,7 +9,7 @@ Prioritized from the 2026-05-28 audit. **P0 = launch blocker.**
 - [x] Pin `pywebpush` in `apps/backend/requirements.txt`
 - [x] Add WeasyPrint system libs to `apps/backend/Dockerfile`
 - [x] Fix frontend build (employer LencoPay types, manual CV `gpa`, push `BufferSource`)
-- [ ] **Apply Supabase migrations 074–080** on prod (confirm 073 if using bulk-fix)
+- [ ] **Apply Supabase migrations 074–088** on prod (confirm 073 if using bulk-fix)
 - [ ] **OCI:** rebuild & `force-recreate` backend after merging audit fixes
 - [ ] **Vercel:** production deploy with green `npm run build`
 - [x] **VAPID:** runbook in `docs/WEB_PUSH_VAPID.md`; prod `vapid_configured: true` (verify smoke on Chrome)
@@ -42,7 +42,7 @@ Prioritized from the 2026-05-28 audit. **P0 = launch blocker.**
 - [ ] `npm audit` / `pip audit` in CI (advisory)
 - [ ] UptimeRobot on `/api/v1/health`
 - [ ] Supabase backup restore drill on preview branch
-- [ ] Update `AI_CONTEXT.md` embedding dim (768, not 1536)
+- [x] Update `AI_CONTEXT.md` embedding dim (768, not 1536)
 - [ ] Expand Vitest coverage to employer + applications routes
 - [ ] Status page for users
 
@@ -66,3 +66,11 @@ Prioritized from the 2026-05-28 audit. **P0 = launch blocker.**
 - [x] Audit script sentinels for migrations 074–079
 - [x] `production_cutover.md` migration range updated
 - [x] `PRODUCTION_GAP_ANALYSIS.md`, `SECURITY_AUDIT.md`, this file
+
+## Completed — docs Phase 10 (`cursor/docs-staging-runbooks-211d`)
+
+- [x] `docs/staging.md` — Supabase branch / env matrix / smoke list
+- [x] `docs/RUNBOOK_INDEX.md` — ops index for agents
+- [x] `AI_CONTEXT.md` — `gemini-embedding-001`, 768 dim, 50/20/15/10/5 matching
+- [x] `production_cutover.md` migration range **085+** (through `088`)
+- [x] `AGENTS.md` §6 links to staging + runbook index
