@@ -28,6 +28,10 @@ jobs:
         run: |
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
+          pip install pip-audit
+      - name: pip-audit (advisory)
+        continue-on-error: true
+        run: pip-audit -r requirements.txt
       - name: Run tests
         run: pytest tests/
         env:
@@ -53,6 +57,9 @@ jobs:
           cache-dependency-path: apps/frontend/package-lock.json
       - name: Install dependencies
         run: npm ci
+      - name: npm audit (advisory)
+        continue-on-error: true
+        run: npm audit --audit-level=high
       - name: Lint
         run: npm run lint
       - name: Detect coverage skip

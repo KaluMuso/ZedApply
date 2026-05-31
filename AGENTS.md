@@ -184,7 +184,21 @@ dashboard. Resend → Domains should list **vergeo.company** as `verified`.
 
 ---
 
-## 4. Pre-commit checklist
+## 4. Frontend coverage gate and `[skip-coverage]`
+
+CI runs `npm run test:coverage` with scoped thresholds in
+`apps/frontend/vitest.config.ts` (auth, billing sections, core `lib/`
+helpers — not whole-app). The gate applies on `ci.yml` and
+`frontend_tests.yml` unless the **latest commit message** (PR head or push)
+contains `[skip-coverage]`, in which case CI runs `npm test` only (no
+threshold enforcement). Use that tag only for emergencies (broken
+coverage tooling, unrelated red CI blocking a hotfix). Do not lower
+thresholds to land a PR; add tests or fix flakes instead. Re-run with
+coverage before merge when the emergency is resolved.
+
+---
+
+## 5. Pre-commit checklist
 
 Before opening a PR or pushing, walk through this list. It's short
 because each item has caught a real bug.
@@ -200,7 +214,7 @@ because each item has caught a real bug.
 
 ---
 
-## 5. Cost & quota guardrails
+## 6. Cost & quota guardrails
 
 - $30/month total budget. Free tiers everywhere; if a free tier is
   about to be exceeded, surface that as a P1 in your output, not as a
@@ -217,7 +231,7 @@ because each item has caught a real bug.
 
 ---
 
-## 6. Where to look for more
+## 7. Where to look for more
 
 - `CLAUDE.md` — short project rules (always loaded into Claude's context)
 - `AI_CONTEXT.md` — full architecture, request flows, schema
@@ -232,7 +246,7 @@ because each item has caught a real bug.
 
 ---
 
-## 7. When to ask before doing
+## 8. When to ask before doing
 
 Default to acting on small reversible changes (typo fixes, one-file
 refactors, missing test cases). Ask before:
