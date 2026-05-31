@@ -15,6 +15,15 @@ from app.services.openrouter_helpers import (
     create_chat_completion_with_retries,
     get_completion_content,
 )
+from app.services.prompt_safety import (
+    MAX_COMPANY_CHARS,
+    MAX_CV_TEXT_CHARS,
+    MAX_JOB_DESCRIPTION_CHARS,
+    MAX_JOB_TITLE_CHARS,
+    augment_system_prompt,
+    build_delimited_user_message,
+    wrap_user_data_block,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,11 +84,27 @@ async def generate_cover_letter(
     client = _get_openrouter_client()
 
     company_line = f" at {company}" if company else ""
-    user_prompt = (
-        f"Write a {tone} cover letter for this candidate applying to "
-        f"'{job_title}'{company_line}.\n\n"
-        f"--- CANDIDATE CV ---\n{user_cv_text[:4000]}\n\n"
-        f"--- JOB DESCRIPTION ---\n{job_description[:3000]}"
+    title_safe = wrap_user_data_block(
+        "JOB_TITLE",
+        job_title,
+        max_chars=MAX_JOB_TITLE_CHARS,
+    )
+    cv_block = wrap_user_data_block(
+        "CANDIDATE_CV",
+        user_cv_text,
+        max_chars=MAX_CV_TEXT_CHARS,
+    )
+    job_block = wrap_user_data_block(
+        "JOB_DESCRIPTION",
+        job_description,
+        max_chars=MAX_JOB_DESCRIPTION_CHARS,
+    )
+    user_prompt = build_delimited_user_message(
+        f"Write a {tone} cover letter for this candidate applying to the role "
+        f"described below{company_line}.",
+        title_safe,
+        cv_block,
+        job_block,
     )
 
     def _call():
@@ -90,7 +115,10 @@ async def generate_cover_letter(
                 model=settings.llm_model,
                 max_tokens=1024,
                 messages=[
-                    {"role": "system", "content": COVER_LETTER_SYSTEM_PROMPT},
+                    {
+                        "role": "system",
+                        "content": augment_system_prompt(COVER_LETTER_SYSTEM_PROMPT),
+                    },
                     {"role": "user", "content": user_prompt},
                 ],
             )

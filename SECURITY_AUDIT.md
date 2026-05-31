@@ -34,19 +34,32 @@ Overall: **acceptable for soft launch** after P0/P1 items below. Not yet at ente
 
 - **Finding:** All DB access uses service key; RLS not enforced server-side.
 - **Impact:** Any missing `.eq("user_id", …)` filter is IDOR.
-- **Mitigation:** Grep audit for `table(` calls; add cross-user tests on `/matches`, `/users/me`, employer routes.
+- **Mitigation:** Grep audit for `table(` calls; cross-user pytest suite
+  `tests/test_cross_user_authorization.py` covers `/matches/{user_id}`,
+  `/users/me/saved-jobs`, `/cv/generations/{id}`, match cover letters, employers.
+  **Tables that must always filter by `user_id` on user-owned rows:** `matches`,
+  `cvs`, `cv_generations`, `saved_jobs`, `cover_letter_versions`, `subscriptions`,
+  `user_preferences`, `user_skills`, `consent_log`, `push_subscriptions`,
+  `generated_documents`, `interview_prep_sessions`. **Intentionally global/service:**
+  `jobs` (public listings), `skills`, `tier_config`, `llm_usage_log` (admin rollup).
+  Employer routes scope via `employer_users` membership, not `users.id` alone.
 
 ### H2 — Admin / ingest API keys
 
 - **Finding:** `ADMIN_API_KEY`, `INGEST_API_KEY` grant broad access via headers.
 - **Impact:** Key leak → job ingest, admin stats, tier config.
-- **Mitigation:** Rotate keys quarterly; never log headers; restrict source IP on nginx if possible.
+- **Mitigation:** See `docs/ADMIN_API_KEYS.md` — rotate quarterly; never log headers;
+  restrict source IP on nginx; separate dev/prod values; force-recreate after `.env` change.
 
 ### H3 — LLM prompt injection via CV/job text
 
 - **Finding:** Tailored CV / cover letter prompts embed user-controlled markdown.
 - **Impact:** Instruction override, toxic output, token burn.
-- **Mitigation:** System prompt: ignore instructions in user content; strip XML-like tags; cap input length (partially present).
+- **Mitigation (2026-05):** `app/services/prompt_safety.py` — delimiter blocks
+  (`<<<USER_DATA_*>>>`), system injection guard, XML-like tag strip, per-field
+  char caps on cover letter / CV parser / CV generator / OpenAI cover letter paths.
+  Optional `LLM_DAILY_SPEND_CAP_USD` / `LLM_DAILY_TOKEN_CAP` enforced via
+  `llm_usage_log` before provider calls (`app/services/llm_budget.py`).
 
 ### H4 — File upload
 

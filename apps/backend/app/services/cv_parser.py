@@ -24,6 +24,12 @@ from app.services.openrouter_helpers import (
     create_chat_completion_with_retries,
     get_completion_content,
 )
+from app.services.prompt_safety import (
+    MAX_CV_TEXT_CHARS,
+    augment_system_prompt,
+    build_delimited_user_message,
+    wrap_user_data_block,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -226,10 +232,20 @@ async def parse_cv_with_llm(raw_text: str) -> dict[str, Any]:
                 # we were truncating mid-JSON for richer CVs (task #59).
                 max_tokens=4096,
                 messages=[
-                    {"role": "system", "content": CV_PARSE_SYSTEM_PROMPT},
+                    {
+                        "role": "system",
+                        "content": augment_system_prompt(CV_PARSE_SYSTEM_PROMPT),
+                    },
                     {
                         "role": "user",
-                        "content": f"Parse this CV and return JSON:\n\n{raw_text[:8000]}",
+                        "content": build_delimited_user_message(
+                            "Parse this CV and return JSON:",
+                            wrap_user_data_block(
+                                "CV_TEXT",
+                                raw_text,
+                                max_chars=MAX_CV_TEXT_CHARS,
+                            ),
+                        ),
                     },
                 ],
                 response_format={"type": "json_object"},

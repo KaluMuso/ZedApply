@@ -12,6 +12,14 @@ from openai import APIError, AuthenticationError, OpenAI, RateLimitError
 from app.core.config import get_settings
 from app.lib.retry import DEGRADED_LLM_USER_MESSAGE, circuit_is_open, call_with_llm_retry
 from app.services.llm import FEATURE_OTHER, LlmLogContext, record_openai_completion
+from app.services.prompt_safety import (
+    MAX_CV_TEXT_CHARS,
+    MAX_JOB_DESCRIPTION_CHARS,
+    MAX_JOB_TITLE_CHARS,
+    augment_system_prompt,
+    build_delimited_user_message,
+    wrap_user_data_block,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,10 +67,15 @@ async def generate_tailored_cover_letter(
         }
 
     company_line = f" at {company_name}" if company_name else ""
-    user_prompt = (
-        f"Write a tailored cover letter for the role '{role}'{company_line}.\n\n"
-        f"--- CANDIDATE CV ---\n{user_cv_text[:4000]}\n\n"
-        f"--- JOB DESCRIPTION ---\n{job_description[:3000]}"
+    user_prompt = build_delimited_user_message(
+        f"Write a tailored cover letter for the role described below{company_line}.",
+        wrap_user_data_block("JOB_TITLE", role, max_chars=MAX_JOB_TITLE_CHARS),
+        wrap_user_data_block("CANDIDATE_CV", user_cv_text, max_chars=MAX_CV_TEXT_CHARS),
+        wrap_user_data_block(
+            "JOB_DESCRIPTION",
+            job_description,
+            max_chars=MAX_JOB_DESCRIPTION_CHARS,
+        ),
     )
 
     def _call() -> dict:
@@ -74,7 +87,10 @@ async def generate_tailored_cover_letter(
                     max_tokens=600,
                     temperature=0.4,
                     messages=[
-                        {"role": "system", "content": COVER_LETTER_SYSTEM_PROMPT},
+                        {
+                            "role": "system",
+                            "content": augment_system_prompt(COVER_LETTER_SYSTEM_PROMPT),
+                        },
                         {"role": "user", "content": user_prompt},
                     ],
                 ),

@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     llm_model: str = "google/gemini-2.0-flash-001"
+    # Global daily AI budget guards (0 = disabled). Checked against
+    # llm_usage_log.cost_usd / token sums before each provider call.
+    # USD aligns with OpenRouter/Gemini billing; use token cap as a
+    # secondary ceiling when you prefer not to estimate spend.
+    llm_daily_spend_cap_usd: float = 0.0
+    llm_daily_token_cap: int = 0
 
     # Payments
     dpo_pay_company_token: str = ""
