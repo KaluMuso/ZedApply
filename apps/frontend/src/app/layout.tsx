@@ -17,6 +17,7 @@ import { RouteTransitionShell } from "@/components/shared/RouteTransitionShell";
 import { Toaster } from "@/components/shared/Toaster";
 import { PlausibleAnalytics } from "@/components/PlausibleAnalytics";
 import { MAIN_CONTENT_ID, SkipToContent } from "@/components/SkipToContent";
+import { CommandPalette } from "@/components/CommandPalette";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -85,6 +86,7 @@ export default function RootLayout({
                   <MobileTabBar />
                   <BwanaChatWidget />
                   <Toaster />
+                  <CommandPalette />
                 </PWAProvider>
               </SavedJobsProvider>
             </AuthProvider>

@@ -12,6 +12,8 @@ export function EmptyState({
   ctaText,
   ctaHref,
   onCtaClick,
+  secondaryCtaText,
+  onSecondaryCtaClick,
   className,
 }: {
   icon?: LucideIcon;
@@ -20,6 +22,8 @@ export function EmptyState({
   ctaText?: string;
   ctaHref?: string;
   onCtaClick?: () => void;
+  secondaryCtaText?: string;
+  onSecondaryCtaClick?: () => void;
   className?: string;
 }) {
   return (
@@ -44,7 +48,7 @@ export function EmptyState({
         </p>
       ) : null}
       {ctaText && (ctaHref || onCtaClick) ? (
-        <div className="mt-6">
+        <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
           {ctaHref ? (
             <Link
               href={ctaHref}
@@ -57,6 +61,11 @@ export function EmptyState({
               {ctaText}
             </Button>
           )}
+          {secondaryCtaText && onSecondaryCtaClick ? (
+            <Button type="button" variant="ghost" onClick={onSecondaryCtaClick}>
+              {secondaryCtaText}
+            </Button>
+          ) : null}
         </div>
       ) : null}
     </div>

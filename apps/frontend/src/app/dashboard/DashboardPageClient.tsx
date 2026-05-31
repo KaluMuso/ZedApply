@@ -8,11 +8,16 @@ import {
   savedJobs,
   profile as profileApi,
   subscription as subscriptionApi,
+  preferencesApi,
   type MatchData,
   type Subscription,
+  type UserProfile,
+  type JobPreferences,
 } from "@/lib/api";
 import { UserDashboard } from "@/components/dashboard/UserDashboard";
 import { TIER_NAV_LABELS } from "@/lib/tier-display";
+import { computeProfileCompleteness } from "@/lib/profileCompleteness";
+import { DashboardSkeleton } from "@/components/shared/skeletons/PageSkeletons";
 
 export function DashboardPageClient() {
   const router = useRouter();
@@ -24,6 +29,11 @@ export function DashboardPageClient() {
   const [totalMatchCount, setTotalMatchCount] = useState(0);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [subscriptionTier, setSubscriptionTier] = useState("free");
+  const [profileCompleteness, setProfileCompleteness] = useState<{
+    percent: number;
+    hints: string[];
+  } | null>(null);
+  const [applicationsCount, setApplicationsCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -36,17 +46,29 @@ export function DashboardPageClient() {
     Promise.all([
       profileApi.get(token),
       matchesApi.get(token).catch(() => ({ matches: [] as MatchData[] })),
-      savedJobs.list(token).catch(() => ({ jobs: [] })),
+      savedJobs.list(token).catch(() => ({ jobs: [], applications: [] })),
       subscriptionApi.get(token).catch(() => null),
+      preferencesApi.get(token).catch(() => null),
     ])
-      .then(([prof, matchRes, savedRes, sub]) => {
+      .then(([prof, matchRes, savedRes, sub, prefs]) => {
         if (cancelled) return;
         setUserName(prof.full_name ?? undefined);
         setSubscriptionTier(prof.subscription_tier);
         setSubscription(sub);
+        const completeness = computeProfileCompleteness({
+          profile: prof as UserProfile,
+          preferences: prefs as JobPreferences | null,
+        });
+        setProfileCompleteness({
+          percent: completeness.percent,
+          hints: completeness.items.filter((i) => !i.complete).map((i) => i.hint).slice(0, 4),
+        });
         const sorted = [...matchRes.matches].sort((a, b) => b.score - a.score);
         setTopMatches(sorted.slice(0, 3));
         setSavedCount(savedRes.jobs.length);
+        setApplicationsCount(
+          savedRes.applications?.length ?? savedRes.jobs.length,
+        );
         setTotalMatchCount(sorted.length);
         if (sorted.length > 0) {
           const avg = Math.round(
@@ -66,16 +88,7 @@ export function DashboardPageClient() {
   }, [token, isAuthenticated, authLoading, router]);
 
   if (authLoading || loading) {
-    return (
-      <div className="mx-auto max-w-6xl space-y-4 py-8">
-        <div className="skeleton h-10 w-64" />
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="skeleton h-24 rounded-xl" />
-          ))}
-        </div>
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   return (
@@ -84,6 +97,8 @@ export function DashboardPageClient() {
       subscription={subscription}
       subscriptionTier={subscriptionTier}
       subscriptionTierLabel={TIER_NAV_LABELS[subscriptionTier] ?? subscriptionTier}
+      profileCompleteness={profileCompleteness ?? undefined}
+      applicationsCount={applicationsCount}
       liveData={{
         totalMatches: totalMatchCount,
         savedJobs: savedCount,

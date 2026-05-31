@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { notify } from "@/lib/toast";
 import { formatDate, SkeletonTableRows } from "./shared";
+import { useClientTable, exportRowsToCsv } from "@/components/admin/useClientTable";
+import { EmptyState } from "@/components/shared/EmptyState";
 
 import type { SubscriptionTier } from "@/lib/api";
 
@@ -21,19 +23,33 @@ export function UsersTab({ token }: { token: string }) {
   const [pages, setPages] = useState(1);
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
+  const [tierFilter, setTierFilter] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  const { sorted, sortProps } = useClientTable(data, {
+    getSortValue: (row, key) => {
+      if (key === "created_at") return new Date(row.created_at).getTime();
+      const v = row[key as keyof AdminUserRow];
+      if (typeof v === "number") return v;
+      return String(v ?? "").toLowerCase();
+    },
+  });
 
   const load = useCallback(() => {
     setLoading(true);
     admin
-      .users(token, { page, search: search || undefined })
+      .users(token, {
+        page,
+        search: search || undefined,
+        tier: tierFilter || undefined,
+      })
       .then((r) => {
         setData(r.users);
         setPages(r.pages);
       })
       .catch((e) => notify.error(e instanceof Error ? e.message : "Failed to load users"))
       .finally(() => setLoading(false));
-  }, [token, page, search]);
+  }, [token, page, search, tierFilter]);
 
   useEffect(() => {
     load();
@@ -94,18 +110,76 @@ export function UsersTab({ token }: { token: string }) {
             className="h-9 max-w-sm"
           />
           <Button type="submit" size="sm" className="min-h-9">Search</Button>
+          <select
+            value={tierFilter}
+            onChange={(e) => {
+              setTierFilter(e.target.value);
+              setPage(1);
+            }}
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+            aria-label="Filter by tier"
+          >
+            <option value="">All tiers</option>
+            <option value="free">free</option>
+            <option value="starter">starter</option>
+            <option value="professional">professional</option>
+            <option value="super_standard">super_standard</option>
+          </select>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="min-h-9 ml-auto"
+            disabled={data.length === 0}
+            onClick={() =>
+              exportRowsToCsv(
+                `zedapply-users-p${page}.csv`,
+                ["name", "phone", "tier", "matches", "role", "joined"],
+                sorted.map((u) => [
+                  u.full_name ?? "",
+                  u.phone,
+                  u.subscription_tier,
+                  `${u.matches_used}/${u.matches_limit}`,
+                  u.role,
+                  formatDate(u.created_at),
+                ]),
+              )
+            }
+          >
+            Export CSV
+          </Button>
         </form>
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Tier</TableHead>
-                <TableHead>Matches</TableHead>
+                <TableHead>
+                  <button type="button" className="w-full text-left" {...sortProps("full_name")}>
+                    Name
+                  </button>
+                </TableHead>
+                <TableHead>
+                  <button type="button" className="w-full text-left" {...sortProps("phone")}>
+                    Phone
+                  </button>
+                </TableHead>
+                <TableHead>
+                  <button type="button" className="w-full text-left" {...sortProps("subscription_tier")}>
+                    Tier
+                  </button>
+                </TableHead>
+                <TableHead>
+                  <button type="button" className="w-full text-left" {...sortProps("matches_used")}>
+                    Matches
+                  </button>
+                </TableHead>
                 <TableHead>Welcome bonus until</TableHead>
                 <TableHead>Role</TableHead>
-                <TableHead>Joined</TableHead>
+                <TableHead>
+                  <button type="button" className="w-full text-left" {...sortProps("created_at")}>
+                    Joined
+                  </button>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -115,13 +189,15 @@ export function UsersTab({ token }: { token: string }) {
                   widths={["w-32", "w-28", "w-20", "w-12", "w-36", "w-12", "w-20"]}
                 />
               )}
-              {!loading && data.length === 0 && (
+              {!loading && sorted.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-sm text-muted-foreground">No users found.</TableCell>
+                  <TableCell colSpan={7}>
+                    <EmptyState title="No users found" description="Try a different search or tier filter." className="border-0 bg-transparent py-8" />
+                  </TableCell>
                 </TableRow>
               )}
               {!loading &&
-                data.map((u) => (
+                sorted.map((u) => (
                   <TableRow key={u.id}>
                     <TableCell>{u.full_name || <span className="text-muted-foreground">—</span>}</TableCell>
                     <TableCell className="font-mono text-xs">{u.phone}</TableCell>

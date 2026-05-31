@@ -6,6 +6,7 @@ import { Icon } from "@/components/ui/Icon";
 const TABS = [
   { id: "matches", label: "Matches", icon: "sparkles", href: "/matches" },
   { id: "jobs", label: "Browse", icon: "briefcase", href: "/jobs" },
+  { id: "applications", label: "Track", icon: "briefcase", href: "/applications" },
   { id: "profile", label: "Profile", icon: "user", href: "/profile" },
 ] as const;
 
@@ -19,7 +20,7 @@ export function MobileTabBar() {
   const router = useRouter();
 
   // Only show on authenticated pages
-  const showOn = ["/matches", "/jobs", "/profile", "/pricing", "/applications"];
+  const showOn = ["/matches", "/jobs", "/profile", "/pricing", "/applications", "/dashboard"];
   const shouldShow = showOn.some((p) => pathname.startsWith(p));
   if (!shouldShow) return null;
 
@@ -102,7 +103,7 @@ export function MobileTabBar() {
           position: absolute;
           top: 6px;
           bottom: 6px;
-          width: calc((100% - 12px) / 3);
+          width: calc((100% - 12px) / 4);
           background: linear-gradient(135deg, #d27a3f 0%, #a86224 100%);
           border-radius: 999px;
           transition: transform 480ms cubic-bezier(0.34, 1.4, 0.5, 1);

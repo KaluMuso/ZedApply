@@ -81,6 +81,7 @@ export default function MatchesPageClient() {
   const [loading, setLoading] = useState(true);
   const [detailMatch, setDetailMatch] = useState<MatchData | null>(null);
   const [scoreFilter, setScoreFilter] = useState(0);
+  const [keywordFilter, setKeywordFilter] = useState("");
   const [sort, setSort] = useState<"score" | "closing">("score");
   const [prepFor, setPrepFor] = useState<MatchData | null>(null);
   const [tailorFor, setTailorFor] = useState<MatchData | null>(null);
@@ -404,10 +405,15 @@ export default function MatchesPageClient() {
 
   if (!data) return null;
 
+  const keyword = keywordFilter.trim().toLowerCase();
   let filtered = data.matches.filter(
     (m) =>
       m.score >= scoreFilter &&
-      !isJobHiddenFromUserFeed(m.job.closing_date),
+      !isJobHiddenFromUserFeed(m.job.closing_date) &&
+      (!keyword ||
+        m.job.title.toLowerCase().includes(keyword) ||
+        (m.job.company?.toLowerCase().includes(keyword) ?? false) ||
+        m.matched_skills.some((s) => s.toLowerCase().includes(keyword))),
   );
   if (sort === "score") {
     filtered = [...filtered].sort((a, b) => b.score - a.score);
@@ -444,8 +450,7 @@ export default function MatchesPageClient() {
       <PushPermissionPrompt creditedMatchCount={matchesUsed} />
       {/* Header */}
       <div
-        className="matches-header grid gap-8 items-start mb-10"
-        style={{ gridTemplateColumns: "1.4fr 1fr" }}
+        className="matches-header grid gap-8 items-start mb-10 lg:grid-cols-[1.4fr_1fr]"
       >
         <div>
           <div className="eyebrow mb-2">
@@ -614,7 +619,16 @@ export default function MatchesPageClient() {
             </button>
           ))}
         </div>
-        <div className="flex gap-2 items-center flex-wrap justify-end">
+        <div className="flex gap-2 items-center flex-wrap justify-end w-full sm:w-auto">
+          <input
+            type="search"
+            value={keywordFilter}
+            onChange={(e) => setKeywordFilter(e.target.value)}
+            placeholder="Search title, company, skills…"
+            className="field min-w-[200px] flex-1 sm:flex-none sm:w-56"
+            style={{ height: 36 }}
+            aria-label="Filter matches by keyword"
+          />
           <span
             className="font-mono text-[11px]"
             style={{ color: "var(--muted)" }}

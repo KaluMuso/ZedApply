@@ -17,9 +17,9 @@ const columns = [
     title: "Company",
     links: [
       { label: "About", href: "/about" },
-      // TODO: re-add Blog, Careers, Contact once those pages exist.
-      // Removed 2026-05-10 — links pointed at /blog /careers /contact
-      // which have no page.tsx, generating 404s on Next.js prefetch.
+      { label: "Contact", href: "/contact" },
+      { label: "For employers", href: "/employer" },
+      { label: "Security", href: "/security" },
     ],
   },
   {
