@@ -198,15 +198,17 @@ async def _match_and_credit_user(user_id: str, cv_id: str, supabase) -> int:
     matches = await run_matching_for_user(user_id, supabase)
     await store_matches(user_id, cv_id, matches, supabase)
     job_ids = [m["job_id"] for m in matches if m.get("job_id")]
-    new_credited = await credit_matches_for_cycle(user_id, job_ids, supabase)
-    if new_credited:
+    newly_credited_job_ids = await credit_matches_for_cycle(user_id, job_ids, supabase)
+    if newly_credited_job_ids:
         try:
-            await notify_high_match_web_pushes(user_id, job_ids, supabase)
+            await notify_high_match_web_pushes(
+                user_id, newly_credited_job_ids, supabase
+            )
         except Exception:
             logger.warning(
                 "high-match web push dispatch failed for user=%s", user_id, exc_info=True
             )
-    return new_credited
+    return len(newly_credited_job_ids)
 
 
 async def _send_due_digest(user: dict, supabase, now: datetime) -> bool:

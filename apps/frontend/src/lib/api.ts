@@ -678,9 +678,35 @@ export interface AdminPaymentRow {
   currency: string;
   payment_method: string;
   provider: string | null;
+  provider_ref?: string | null;
+  invoice_number?: string | null;
   status: string;
   created_at: string | null;
   completed_at: string | null;
+}
+
+export interface AdminPaymentDetail extends AdminPaymentRow {
+  user_email: string | null;
+  user_full_name: string | null;
+  webhook_summary: Record<string, unknown> | null;
+  tier_inferred: string | null;
+}
+
+export interface AdminBillingHealth {
+  lenco_environment: string;
+  lenco_api_url: string;
+  lenco_api_key_set: boolean;
+  lenco_public_key_set: boolean;
+  lenco_webhook_secret_set: boolean;
+  lenco_verify_signatures: boolean;
+  lenco_production_ready: boolean;
+  webhook_url_expected: string;
+  payments_pending: number;
+  payments_failed_24h: number;
+  payments_completed_24h: number;
+  lenco_completed_24h: number;
+  subscriptions_cancelling: number;
+  checked_at: string;
 }
 
 export interface AdminPaymentList {
@@ -735,6 +761,8 @@ export interface AdminSubscriptionRow {
   matches_used: number;
   matches_limit: number;
   current_period_end: string | null;
+  cancelled_at?: string | null;
+  lenco_subscription_ref?: string | null;
   created_at: string | null;
 }
 
@@ -955,14 +983,21 @@ export const admin = {
     }),
   payments: (
     token: string,
-    params?: { page?: number; per_page?: number; status?: string }
+    params?: { page?: number; per_page?: number; status?: string; provider?: string }
   ) => {
     const q = new URLSearchParams();
     if (params?.page) q.set("page", String(params.page));
     if (params?.per_page) q.set("per_page", String(params.per_page));
     if (params?.status) q.set("status", params.status);
+    if (params?.provider) q.set("provider", params.provider);
     return apiFetch<AdminPaymentList>(`/admin/payments?${q}`, { token });
   },
+  paymentDetail: (token: string, paymentId: string) =>
+    apiFetch<AdminPaymentDetail>(`/admin/payments/${encodeURIComponent(paymentId)}`, {
+      token,
+    }),
+  billingHealth: (token: string) =>
+    apiFetch<AdminBillingHealth>("/admin/billing/health", { token }),
   matches: (
     token: string,
     params?: { page?: number; per_page?: number; min_score?: number }
@@ -1556,6 +1591,32 @@ export interface PaymentHistoryList {
   total: number;
 }
 
+export interface InvoiceDetail {
+  invoice_number: string;
+  payment_id: string;
+  reference: string;
+  status: string;
+  amount_ngwee: number;
+  amount_kwacha: number;
+  currency: string;
+  tier: string;
+  tier_label: string;
+  payment_method: string;
+  provider?: string | null;
+  issued_at?: string | null;
+  customer_name: string;
+  customer_email?: string | null;
+  customer_phone?: string | null;
+}
+
+export interface SubscriptionCancelResult {
+  status: string;
+  message: string;
+  tier: string;
+  active_until?: string | null;
+  cancelled_at: string;
+}
+
 export const subscription = {
   get: (token: string) => apiFetch<Subscription>("/subscription", { token }),
   listPayments: (token: string, limit = 50) =>
@@ -1574,6 +1635,18 @@ export const subscription = {
       method: "POST",
       token,
       body: JSON.stringify(data),
+    }),
+  getInvoice: (token: string, paymentId: string) =>
+    apiFetch<InvoiceDetail>(`/subscription/payments/${paymentId}/invoice`, { token }),
+  emailInvoice: (token: string, paymentId: string) =>
+    apiFetch<{ status: string; invoice_number: string }>(
+      `/subscription/payments/${paymentId}/invoice/email`,
+      { method: "POST", token },
+    ),
+  cancel: (token: string) =>
+    apiFetch<SubscriptionCancelResult>("/subscription/cancel", {
+      method: "POST",
+      token,
     }),
 };
 
@@ -1952,6 +2025,7 @@ export interface EmployerSummary {
   verified: boolean;
 }
 
+// @openapi EmployerMeResponse
 export interface EmployerMe {
   employer: EmployerSummary;
   seats: Array<{
@@ -1985,6 +2059,7 @@ export interface ContactRequestRow {
   candidate_name?: string | null;
 }
 
+// @openapi EmployerSubscriptionResponse
 export interface EmployerSubscription {
   tier: EmployerTier | null;
   status: string;
@@ -1995,6 +2070,7 @@ export interface EmployerSubscription {
   current_period_end?: string | null;
 }
 
+// @openapi EmployerCheckoutResponse
 export interface EmployerCheckout {
   reference: string;
   amount_ngwee: number;

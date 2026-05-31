@@ -13,6 +13,9 @@ from app.services.lenco_webhook import (
     extract_event_fields,
     derive_lenco_webhook_hash_key,
     mask_lenco_webhook_payload,
+    is_valid_uuid,
+    parse_zedapply_consumer_user_id,
+    resolve_lenco_webhook_payment,
 )
 
 TEST_API_KEY = "test-lenco-api-secret-key"
@@ -100,6 +103,46 @@ class TestMaskLencoWebhookPayload:
         assert masked["status"] == "successful"
 
 
+class TestLencoReferenceParsing:
+    def test_is_valid_uuid(self):
+        assert is_valid_uuid("5d6c1f43-f440-48fe-b4c8-88364544ee3d") is True
+        assert is_valid_uuid("zedapply-5d6c1f43-f440-48fe-b4c8-88364544ee3d-1") is False
+
+    def test_parse_widget_reference_user_id(self):
+        user_id = "5d6c1f43-f440-48fe-b4c8-88364544ee3d"
+        ref = f"zedapply-{user_id}-1780091173119"
+        assert parse_zedapply_consumer_user_id(ref) == user_id
+
+    def test_parse_skips_employer_and_legacy_short_refs(self):
+        assert parse_zedapply_consumer_user_id("zedapply-emp-abc-1") is None
+        assert parse_zedapply_consumer_user_id("zedapply-pay-1") is None
+
+
+class TestResolveLencoWebhookPayment:
+    def test_skips_invalid_uuid_id_lookup(self, fake_supabase):
+        user_id = "5d6c1f43-f440-48fe-b4c8-88364544ee3d"
+        ref = f"zedapply-{user_id}-1780091173119"
+        fake_supabase.set_table("payments", FakeSupabaseQuery(data=[]))
+        fake_supabase.set_table(
+            "subscriptions",
+            FakeSupabaseQuery(
+                data=[{"id": "sub-1", "user_id": user_id, "tier": "free"}]
+            ),
+        )
+        payment = resolve_lenco_webhook_payment(
+            fake_supabase,
+            ref,
+            None,
+            amount_ngwee=12500,
+            webhook_payload={"event": "collection.successful"},
+            allow_create=True,
+        )
+        assert payment is not None
+        assert payment["user_id"] == user_id
+        assert payment["provider_ref"] == ref
+        assert payment["status"] == "pending"
+
+
 class TestExtractEventFields:
     def test_collection_successful_marks_paid(self):
         payload = {
@@ -123,6 +166,22 @@ class TestExtractEventFields:
         fields = extract_event_fields(payload)
         assert fields["is_failed"] is True
         assert fields["is_paid"] is False
+
+    def test_transfer_successful_is_not_paid(self):
+        payload = {
+            "event": "transfer.successful",
+            "data": {"reference": "zedapply-pay-1", "status": "successful", "amount": "250.00"},
+        }
+        fields = extract_event_fields(payload)
+        assert fields["is_paid"] is False
+
+    def test_decimal_kwacha_amount_converts_to_ngwee(self):
+        payload = {
+            "event": "collection.successful",
+            "data": {"reference": "zedapply-abc", "status": "successful", "amount": "250.00"},
+        }
+        fields = extract_event_fields(payload)
+        assert fields["amount_ngwee"] == 25000
 
 
 class TestLencoWebhookRoute:

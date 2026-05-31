@@ -141,6 +141,8 @@ class Settings(BaseSettings):
     # webhook upgrade flows. Used twice in webhooks.py so kept here to
     # avoid drift between providers.
     subscription_period_days: int = 30
+    # Days before current_period_end to email a paid-user renewal reminder.
+    subscription_renewal_reminder_days: int = 3
     # Highest job index a user can reply with on WhatsApp ("reply 1-5").
     # Aligned with send_match_digest which renders the top 5 matches.
     whatsapp_reply_max_index: int = 5
