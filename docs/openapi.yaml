@@ -3227,17 +3227,58 @@ paths:
     get:
       operationId: listJobs
       tags: [Jobs]
-      security: [{ bearerAuth: [] }]
+      security: []
+      description: |
+        Public job discovery feed. Optional Bearer token enables `saved_only`.
+        Expired listings are hidden using the same 3-day grace window as the
+        frontend (`isJobHiddenFromUserFeed`): jobs with `closing_date` more than
+        three calendar days in the past are excluded unless `include_closed=true`.
       parameters:
-        - { name: page, in: query, schema: { type: integer, default: 1 } }
-        - { name: per_page, in: query, schema: { type: integer, default: 20 } }
-        - { name: location, in: query, schema: { type: string } }
-        - { name: search, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - { name: location, in: query, schema: { type: string }, description: Case-insensitive substring match on jobs.location }
+        - { name: search, in: query, schema: { type: string }, description: Case-insensitive substring match across title, company, description }
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [relevance, recent, closing]
+            default: recent
+        - name: skills
+          in: query
+          schema: { type: string }
+          description: Comma-separated skill names. OR semantics; resolves canonical names and skill_aliases.
+        - name: source
+          in: query
+          schema: { type: string }
+          description: Comma-separated source values (manual, scraper, ocr, partner). OR semantics.
+        - name: employment_type
+          in: query
+          schema: { type: string }
+          description: Comma-separated employment types. OR semantics (full_time, part_time, contract, freelance, internship, temporary).
+        - name: work_arrangement
+          in: query
+          schema: { type: string }
+          description: Comma-separated work arrangements. OR semantics (remote, hybrid, on_site).
+        - name: has_salary
+          in: query
+          schema: { type: boolean, default: false }
+          description: When true, only jobs with salary_min and/or salary_max set.
+        - name: saved_only
+          in: query
+          schema: { type: boolean, default: false }
+          description: When true, restrict to jobs saved by the authenticated user. Requires Bearer token.
+        - name: include_closed
+          in: query
+          schema: { type: boolean, default: false }
+          description: When true, include inactive or past-deadline jobs (admin-style view).
       responses:
         '200':
           content:
             application/json:
               schema: { $ref: '#/components/schemas/JobList' }
+        '401':
+          description: saved_only requested without a valid Bearer token (RFC 7807 detail code auth_required)
     post:
       operationId: createJob
       tags: [Jobs]

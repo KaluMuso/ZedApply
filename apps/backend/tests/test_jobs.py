@@ -304,6 +304,93 @@ class TestJobList:
                 "would re-introduce CF 1101 (ZEDCV-BACKEND-C)"
             )
 
+    def test_list_jobs_employment_type_filter_accepted(
+        self, client, fake_supabase
+    ):
+        captured_in: list[tuple[str, list[str]]] = []
+
+        class _CapturingQuery(FakeSupabaseQuery):
+            def in_(self, column, values):  # type: ignore[override]
+                captured_in.append((column, list(values)))
+                return self
+
+        fake_supabase.set_table("jobs", _CapturingQuery(data=[], count=0))
+        resp = client.get("/api/v1/jobs?employment_type=full_time,contract")
+        assert resp.status_code == 200
+        assert ("employment_type", ["full_time", "contract"]) in captured_in
+
+    def test_list_jobs_work_arrangement_filter_accepted(
+        self, client, fake_supabase
+    ):
+        captured_in: list[tuple[str, list[str]]] = []
+
+        class _CapturingQuery(FakeSupabaseQuery):
+            def in_(self, column, values):  # type: ignore[override]
+                captured_in.append((column, list(values)))
+                return self
+
+        fake_supabase.set_table("jobs", _CapturingQuery(data=[], count=0))
+        resp = client.get("/api/v1/jobs?work_arrangement=remote,hybrid")
+        assert resp.status_code == 200
+        assert ("work_arrangement", ["remote", "hybrid"]) in captured_in
+
+    def test_list_jobs_has_salary_filter_uses_or_clause(
+        self, client, fake_supabase
+    ):
+        captured_or: list[str] = []
+
+        class _CapturingQuery(FakeSupabaseQuery):
+            def or_(self, clause, *args, **kwargs):  # type: ignore[override]
+                captured_or.append(clause)
+                return self
+
+        fake_supabase.set_table("jobs", _CapturingQuery(data=[], count=0))
+        resp = client.get("/api/v1/jobs?has_salary=true")
+        assert resp.status_code == 200
+        assert "salary_min.not.is.null,salary_max.not.is.null" in captured_or
+
+    def test_list_jobs_saved_only_requires_auth(self, client, fake_supabase):
+        fake_supabase.set_table("jobs", FakeSupabaseQuery(data=[], count=0))
+        resp = client.get("/api/v1/jobs?saved_only=true")
+        assert resp.status_code == 401
+        assert resp.json()["detail"] == "auth_required"
+
+    def test_list_jobs_saved_only_short_circuits_when_empty(
+        self, client, auth_headers, fake_supabase
+    ):
+        fake_supabase.set_table("saved_jobs", FakeSupabaseQuery(data=[]))
+        fake_supabase.set_table("jobs", FakeSupabaseQuery(data=[], count=0))
+        resp = client.get("/api/v1/jobs?saved_only=true", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["jobs"] == []
+        assert body["total"] == 0
+
+    def test_list_jobs_user_feed_uses_closing_date_grace_cutoff(
+        self, client, fake_supabase
+    ):
+        captured_or: list[str] = []
+
+        class _CapturingQuery(FakeSupabaseQuery):
+            def or_(self, clause, *args, **kwargs):  # type: ignore[override]
+                captured_or.append(clause)
+                return self
+
+        fake_supabase.set_table("jobs", _CapturingQuery(data=[], count=0))
+        resp = client.get("/api/v1/jobs")
+        assert resp.status_code == 200
+        grace_clauses = [
+            clause
+            for clause in captured_or
+            if clause.startswith("closing_date.is.null,closing_date.gte.")
+        ]
+        assert len(grace_clauses) == 1
+        cutoff = grace_clauses[0].split(".gte.", 1)[1]
+        from datetime import date, timedelta
+
+        expected = (date.today() - timedelta(days=3)).isoformat()
+        assert cutoff == expected
+
 
 class TestJobCreate:
     @patch("app.api.v1.jobs.resolve_skill_ids", new_callable=AsyncMock)
