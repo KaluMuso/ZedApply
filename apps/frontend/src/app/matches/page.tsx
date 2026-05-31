@@ -6,7 +6,7 @@ import MatchesPageClient from "./MatchesPageClient";
 export const metadata: Metadata = pageMetadata({
   title: "Matches",
   description:
-    "See AI-scored job matches tailored to your CV and skills on ZedApply.",
+    "See AI-scored job matches tailored to your CV and skills on Zed Apply.",
 });
 
 export default function MatchesPage() {

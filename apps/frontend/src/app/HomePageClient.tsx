@@ -14,6 +14,7 @@ import { Counter } from "@/components/ui/Counter";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
 import { useAuth } from "@/lib/auth";
 import { publicStats, type PublicStats } from "@/lib/api";
+import { MATCH_SCORE_FAQ_ANSWER } from "@/lib/matching-weights-copy";
 import { freeTierMatchesBlurb, freeTierFaqMatchExplanation } from "@/lib/tier-marketing";
 import { AUTH_GET_STARTED } from "@/lib/auth-paths";
 
@@ -59,7 +60,7 @@ const plans: Plan[] = [
 const faqs: { q: string; a: React.ReactNode }[] = [
   {
     q: "What's the matching score?",
-    a: "Every job gets a 0–100 score from your CV. It's a blend of three signals: vector similarity between your CV and the job description (60%), how your skills overlap with what the role asks for (30%), and bonus signals like location and salary band (10%). Each match shows you the full breakdown.",
+    a: MATCH_SCORE_FAQ_ANSWER,
   },
   {
     q: "Do you send my CV anywhere?",

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { legalPageMetadata } from "@/lib/site-metadata";
 import { LegalMarkdown } from "../_components/LegalMarkdown";
 import { fetchLegalDocFromDB } from "../_fetch";
 import { PRIVACY_MARKDOWN, LAST_UPDATED, VERSION } from "./_content";
@@ -10,22 +11,13 @@ import { PRIVACY_MARKDOWN, LAST_UPDATED, VERSION } from "./_content";
 // explicit revalidatePath() so the change is visible within seconds.
 export const revalidate = 300;
 
-export const metadata: Metadata = {
+export const metadata: Metadata = legalPageMetadata({
   title: "Privacy Policy",
   description:
-    "How ZedApply collects, uses and protects your personal data, in compliance with the Zambia Data Protection Act, 2021.",
-  openGraph: {
-    title: "Privacy Policy | ZedApply",
-    description:
-      "How ZedApply collects, uses and protects your personal data, in compliance with the Zambia Data Protection Act, 2021.",
-    type: "article",
-    modifiedTime: LAST_UPDATED,
-  },
-  other: {
-    "article:modified_time": LAST_UPDATED,
-    "document:version": VERSION,
-  },
-};
+    "How Zed Apply collects, uses and protects your personal data, in compliance with the Zambia Data Protection Act, 2021.",
+  modifiedTime: LAST_UPDATED,
+  version: VERSION,
+});
 
 export default async function PrivacyPage() {
   const dbDoc = await fetchLegalDocFromDB("privacy");

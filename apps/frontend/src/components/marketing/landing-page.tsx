@@ -6,6 +6,11 @@ import { Check, MessageCircle } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { TIER_INFO } from "@/lib/constants";
+import {
+  MATCH_WEIGHT_BARS,
+  MATCH_WEIGHT_COMPONENT_COUNT,
+  MATCH_WEIGHTS_HYBRID_LINE,
+} from "@/lib/matching-weights-copy";
 import { cn } from "@/lib/utils";
 
 const features = [
@@ -24,7 +29,7 @@ const steps = [
   },
   {
     t: "AI scores every job",
-    d: "Hybrid match: 60% semantic similarity + 30% skills overlap + 10% bonus signals.",
+    d: MATCH_WEIGHTS_HYBRID_LINE,
   },
   {
     t: "Multi-channel apply",
@@ -36,11 +41,7 @@ const steps = [
   },
 ];
 
-const scoreBars = [
-  { label: "Semantic similarity", pct: 60, bar: "bg-emerald-500" },
-  { label: "Skills overlap", pct: 30, bar: "bg-amber-500" },
-  { label: "Bonus signals", pct: 10, bar: "bg-slate-400" },
-] as const;
+const scoreBars = MATCH_WEIGHT_BARS;
 
 function getStepMotion(reduce: boolean) {
   if (reduce) {
@@ -168,8 +169,9 @@ export function LandingPage() {
               <span className="italic text-emerald-600 dark:text-emerald-400">its math</span>.
             </h2>
             <p className="mt-3 text-muted-foreground text-base leading-relaxed">
-              No black box. Every score breaks down into three components, and the AI writes a
-              one-paragraph explanation in plain English — like a recruiter would.
+              No black box. Every score breaks down into {MATCH_WEIGHT_COMPONENT_COUNT}{" "}
+              components, and the AI writes a one-paragraph explanation in plain English — like a
+              recruiter would.
             </p>
           </div>
           <Card className="border-border">

@@ -2,6 +2,7 @@
 
 import { motion, useReducedMotion } from "framer-motion";
 import { Bell, Send, Sparkles, Upload } from "lucide-react";
+import { MATCH_WEIGHTS_HYBRID_LINE } from "@/lib/matching-weights-copy";
 import { ChevronMotif } from "@/components/ui/ChevronMotif";
 const steps = [
   {
@@ -15,8 +16,7 @@ const steps = [
     n: "02",
     icon: Sparkles,
     title: "AI scores every job",
-    description:
-      "Hybrid match: 60% semantic similarity + 30% skills overlap + 10% bonus signals.",
+    description: MATCH_WEIGHTS_HYBRID_LINE,
   },
   {
     n: "03",
