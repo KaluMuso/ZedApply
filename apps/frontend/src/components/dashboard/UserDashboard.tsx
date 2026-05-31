@@ -23,6 +23,14 @@ export type DashboardLiveData = {
   topMatches: MatchData[];
 };
 
+const EMPTY_FUNNEL: ApplicationFunnel = {
+  saved: 0,
+  applied: 0,
+  interviewing: 0,
+  offered: 0,
+  closed: 0,
+};
+
 export type UserDashboardProps = {
   userName?: string;
   liveData?: DashboardLiveData;
@@ -31,6 +39,7 @@ export type UserDashboardProps = {
   subscriptionTierLabel?: string;
   profileCompleteness?: { percent: number; hints: readonly string[] };
   applicationsCount?: number;
+  applicationFunnel?: ApplicationFunnel;
 };
 
 function mapMatchToCondensed(m: MatchData) {
@@ -53,6 +62,7 @@ export function UserDashboard({
   subscriptionTier = "free",
   profileCompleteness,
   applicationsCount = 0,
+  applicationFunnel,
 }: UserDashboardProps) {
   const data = MOCK_DASHBOARD;
   const displayName = userName ?? data.userName;
@@ -132,15 +142,7 @@ export function UserDashboard({
           avgScore={liveData.avgScore}
           topScore={liveData.topMatches[0]?.score ?? null}
           subscription={subscription ?? null}
-          funnel={
-            applicationFunnel ?? {
-              saved: 0,
-              applied: 0,
-              interviewing: 0,
-              offered: 0,
-              closed: 0,
-            }
-          }
+          funnel={applicationFunnel ?? EMPTY_FUNNEL}
         />
       ) : null}
 

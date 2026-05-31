@@ -29,7 +29,7 @@ export function UsersTab({ token }: { token: string }) {
 
   const { sorted, sortProps } = useClientTable(data, {
     getSortValue: (row, key) => {
-      if (key === "created_at") return new Date(row.created_at).getTime();
+      if (key === "created_at") return sortIsoDate(row.created_at);
       const v = row[key as keyof AdminUserRow];
       if (typeof v === "number") return v;
       return String(v ?? "").toLowerCase();
@@ -155,31 +155,21 @@ export function UsersTab({ token }: { token: string }) {
             <TableHeader>
               <TableRow>
                 <TableHead>
-                  <button type="button" className="w-full text-left" {...sortProps("full_name")}>
-                    Name
-                  </button>
+                  <AdminSortableHead label="Name" sortProps={sortProps("full_name")} />
                 </TableHead>
                 <TableHead>
-                  <button type="button" className="w-full text-left" {...sortProps("phone")}>
-                    Phone
-                  </button>
+                  <AdminSortableHead label="Phone" sortProps={sortProps("phone")} />
                 </TableHead>
                 <TableHead>
-                  <button type="button" className="w-full text-left" {...sortProps("subscription_tier")}>
-                    Tier
-                  </button>
+                  <AdminSortableHead label="Tier" sortProps={sortProps("subscription_tier")} />
                 </TableHead>
                 <TableHead>
-                  <button type="button" className="w-full text-left" {...sortProps("matches_used")}>
-                    Matches
-                  </button>
+                  <AdminSortableHead label="Matches" sortProps={sortProps("matches_used")} />
                 </TableHead>
                 <TableHead>Welcome bonus until</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>
-                  <button type="button" className="w-full text-left" {...sortProps("created_at")}>
-                    Joined
-                  </button>
+                  <AdminSortableHead label="Joined" sortProps={sortProps("created_at")} />
                 </TableHead>
               </TableRow>
             </TableHeader>
