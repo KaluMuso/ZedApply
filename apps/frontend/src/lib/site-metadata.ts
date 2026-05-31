@@ -127,3 +127,30 @@ export function pageMetadata({ title, description }: PageMetaInput): Metadata {
 export function jobOgImageUrl(jobId: string): string {
   return `${SITE_URL}/api/og?jobId=${encodeURIComponent(jobId)}`;
 }
+
+type LegalPageMetaInput = PageMetaInput & {
+  modifiedTime: string;
+  version: string;
+};
+
+/** Legal/article pages — merges default OG image with article modified time. */
+export function legalPageMetadata({
+  title,
+  description,
+  modifiedTime,
+  version,
+}: LegalPageMetaInput): Metadata {
+  const base = pageMetadata({ title, description });
+  return {
+    ...base,
+    openGraph: {
+      ...base.openGraph,
+      type: "article",
+      modifiedTime,
+    },
+    other: {
+      "article:modified_time": modifiedTime,
+      "document:version": version,
+    },
+  };
+}

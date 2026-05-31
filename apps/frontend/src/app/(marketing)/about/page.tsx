@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Icon } from "@/components/ui/Icon";
+import { pageMetadata } from "@/lib/site-metadata";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "About",
   description:
-    "ZedApply is built in Lusaka to help Zambian professionals find work faster — AI matching, tailored CVs, WhatsApp delivery.",
-};
+    "Zed Apply is built in Lusaka to help Zambian professionals find work faster — AI matching, tailored CVs, WhatsApp delivery.",
+});
 
 export default function AboutPage() {
   return (

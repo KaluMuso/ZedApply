@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Icon } from "@/components/ui/Icon";
+import { pageMetadata } from "@/lib/site-metadata";
 
-export const metadata: Metadata = {
-  title: "Security & Data Protection | ZedApply",
+export const metadata: Metadata = pageMetadata({
+  title: "Security & Data Protection",
   description:
-    "How ZedApply protects your CV, personal data, and payments — built for Zambian professionals.",
-};
+    "How Zed Apply protects your CV, personal data, and payments — built for Zambian professionals.",
+});
 
 const TRUST_POINTS = [
   {

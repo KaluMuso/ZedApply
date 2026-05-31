@@ -3,21 +3,12 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { Check } from "lucide-react";
 import { ScoreBreakdownMockup } from "@/components/marketing/ScoreBreakdownMockup";
+import {
+  MATCH_WEIGHT_BULLETS,
+  MATCH_WEIGHT_COMPONENT_COUNT,
+} from "@/lib/matching-weights-copy";
 
-const bullets = [
-  {
-    title: "Semantic similarity",
-    body: "Vector match between your CV and the job description",
-  },
-  {
-    title: "Skills overlap",
-    body: "How many of the required skills you have, canonicalised",
-  },
-  {
-    title: "Bonus signals",
-    body: "Location, salary fit, experience range, recency, quality",
-  },
-] as const;
+const bullets = MATCH_WEIGHT_BULLETS;
 
 const viewport = { once: true, margin: "-80px" } as const;
 
@@ -48,8 +39,8 @@ export function ScoreMathSection() {
               Every match shows its math.
             </h2>
             <p className="mt-5 max-w-[520px] text-base leading-relaxed text-ink-2">
-              No black box. Every score breaks down into three components, and
-              the AI writes a one-paragraph explanation in plain English —
+              No black box. Every score breaks down into {MATCH_WEIGHT_COMPONENT_COUNT}{" "}
+              components, and the AI writes a one-paragraph explanation in plain English —
               like a recruiter would.
             </p>
             <ul className="mt-7 flex list-none flex-col gap-3.5 p-0">

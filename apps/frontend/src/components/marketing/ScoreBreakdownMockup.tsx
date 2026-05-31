@@ -4,7 +4,9 @@ import { motion, useReducedMotion } from "framer-motion";
 const bars = [
   { label: "Semantic similarity", value: 95 },
   { label: "Skills overlap", value: 88 },
-  { label: "Bonus signals", value: 86 },
+  { label: "Experience fit", value: 82 },
+  { label: "Location", value: 90 },
+  { label: "Recency", value: 78 },
 ] as const;
 
 const viewport = { once: true, margin: "-80px" } as const;

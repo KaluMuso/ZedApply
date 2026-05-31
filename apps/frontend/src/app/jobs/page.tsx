@@ -6,7 +6,7 @@ import JobsPageClient from "./JobsPageClient";
 export const metadata: Metadata = pageMetadata({
   title: "Jobs",
   description:
-    "Browse open roles across Zambia — filter by location, salary, and employment type on ZedApply.",
+    "Browse open roles across Zambia — filter by location, salary, and employment type on Zed Apply.",
 });
 
 export default function JobsPage() {
