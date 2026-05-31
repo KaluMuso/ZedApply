@@ -165,8 +165,7 @@ export function ProfileCompletenessRing({
               <Icon
                 name="chevronRight"
                 size={12}
-                className="mt-0.5 shrink-0"
-                style={{ color: "var(--muted-2)" }}
+                className="mt-0.5 shrink-0 text-muted-foreground"
               />
               <span>{hint}</span>
             </li>

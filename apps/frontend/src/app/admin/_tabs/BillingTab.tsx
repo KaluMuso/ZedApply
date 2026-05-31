@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { notify } from "@/lib/toast";
 import { StatCard, formatNgwee, formatDate, SkeletonTableRows } from "./shared";
-import { useClientTable } from "@/components/admin/useClientTable";
+import { useClientTable, sortIsoDate } from "@/components/admin/useClientTable";
 import {
   AdminExportButton,
   AdminSortableHead,
@@ -198,9 +198,7 @@ export function BillingTab({
   const { sorted: sortedSubs, sortProps: subSortProps } = useClientTable(subs, {
     getSortValue: (row, key) => {
       if (key === "matches_used") return row.matches_used;
-      if (key === "current_period_end") {
-        return row.current_period_end ? new Date(row.current_period_end).getTime() : 0;
-      }
+      if (key === "current_period_end") return sortIsoDate(row.current_period_end);
       const v = row[key as keyof AdminSubscriptionRow];
       return String(v ?? "").toLowerCase();
     },
@@ -209,7 +207,7 @@ export function BillingTab({
   const { sorted: sortedPayments, sortProps: paySortProps } = useClientTable(payments, {
     getSortValue: (row, key) => {
       if (key === "amount") return row.amount;
-      if (key === "created_at") return new Date(row.created_at).getTime();
+      if (key === "created_at") return sortIsoDate(row.created_at);
       const v = row[key as keyof AdminPaymentRow];
       return String(v ?? "").toLowerCase();
     },

@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { notify } from "@/lib/toast";
 import { formatDate, SkeletonTableRows } from "./shared";
-import { useClientTable } from "@/components/admin/useClientTable";
+import { useClientTable, sortIsoDate } from "@/components/admin/useClientTable";
 import {
   AdminExportButton,
   AdminSortableHead,
@@ -26,7 +26,7 @@ export function MatchesTab({ token }: { token: string }) {
   const { sorted, sortProps } = useClientTable(data, {
     getSortValue: (row, key) => {
       if (key === "score") return row.score;
-      if (key === "created_at") return new Date(row.created_at).getTime();
+      if (key === "created_at") return sortIsoDate(row.created_at);
       const v = row[key as keyof AdminMatchRow];
       return String(v ?? "").toLowerCase();
     },

@@ -11,7 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { notify } from "@/lib/toast";
 import { StatCard, formatNgwee, formatDate, SkeletonTableRows } from "./shared";
-import { useClientTable } from "@/components/admin/useClientTable";
+import { useClientTable, sortIsoDate } from "@/components/admin/useClientTable";
 import {
   AdminExportButton,
   AdminSortableHead,
@@ -27,10 +27,7 @@ export function SubscriptionsTab({ token }: { token: string }) {
   const { sorted, sortProps } = useClientTable(payments, {
     getSortValue: (row, key) => {
       if (key === "amount") return row.amount;
-      if (key === "created_at") {
-        const d = row.completed_at ?? row.created_at;
-        return new Date(d).getTime();
-      }
+      if (key === "created_at") return sortIsoDate(row.completed_at ?? row.created_at);
       const v = row[key as keyof AdminPaymentRow];
       return String(v ?? "").toLowerCase();
     },

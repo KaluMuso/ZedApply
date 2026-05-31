@@ -96,8 +96,8 @@ export function DashboardPageClient() {
         setTopMatches(sorted.slice(0, 3));
         setSavedCount(savedRes.jobs.length);
         const appRows =
-          savedRes.applications?.length > 0
-            ? savedRes.applications
+          (savedRes.applications?.length ?? 0) > 0
+            ? savedRes.applications!
             : savedRes.jobs.map((job) => ({
                 job,
                 application_status: "saved" as const,

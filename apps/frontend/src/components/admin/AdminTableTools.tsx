@@ -19,10 +19,11 @@ export function AdminSortableHead({
     <button
       type="button"
       className={cn(
-        "flex w-full items-center gap-1 text-left font-medium hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 rounded-sm",
+        "flex w-full cursor-pointer select-none items-center gap-1 text-left font-medium hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 rounded-sm",
         className,
       )}
-      {...sortProps}
+      onClick={sortProps.onClick}
+      aria-sort={sortProps["aria-sort"]}
     >
       {label}
       <span className="text-[10px] text-muted-foreground" aria-hidden>
