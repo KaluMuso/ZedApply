@@ -67,7 +67,7 @@ def _send(to: str, subject: str, html: str, *, idempotency_key: str | None = Non
     }
     try:
         if idempotency_key:
-            resend.Emails.send(payload, idempotency_key=idempotency_key)
+            resend.Emails.send(payload, {"idempotency_key": idempotency_key})
         else:
             resend.Emails.send(payload)
         return True
@@ -96,7 +96,7 @@ def _send_with_template(
     }
     try:
         if idempotency_key:
-            resend.Emails.send(payload, idempotency_key=idempotency_key)
+            resend.Emails.send(payload, {"idempotency_key": idempotency_key})
         else:
             resend.Emails.send(payload)
         return True
