@@ -1332,11 +1332,18 @@ export interface Job {
   contact_phone?: string | null;
   apply_source?: string | null;
   description_markdown?: string | null;
+  description_html?: string | null;
+  section_html?: Record<string, string> | null;
   section_responsibilities?: string | null;
   section_requirements?: string | null;
   section_benefits?: string | null;
   section_how_to_apply?: string | null;
   section_about?: string | null;
+  is_active?: boolean;
+  deactivation_reason?: string | null;
+  closure_reason?: string | null;
+  closed_at?: string | null;
+  deep_enriched_at?: string | null;
   admin_published?: boolean | null;
   scraping_sources?: ScrapingSourceEntry[] | null;
 
@@ -1378,6 +1385,7 @@ export const jobs = {
     source?: string[];
     employment_type?: EmploymentType[];
     work_arrangement?: WorkArrangement[];
+    include_closed?: boolean;
   }) => {
     const query = new URLSearchParams();
     if (params?.page) query.set("page", String(params.page));
@@ -1390,6 +1398,7 @@ export const jobs = {
       query.set("employment_type", params.employment_type.join(","));
     if (params?.work_arrangement?.length)
       query.set("work_arrangement", params.work_arrangement.join(","));
+    if (params?.include_closed) query.set("include_closed", "true");
     const token = getToken();
     return apiFetch<JobListResponse>(`/jobs?${query}`, { token });
   },
@@ -1522,11 +1531,16 @@ export interface MatchRefreshResponse extends MatchListResponse {
 }
 
 export const matches = {
-  get: (token: string, minScore?: number) =>
-    apiFetch<MatchListResponse>(
-      `/matches${minScore ? `?min_score=${minScore}` : ""}`,
-      { token }
-    ),
+  get: (
+    token: string,
+    opts?: { minScore?: number; includeClosed?: boolean },
+  ) => {
+    const query = new URLSearchParams();
+    if (opts?.minScore != null) query.set("min_score", String(opts.minScore));
+    if (opts?.includeClosed) query.set("include_closed", "true");
+    const qs = query.toString();
+    return apiFetch<MatchListResponse>(`/matches${qs ? `?${qs}` : ""}`, { token });
+  },
   refresh: (token: string, minScore?: number) =>
     apiFetch<MatchRefreshResponse>(
       `/matches/refresh${minScore ? `?min_score=${minScore}` : ""}`,

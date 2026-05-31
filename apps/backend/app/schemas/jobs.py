@@ -414,6 +414,11 @@ class Job(BaseModel):
     section_benefits: Optional[str] = None
     section_how_to_apply: Optional[str] = None
     section_about: Optional[str] = None
+    description_html: Optional[str] = None
+    section_html: Optional[dict[str, str]] = None
+    deep_enriched_at: Optional[datetime] = None
+    closed_at: Optional[datetime] = None
+    closure_reason: Optional[str] = None
     requirements: list[str] = []
     skills_required: list[str] = []
     skills: list[str] = []  # Alias for frontend compatibility
@@ -562,11 +567,12 @@ class JobIngestResponse(BaseModel):
 
 
 class DeepEnrichTickResponse(BaseModel):
-    """POST /jobs/deep-enrich-tick — secondary scrape batch result."""
+    """POST /jobs/deep-enrich-tick — deep-enrich batch result."""
 
-    processed: int
     enriched: int
-    unchanged: int
+    split: int
+    failed: int
+    skipped: int = 0
 
 
 # ── Admin CRUD (Wave 4 PR 2) ──────────────────────────────────────────

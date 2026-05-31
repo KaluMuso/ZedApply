@@ -267,8 +267,14 @@ async def _send_due_digest(user: dict, supabase, now: datetime) -> bool:
 
 @router.get("", response_model=MatchList)
 async def get_matches(
-    min_score: float = Query(50, ge=0, le=100), limit: int = Query(10, ge=1, le=50),
-    user_id: str = Depends(get_current_user_id), supabase=Depends(get_supabase),
+    min_score: float = Query(50, ge=0, le=100),
+    limit: int = Query(10, ge=1, le=50),
+    include_closed: bool = Query(
+        False,
+        description="When true, include matches whose jobs are inactive or past deadline.",
+    ),
+    user_id: str = Depends(get_current_user_id),
+    supabase=Depends(get_supabase),
 ):
     _, remaining = await check_match_quota(user_id, supabase)
     _, matches_limit, _ = await get_user_tier_limit(user_id, supabase)
@@ -286,6 +292,19 @@ async def get_matches(
 
     preferences = await _load_user_preferences(user_id, supabase)
     matches = _rows_to_match_results(list(result.data or []), preferences)
+    if not include_closed:
+        from datetime import date
+
+        today = date.today()
+        filtered: list[MatchResult] = []
+        for m in matches:
+            job = m.job
+            if not job.is_active:
+                continue
+            if job.closing_date and job.closing_date < today:
+                continue
+            filtered.append(m)
+        matches = filtered
     return MatchList(
         matches=matches[:limit],
         remaining_quota=remaining,

@@ -221,6 +221,10 @@ async def list_jobs(
             "Accepted: remote, hybrid, on_site."
         ),
     ),
+    include_closed: bool = Query(
+        False,
+        description="When true, include inactive or past-deadline jobs in the list.",
+    ),
     supabase=Depends(get_supabase),
 ):
     sort_mode = sort if sort in _ALLOWED_SORT else "recent"
@@ -278,13 +282,21 @@ async def list_jobs(
     # Path A: keep the main query flat, then fetch skills in a small
     # follow-up `.in_("job_id", [...])` call. Same outer response shape
     # for the frontend, but two cheap trips instead of one heavy stream.
-    query = (
-        supabase.table("jobs")
-        .select("*", count="estimated")
-        .eq("is_active", True)
-        .eq("is_review_required", False)
-        .or_(PUBLIC_JOBS_OR_FILTER)
-    )
+    if include_closed:
+        query = (
+            supabase.table("jobs")
+            .select("*", count="estimated")
+            .eq("is_review_required", False)
+            .or_(PUBLIC_JOBS_OR_FILTER)
+        )
+    else:
+        query = (
+            supabase.table("jobs_user_facing")
+            .select("*", count="estimated")
+            .eq("available", True)
+            .eq("is_review_required", False)
+            .or_(PUBLIC_JOBS_OR_FILTER)
+        )
 
     if sort_mode == "closing":
         # PostgREST does not support NULLS LAST inline; emulate by filtering
@@ -525,10 +537,9 @@ async def unsave_job(
 
 @router.get("/{job_id}", response_model=Job)
 async def get_job(job_id: str, supabase=Depends(get_supabase)):
+    """Return a job by id including inactive/closed rows (frontend renders closure UX)."""
     result = supabase.table("jobs").select("*, job_skills(skills(name))").eq("id", job_id).single().execute()
     if not result.data:
-        raise HTTPException(status_code=404, detail="Job not found")
-    if not is_publicly_listable(result.data):
         raise HTTPException(status_code=404, detail="Job not found")
     return hydrate_job_row(result.data)
 
