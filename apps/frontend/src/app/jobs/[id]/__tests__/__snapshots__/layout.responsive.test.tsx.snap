@@ -398,7 +398,7 @@ exports[`Job detail responsive layout > matches 380px mobile snapshot 1`] = `
             About the role
           </h3>
           <div
-            class="job-description-markdown prose prose-sm max-w-none text-sm text-foreground/90 dark:text-foreground/90 dark:prose-invert"
+            class="job-description-markdown prose prose-zinc max-w-none text-sm dark:prose-invert prose-headings:mt-8 prose-headings:mb-3 prose-p:my-4 prose-li:my-1 prose-h2:text-base prose-h3:text-sm"
           >
             <h3
               class="job-description-heading font-bold tracking-widest uppercase text-muted-foreground text-[11px] mt-6 mb-2 opacity-90"
@@ -818,7 +818,7 @@ exports[`Job detail responsive layout > matches 1024px desktop snapshot 1`] = `
             About the role
           </h3>
           <div
-            class="job-description-markdown prose prose-sm max-w-none text-sm text-foreground/90 dark:text-foreground/90 dark:prose-invert"
+            class="job-description-markdown prose prose-zinc max-w-none text-sm dark:prose-invert prose-headings:mt-8 prose-headings:mb-3 prose-p:my-4 prose-li:my-1 prose-h2:text-base prose-h3:text-sm"
           >
             <h3
               class="job-description-heading font-bold tracking-widest uppercase text-muted-foreground text-[11px] mt-6 mb-2 opacity-90"
