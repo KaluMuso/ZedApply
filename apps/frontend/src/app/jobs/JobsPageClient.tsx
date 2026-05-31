@@ -13,7 +13,6 @@ import {
 import { useAuth } from "@/lib/auth";
 import { JobCard } from "@/components/JobCard";
 import { Icon } from "@/components/ui/Icon";
-import { isJobHiddenFromUserFeed } from "@/lib/isJobHiddenFromUserFeed";
 import { Counter } from "@/components/ui/Counter";
 import { Pagination } from "@/components/ui/Pagination";
 import {
@@ -107,6 +106,33 @@ const POPULAR_SKILLS = [
   "data analysis",
 ];
 
+function parseTruthyParam(value: string | null): boolean {
+  return value === "true" || value === "1";
+}
+
+function parseSkillsParam(value: string | null): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((skill) => skill.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function isEmploymentType(value: string): value is EmploymentType {
+  return (
+    value === "full_time" ||
+    value === "part_time" ||
+    value === "contract" ||
+    value === "freelance" ||
+    value === "internship" ||
+    value === "temporary"
+  );
+}
+
+function isWorkArrangement(value: string): value is WorkArrangement {
+  return value === "remote" || value === "hybrid" || value === "on_site";
+}
+
 export default function JobsPageClient() {
   const router = useRouter();
   const pathname = usePathname();
@@ -147,9 +173,24 @@ export default function JobsPageClient() {
     const loc = searchParams.get("location") ?? "";
     const sortParam = searchParams.get("sort");
     const pageParam = searchParams.get("page");
+    const skillsParam = searchParams.get("skills");
+    const employmentParam = searchParams.get("employment_type");
+    const arrangementParam = searchParams.get("work_arrangement");
+    const hasSalaryParam = searchParams.get("has_salary");
+    const savedOnlyParam = searchParams.get("saved_only");
+
     setSearchInput(q);
     setSearchQuery(q);
     setLocation(loc);
+    setSelectedSkills(parseSkillsParam(skillsParam));
+
+    if (employmentParam && isEmploymentType(employmentParam)) {
+      setEmploymentType(employmentParam);
+    }
+    if (arrangementParam && isWorkArrangement(arrangementParam)) {
+      setWorkArrangement(arrangementParam);
+    }
+
     if (
       sortParam === "relevance" ||
       sortParam === "recent" ||
@@ -157,12 +198,26 @@ export default function JobsPageClient() {
     ) {
       setSort(sortParam);
     }
+
     const parsedPage = pageParam ? Number.parseInt(pageParam, 10) : 1;
     if (Number.isFinite(parsedPage) && parsedPage > 0) {
       setPage(parsedPage);
     }
+
+    if (parseTruthyParam(savedOnlyParam)) {
+      setListPreset("saved");
+    } else if (parseTruthyParam(hasSalaryParam)) {
+      setListPreset("with_salary");
+    } else if (sortParam === "closing") {
+      setListPreset("closing");
+    } else if (arrangementParam === "remote") {
+      setListPreset("remote");
+    } else if (employmentParam === "full_time") {
+      setListPreset("full_time");
+    }
+
     urlHydratedRef.current = true;
-  }, [searchParams]);
+  }, [searchParams, syncFiltersToUrl]);
 
   // Sync filters → URL.
   useEffect(() => {
@@ -176,11 +231,34 @@ export default function JobsPageClient() {
     else sp.delete("sort");
     if (page > 1) sp.set("page", String(page));
     else sp.delete("page");
+    if (selectedSkills.length > 0) sp.set("skills", selectedSkills.join(","));
+    else sp.delete("skills");
+    if (employmentType) sp.set("employment_type", employmentType);
+    else sp.delete("employment_type");
+    if (workArrangement) sp.set("work_arrangement", workArrangement);
+    else sp.delete("work_arrangement");
+    if (listPreset === "with_salary") sp.set("has_salary", "true");
+    else sp.delete("has_salary");
+    if (listPreset === "saved") sp.set("saved_only", "true");
+    else sp.delete("saved_only");
     const next = sp.toString();
     if (next === lastUrlSyncRef.current) return;
     lastUrlSyncRef.current = next;
     router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
-  }, [searchQuery, location, sort, page, pathname, router, searchParams]);
+  }, [
+    searchQuery,
+    location,
+    sort,
+    page,
+    selectedSkills,
+    employmentType,
+    workArrangement,
+    listPreset,
+    pathname,
+    router,
+    searchParams,
+    syncFiltersToUrl,
+  ]);
 
   useEffect(() => {
     if (!token) {
@@ -221,6 +299,14 @@ export default function JobsPageClient() {
     listPreset === "remote" ? "remote" : workArrangement;
 
   const fetchJobs = useCallback(async () => {
+    if (listPreset === "saved" && !token) {
+      setJobsList([]);
+      setTotalPages(1);
+      setTotal(0);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await jobsApi.list({
@@ -231,19 +317,16 @@ export default function JobsPageClient() {
         skills: selectedSkills.length > 0 ? selectedSkills : undefined,
         employment_type: effectiveEmploymentType ? [effectiveEmploymentType] : undefined,
         work_arrangement: effectiveWorkArrangement ? [effectiveWorkArrangement] : undefined,
+        has_salary: listPreset === "with_salary" ? true : undefined,
+        saved_only: listPreset === "saved" ? true : undefined,
       });
-      let jobs = res.jobs.filter((j) => !isJobHiddenFromUserFeed(j.closing_date));
-      if (listPreset === "with_salary") {
-        jobs = jobs.filter((j) => j.salary_min != null || j.salary_max != null);
-      }
-      if (listPreset === "saved" && token) {
-        jobs = jobs.filter((j) => savedJobIds.has(j.id));
-      }
-      setJobsList(jobs);
+      setJobsList(res.jobs);
       setTotalPages(res.pages);
-      setTotal(listPreset === "saved" ? jobs.length : res.total);
+      setTotal(res.total);
     } catch {
       setJobsList([]);
+      setTotalPages(1);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
@@ -257,7 +340,6 @@ export default function JobsPageClient() {
     effectiveWorkArrangement,
     listPreset,
     token,
-    savedJobIds,
   ]);
 
   useEffect(() => {
@@ -275,7 +357,13 @@ export default function JobsPageClient() {
     Boolean(searchQuery || searchInput || location) ||
     sort !== "recent" ||
     selectedSkills.length > 0 ||
-    Boolean(employmentType || workArrangement);
+    Boolean(employmentType || workArrangement) ||
+    listPreset !== "all";
+
+  const hasFilterConstraints =
+    Boolean(searchQuery || location || employmentType || workArrangement) ||
+    selectedSkills.length > 0 ||
+    listPreset !== "all";
 
   const resetFilters = () => {
     setSearchInput("");
@@ -292,10 +380,24 @@ export default function JobsPageClient() {
   const onListPresetChange = (preset: JobsListPreset) => {
     setListPreset(preset);
     setPage(1);
-    if (preset === "closing") setSort("closing");
-    if (preset === "full_time") setEmploymentType("full_time");
-    if (preset === "remote") setWorkArrangement("remote");
+    if (preset === "closing") {
+      setSort("closing");
+      return;
+    }
+    if (preset === "full_time") {
+      setEmploymentType("full_time");
+      setWorkArrangement("");
+      setSort("recent");
+      return;
+    }
+    if (preset === "remote") {
+      setWorkArrangement("remote");
+      setEmploymentType("");
+      setSort("recent");
+      return;
+    }
     if (preset === "all") {
+      setSort("recent");
       setEmploymentType("");
       setWorkArrangement("");
     }
@@ -569,27 +671,19 @@ export default function JobsPageClient() {
       ) : jobsList.length === 0 ? (
         <EmptyState
           title={
-            searchQuery || location || employmentType || workArrangement
+            hasFilterConstraints
               ? "No jobs match your filters"
               : "No jobs are open right now"
           }
           description={
-            searchQuery || location || employmentType || workArrangement
+            hasFilterConstraints
               ? "Try a broader search or remove a filter. New listings arrive throughout the week."
               : "Check back soon — new roles are scraped daily across Zambia."
           }
           ctaText="Get matches on WhatsApp"
           ctaHref={authPath("/matches")}
-          secondaryCtaText={
-            searchQuery || location || employmentType || workArrangement
-              ? "Reset filters"
-              : undefined
-          }
-          onSecondaryCtaClick={
-            searchQuery || location || employmentType || workArrangement
-              ? resetFilters
-              : undefined
-          }
+          secondaryCtaText={hasFilterConstraints ? "Reset filters" : undefined}
+          onSecondaryCtaClick={hasFilterConstraints ? resetFilters : undefined}
           className="my-8"
         />
       ) : (
@@ -638,7 +732,7 @@ export default function JobsPageClient() {
           </div>
 
           {/* Pagination */}
-          {totalPages > 1 && listPreset !== "saved" && (
+          {totalPages > 1 && (
             <Pagination
               page={page}
               totalPages={totalPages}

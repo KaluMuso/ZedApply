@@ -290,11 +290,19 @@ describe("additional API modules", () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       jsonResponse({ jobs: [], total: 0, page: 1, pages: 0 }),
     );
-    await jobs.list({ page: 2, search: "engineer", employment_type: ["full_time"] });
+    await jobs.list({
+      page: 2,
+      search: "engineer",
+      employment_type: ["full_time"],
+      has_salary: true,
+      saved_only: true,
+    });
     const [url] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
     expect(url).toContain("page=2");
     expect(url).toContain("search=engineer");
     expect(url).toContain("employment_type=full_time");
+    expect(url).toContain("has_salary=true");
+    expect(url).toContain("saved_only=true");
   });
 
   it("matches.refresh POSTs to /matches/refresh", async () => {

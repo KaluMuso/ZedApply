@@ -1385,6 +1385,8 @@ export const jobs = {
     source?: string[];
     employment_type?: EmploymentType[];
     work_arrangement?: WorkArrangement[];
+    has_salary?: boolean;
+    saved_only?: boolean;
     include_closed?: boolean;
   }) => {
     const query = new URLSearchParams();
@@ -1398,6 +1400,8 @@ export const jobs = {
       query.set("employment_type", params.employment_type.join(","));
     if (params?.work_arrangement?.length)
       query.set("work_arrangement", params.work_arrangement.join(","));
+    if (params?.has_salary) query.set("has_salary", "true");
+    if (params?.saved_only) query.set("saved_only", "true");
     if (params?.include_closed) query.set("include_closed", "true");
     const token = getToken();
     return apiFetch<JobListResponse>(`/jobs?${query}`, { token });

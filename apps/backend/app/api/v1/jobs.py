@@ -3,7 +3,12 @@ import hashlib
 import html as _html
 import logging
 import re as _re
+from datetime import date, timedelta
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import JWTError, jwt
+
 from app.core.config import Settings, get_settings
 from app.core.deps import (
     get_current_user_id,
@@ -11,6 +16,7 @@ from app.core.deps import (
     require_admin,
     require_admin_or_ingest_key,
 )
+from app.core.errors import ProblemHTTPException
 from app.core.rate_limit import limiter
 from app.schemas.jobs import (
     Job,
@@ -54,6 +60,43 @@ from app.services import skills_dictionary
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
+
+_security_optional = HTTPBearer(auto_error=False)
+
+# Match apps/frontend/src/lib/isJobHiddenFromUserFeed.ts — listings stay
+# visible for three calendar days after closing_date, then drop from feeds.
+_CLOSING_DATE_GRACE_DAYS = 3
+
+
+def _closing_date_grace_cutoff() -> str:
+    return (date.today() - timedelta(days=_CLOSING_DATE_GRACE_DAYS)).isoformat()
+
+
+async def _optional_user_id(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_security_optional),
+    settings: Settings = Depends(get_settings),
+) -> str | None:
+    if credentials is None:
+        return None
+    try:
+        payload = jwt.decode(
+            credentials.credentials,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+        )
+        return payload.get("sub")
+    except JWTError:
+        return None
+
+
+def _intersect_job_ids(
+    current: list[str] | None,
+    new_ids: list[str],
+) -> list[str]:
+    if current is None:
+        return new_ids
+    allowed = set(new_ids)
+    return [job_id for job_id in current if job_id in allowed]
 
 
 def _require_ingest_header(
@@ -221,19 +264,30 @@ async def list_jobs(
             "Accepted: remote, hybrid, on_site."
         ),
     ),
+    has_salary: bool = Query(
+        False,
+        description="When true, only jobs with salary_min and/or salary_max set.",
+    ),
+    saved_only: bool = Query(
+        False,
+        description="When true, restrict to jobs saved by the authenticated user.",
+    ),
     include_closed: bool = Query(
         False,
         description="When true, include inactive or past-deadline jobs in the list.",
     ),
+    user_id: str | None = Depends(_optional_user_id),
     supabase=Depends(get_supabase),
 ):
     sort_mode = sort if sort in _ALLOWED_SORT else "recent"
 
-    # Skill filter requires a separate lookup against skills + job_skills
-    # because supabase-py doesn't express the join filter inline. We resolve
-    # skill names + aliases → skill_ids, then job_ids → use .in_() on jobs.
-    # An empty intersection short-circuits to "no jobs" without burning the
-    # main query.
+    if saved_only and not user_id:
+        raise ProblemHTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            code="auth_required",
+            user_message="Sign in to view saved jobs.",
+        )
+
     job_id_filter: list[str] | None = None
     if skills:
         skill_names = [s.strip().lower() for s in skills.split(",") if s.strip()]
@@ -245,7 +299,6 @@ async def list_jobs(
                 .execute()
             )
             skill_ids = [r["id"] for r in (sk_rows.data or [])]
-            # Also pick up aliases so "react" matches "reactjs", "react.js", etc.
             al_rows = (
                 supabase.table("skill_aliases")
                 .select("skill_id")
@@ -255,7 +308,6 @@ async def list_jobs(
             skill_ids.extend(r["skill_id"] for r in (al_rows.data or []))
             skill_ids = list(set(skill_ids))
             if not skill_ids:
-                # No matching skills → no jobs can match.
                 return JobList(jobs=[], total=0, page=page, per_page=per_page, pages=1)
             js_rows = (
                 supabase.table("job_skills")
@@ -266,6 +318,20 @@ async def list_jobs(
             job_id_filter = list({r["job_id"] for r in (js_rows.data or [])})
             if not job_id_filter:
                 return JobList(jobs=[], total=0, page=page, per_page=per_page, pages=1)
+
+    if saved_only and user_id:
+        saved_rows = (
+            supabase.table("saved_jobs")
+            .select("job_id")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        saved_ids = list({r["job_id"] for r in (saved_rows.data or [])})
+        if not saved_ids:
+            return JobList(jobs=[], total=0, page=page, per_page=per_page, pages=1)
+        job_id_filter = _intersect_job_ids(job_id_filter, saved_ids)
+        if not job_id_filter:
+            return JobList(jobs=[], total=0, page=page, per_page=per_page, pages=1)
 
     # Main query selects only flat columns. PR #41 switched count from
     # "exact" to "estimated" to cut the planner cost, but Sentry issue
@@ -290,12 +356,14 @@ async def list_jobs(
             .or_(PUBLIC_JOBS_OR_FILTER)
         )
     else:
+        grace_cutoff = _closing_date_grace_cutoff()
         query = (
             supabase.table("jobs_user_facing")
             .select("*", count="estimated")
-            .eq("available", True)
+            .eq("is_active", True)
             .eq("is_review_required", False)
             .or_(PUBLIC_JOBS_OR_FILTER)
+            .or_(f"closing_date.is.null,closing_date.gte.{grace_cutoff}")
         )
 
     if sort_mode == "closing":
@@ -346,6 +414,8 @@ async def list_jobs(
         was = [s.strip() for s in work_arrangement.split(",") if s.strip()]
         if was:
             query = query.in_("work_arrangement", was)
+    if has_salary:
+        query = query.or_("salary_min.not.is.null,salary_max.not.is.null")
     if job_id_filter is not None:
         query = query.in_("id", job_id_filter)
 
@@ -380,8 +450,10 @@ async def list_jobs(
             # the global handler. Returning empty is better UX than 500.
             logger.error(
                 "list_jobs: Supabase 5xx after retry — degrading to empty. "
-                "filters: location=%r search=%r sort=%r source=%r skills=%r",
+                "filters: location=%r search=%r sort=%r source=%r skills=%r "
+                "employment_type=%r work_arrangement=%r has_salary=%r saved_only=%r",
                 location, search, sort, source, skills,
+                employment_type, work_arrangement, has_salary, saved_only,
                 exc_info=True,
             )
             import math

@@ -170,7 +170,7 @@ describe("/jobs page filters", () => {
   // jobs/page.tsx — the dropdown isn't rendered today because every
   // active job has NULL for employment_type. Re-enable when Path B
   // ships and the flag flips to true.
-  it.skip("selecting an employment type forwards `employment_type`", async () => {
+  it("selecting an employment type forwards `employment_type`", async () => {
     const user = userEvent.setup();
     renderJobsPage();
     await waitFor(() => expect(requestedUrls.length).toBeGreaterThan(0));
@@ -189,7 +189,7 @@ describe("/jobs page filters", () => {
 
   // Skipped while FILTERS_AVAILABLE.workArrangement is false in
   // jobs/page.tsx (see sibling skip above).
-  it.skip("selecting a work arrangement forwards `work_arrangement`", async () => {
+  it("selecting a work arrangement forwards `work_arrangement`", async () => {
     const user = userEvent.setup();
     renderJobsPage();
     await waitFor(() => expect(requestedUrls.length).toBeGreaterThan(0));
@@ -207,7 +207,7 @@ describe("/jobs page filters", () => {
   // Skipped while FILTERS_AVAILABLE.{employmentType,workArrangement}
   // are false in jobs/page.tsx. The location-only composition path is
   // already covered by the location test above.
-  it.skip("multiple filters compose into a single request", async () => {
+  it("multiple filters compose into a single request", async () => {
     const user = userEvent.setup();
     renderJobsPage();
     await waitFor(() => expect(requestedUrls.length).toBeGreaterThan(0));
@@ -250,5 +250,29 @@ describe("/jobs page filters", () => {
     expect(
       await screen.findByRole("heading", { name: /no jobs match your filters/i }),
     ).toBeInTheDocument();
+  });
+
+  it("clicking a skill chip forwards `skills` CSV", async () => {
+    const user = userEvent.setup();
+    renderJobsPage();
+    await waitFor(() => expect(requestedUrls.length).toBeGreaterThan(0));
+
+    await user.click(screen.getByRole("button", { name: /^accounting$/i }));
+
+    await waitFor(() => {
+      expect(lastRequest().searchParams.get("skills")).toBe("accounting");
+    });
+  });
+
+  it("choosing the salary preset forwards `has_salary`", async () => {
+    const user = userEvent.setup();
+    renderJobsPage();
+    await waitFor(() => expect(requestedUrls.length).toBeGreaterThan(0));
+
+    await user.click(screen.getByRole("button", { name: /with salary/i }));
+
+    await waitFor(() => {
+      expect(lastRequest().searchParams.get("has_salary")).toBe("true");
+    });
   });
 });
