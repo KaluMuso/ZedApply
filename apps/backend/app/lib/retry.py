@@ -99,6 +99,18 @@ def assert_llm_circuit_closed() -> None:
         )
 
 
+def assert_llm_budget_before_call(supabase: Client | None = None) -> None:
+    """Enforce optional daily spend/token caps from llm_usage_log."""
+    from app.services.llm_budget import LLMDailyCapExceeded, assert_llm_daily_budget
+
+    try:
+        assert_llm_daily_budget(supabase)
+    except LLMDailyCapExceeded:
+        raise LLMCircuitOpenError(
+            "Daily AI usage limit reached; skipping provider calls"
+        ) from None
+
+
 def is_retryable_llm_error(exc: BaseException) -> bool:
     """Retry only 5xx provider errors and network/timeout failures — not 4xx."""
     if isinstance(
@@ -158,9 +170,11 @@ def call_with_llm_retry(
     fn: Callable[[], T],
     *,
     log_prefix: str = "llm",
+    supabase: Client | None = None,
 ) -> T:
     """Run a sync LLM call with retries; updates the circuit breaker."""
     assert_llm_circuit_closed()
+    assert_llm_budget_before_call(supabase)
     try:
         result: T | None = None
         for attempt in Retrying(**_retrying_kwargs(), sleep=time.sleep):
@@ -179,9 +193,11 @@ async def async_call_with_llm_retry(
     fn: Callable[[], Awaitable[T]],
     *,
     log_prefix: str = "llm",
+    supabase: Client | None = None,
 ) -> T:
     """Run an async LLM call with retries; updates the circuit breaker."""
     assert_llm_circuit_closed()
+    assert_llm_budget_before_call(supabase)
     try:
         result: T | None = None
         async for attempt in AsyncRetrying(**_retrying_kwargs()):
@@ -211,6 +227,7 @@ def create_chat_completion_with_retries(
     response = call_with_llm_retry(
         lambda: client.chat.completions.create(**kwargs),
         log_prefix=log_prefix,
+        supabase=supabase,
     )
     ctx = log_context or get_llm_context()
     if model and ctx is not None:

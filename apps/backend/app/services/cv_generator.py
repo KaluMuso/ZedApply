@@ -26,6 +26,17 @@ from app.services.openrouter_helpers import (
     get_completion_content,
 )
 from app.services.llm import estimate_openrouter_cost_usd, extract_usage_from_completion
+from app.services.prompt_safety import (
+    MAX_COMPANY_CHARS,
+    MAX_CV_TEXT_CHARS,
+    MAX_JOB_DESCRIPTION_CHARS,
+    MAX_JOB_TITLE_CHARS,
+    MAX_SKILLS_LINE_CHARS,
+    augment_system_prompt,
+    build_delimited_user_message,
+    sanitize_user_text,
+    wrap_user_data_block,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -179,10 +190,20 @@ async def analyze_cv(cv_text: str) -> dict:
                 model=settings.llm_model,
                 max_tokens=1024,
                 messages=[
-                    {"role": "system", "content": CV_ANALYSIS_SYSTEM_PROMPT},
+                    {
+                        "role": "system",
+                        "content": augment_system_prompt(CV_ANALYSIS_SYSTEM_PROMPT),
+                    },
                     {
                         "role": "user",
-                        "content": f"Analyse this CV:\n\n{cv_text[:8000]}",
+                        "content": build_delimited_user_message(
+                            "Analyse this CV:",
+                            wrap_user_data_block(
+                                "CANDIDATE_CV",
+                                cv_text,
+                                max_chars=MAX_CV_TEXT_CHARS,
+                            ),
+                        ),
                     },
                 ],
                 response_format={"type": "json_object"},
@@ -451,12 +472,23 @@ async def generate_cv_structured(
     settings = get_settings()
     client = _client()
 
-    target = f"{job_title}" + (f" at {company}" if company else "")
-    job_block = f"\n\n--- TARGET JOB DESCRIPTION ---\n{job_description[:3000]}" if job_description else ""
-    user_prompt = (
-        f"Tailor this CV for: {target}.\n\n"
-        f"--- CANDIDATE CV ---\n{cv_text[:6000]}{job_block}"
+    target = sanitize_user_text(
+        f"{job_title}" + (f" at {company}" if company else ""),
+        max_chars=MAX_JOB_TITLE_CHARS + MAX_COMPANY_CHARS + 20,
     )
+    blocks = [
+        f"Tailor this CV for: {target}.",
+        wrap_user_data_block("CANDIDATE_CV", cv_text, max_chars=MAX_CV_TEXT_CHARS),
+    ]
+    if job_description:
+        blocks.append(
+            wrap_user_data_block(
+                "JOB_DESCRIPTION",
+                job_description,
+                max_chars=MAX_JOB_DESCRIPTION_CHARS,
+            )
+        )
+    user_prompt = build_delimited_user_message(*blocks)
 
     def _call():
         try:
@@ -468,7 +500,12 @@ async def generate_cv_structured(
                 # plain-text path) frequently truncated mid-array.
                 max_tokens=4096,
                 messages=[
-                    {"role": "system", "content": CV_GENERATE_STRUCTURED_SYSTEM_PROMPT},
+                    {
+                        "role": "system",
+                        "content": augment_system_prompt(
+                            CV_GENERATE_STRUCTURED_SYSTEM_PROMPT
+                        ),
+                    },
                     {"role": "user", "content": user_prompt},
                 ],
                 response_format={"type": "json_object"},
@@ -568,20 +605,40 @@ async def generate_tailored_cv_for_match(
 
     settings = get_settings()
     client = _client()
-    company_line = company or "Not specified"
-    desc = (job_description or "Not provided.")[:4000]
-    skills_req = ", ".join(skills_required[:30]) if skills_required else "Not listed"
-    overlap = ", ".join(overlapping_skills[:30]) if overlapping_skills else "None identified"
-    missing = ", ".join(missing_skills[:30]) if missing_skills else "None identified"
-
-    user_prompt = MATCH_TAILOR_USER_PROMPT.format(
-        master_cv_markdown=master_cv_markdown[:8000],
-        job_title=job_title,
-        company=company_line,
-        job_description=desc,
-        skills_required=skills_req,
-        overlapping_skills=overlap,
-        missing_skills=missing,
+    company_line = sanitize_user_text(company or "Not specified", max_chars=MAX_COMPANY_CHARS)
+    desc = sanitize_user_text(
+        job_description or "Not provided.",
+        max_chars=MAX_JOB_DESCRIPTION_CHARS,
+    )
+    title_safe = sanitize_user_text(job_title, max_chars=MAX_JOB_TITLE_CHARS)
+    skills_req = sanitize_user_text(
+        ", ".join(skills_required[:30]) if skills_required else "Not listed",
+        max_chars=MAX_SKILLS_LINE_CHARS,
+    )
+    overlap = sanitize_user_text(
+        ", ".join(overlapping_skills[:30]) if overlapping_skills else "None identified",
+        max_chars=MAX_SKILLS_LINE_CHARS,
+    )
+    missing = sanitize_user_text(
+        ", ".join(missing_skills[:30]) if missing_skills else "None identified",
+        max_chars=MAX_SKILLS_LINE_CHARS,
+    )
+    cv_block = wrap_user_data_block(
+        "MASTER_CV",
+        master_cv_markdown,
+        max_chars=MAX_CV_TEXT_CHARS,
+    )
+    user_prompt = build_delimited_user_message(
+        MATCH_TAILOR_USER_PROMPT.format(
+            master_cv_markdown="(see MASTER_CV block below)",
+            job_title=title_safe,
+            company=company_line,
+            job_description=desc,
+            skills_required=skills_req,
+            overlapping_skills=overlap,
+            missing_skills=missing,
+        ),
+        cv_block,
     )
 
     log_ctx = LlmLogContext(
@@ -599,7 +656,10 @@ async def generate_tailored_cv_for_match(
                 model=settings.llm_model,
                 max_tokens=2500,
                 messages=[
-                    {"role": "system", "content": MATCH_TAILOR_SYSTEM_PROMPT},
+                    {
+                        "role": "system",
+                        "content": augment_system_prompt(MATCH_TAILOR_SYSTEM_PROMPT),
+                    },
                     {"role": "user", "content": user_prompt},
                 ],
             )
@@ -687,12 +747,23 @@ async def generate_cv(
     settings = get_settings()
     client = _client()
 
-    target = f"{job_title}" + (f" at {company}" if company else "")
-    job_block = f"\n\n--- TARGET JOB DESCRIPTION ---\n{job_description[:3000]}" if job_description else ""
-    user_prompt = (
-        f"Tailor this CV for: {target}.\n\n"
-        f"--- CANDIDATE CV ---\n{cv_text[:6000]}{job_block}"
+    target = sanitize_user_text(
+        f"{job_title}" + (f" at {company}" if company else ""),
+        max_chars=MAX_JOB_TITLE_CHARS + MAX_COMPANY_CHARS + 20,
     )
+    blocks = [
+        f"Tailor this CV for: {target}.",
+        wrap_user_data_block("CANDIDATE_CV", cv_text, max_chars=MAX_CV_TEXT_CHARS),
+    ]
+    if job_description:
+        blocks.append(
+            wrap_user_data_block(
+                "JOB_DESCRIPTION",
+                job_description,
+                max_chars=MAX_JOB_DESCRIPTION_CHARS,
+            )
+        )
+    user_prompt = build_delimited_user_message(*blocks)
 
     def _call():
         try:
@@ -702,7 +773,10 @@ async def generate_cv(
                 model=settings.llm_model,
                 max_tokens=1500,
                 messages=[
-                    {"role": "system", "content": CV_GENERATE_SYSTEM_PROMPT},
+                    {
+                        "role": "system",
+                        "content": augment_system_prompt(CV_GENERATE_SYSTEM_PROMPT),
+                    },
                     {"role": "user", "content": user_prompt},
                 ],
             )

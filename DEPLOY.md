@@ -50,6 +50,19 @@ Used for CV parsing and cover letter generation via Gemini Flash 2.0.
 2. Create a new key → `OPENROUTER_API_KEY`
 3. Add $5-10 credits (Gemini Flash is ~$0.10/M tokens — very cheap)
 
+**Optional daily budget guards** (recommended for production soft launch):
+
+```bash
+# Sum of llm_usage_log.cost_usd for today UTC; 0 = disabled
+LLM_DAILY_SPEND_CAP_USD=2.50
+# Or cap total tokens (prompt + completion) across all providers
+LLM_DAILY_TOKEN_CAP=0
+```
+
+When exceeded, AI routes return the same degraded message as the LLM circuit breaker.
+
+**Service keys:** `ADMIN_API_KEY` and `INGEST_API_KEY` — see `docs/ADMIN_API_KEYS.md`.
+
 ### 1.4 DPO Pay Merchant Account
 
 Used for MTN/Airtel mobile money payments in ZMW.
