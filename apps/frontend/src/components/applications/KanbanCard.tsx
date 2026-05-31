@@ -8,6 +8,7 @@ import {
   type KanbanColumnId,
 } from "@/lib/application-status";
 import { Icon } from "@/components/ui/Icon";
+import { isJobListingClosed } from "@/lib/isJobListingClosed";
 
 export interface KanbanCardProps {
   application: SavedJobApplication;
@@ -48,6 +49,7 @@ export function KanbanCard({
     application.application_status === "closed_lost"
       ? CLOSED_OUTCOME_LABELS[application.application_status]
       : null;
+  const jobClosed = isJobListingClosed(job);
 
   return (
     <article
@@ -93,6 +95,14 @@ export function KanbanCard({
             <Icon name="calendar" size={12} />
             Interview {interviewLabel}
           </p>
+        ) : null}
+        {jobClosed ? (
+          <span
+            className="mt-2 inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide"
+            style={{ background: "var(--muted)", color: "#faf7f2" }}
+          >
+            Job closed
+          </span>
         ) : null}
         {closedLabel ? (
           <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>

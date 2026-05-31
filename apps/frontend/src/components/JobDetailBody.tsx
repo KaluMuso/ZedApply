@@ -22,6 +22,7 @@ import {
 } from "@/components/jobs/jobDetailFormatters";
 import { buildApplyContactMethods } from "@/components/jobs/applyContacts";
 import { JobShareButtons } from "@/components/share/JobShareButtons";
+import { isJobListingClosed } from "@/lib/isJobListingClosed";
 import { cn } from "@/lib/utils";
 
 interface JobDetailBodyProps {
@@ -89,7 +90,8 @@ export function JobDetailBody({
   const [coverOpen, setCoverOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const applyMethods = buildApplyContactMethods(job);
+  const listingClosed = isJobListingClosed(job);
+  const applyMethods = listingClosed ? [] : buildApplyContactMethods(job);
 
   const jobTypeLabel = job.employment_type
     ? EMPLOYMENT_TYPE_LABEL[job.employment_type] || job.employment_type
@@ -174,6 +176,29 @@ export function JobDetailBody({
           )}
         </div>
       </header>
+
+      {listingClosed ? (
+        <div
+          className="mb-6 rounded-xl border px-4 py-3 text-sm"
+          style={{
+            borderColor: "var(--amber-500, #d97706)",
+            background: "rgba(217, 119, 6, 0.08)",
+            color: "var(--ink)",
+          }}
+          role="status"
+        >
+          <p className="font-medium">This role is no longer accepting applications</p>
+          {job.closure_reason ? (
+            <p className="mt-1 text-muted-foreground">{job.closure_reason}</p>
+          ) : job.closing_date ? (
+            <p className="mt-1 text-muted-foreground">Closed on {job.closing_date}</p>
+          ) : job.deactivation_reason === "split_into_children" ? (
+            <p className="mt-1 text-muted-foreground">
+              Replaced by separate role listings — browse similar matches below.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* Two-column: match panel stacks under header on mobile */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(280px,320px)] gap-8 lg:gap-10">
@@ -311,6 +336,8 @@ export function JobDetailBody({
               <JobDescription
                 description={job.description ? stripDescriptionHtml(job.description) : null}
                 descriptionMarkdown={job.description_markdown}
+                descriptionHtml={job.description_html}
+                sectionHtml={job.section_html}
                 sections={{
                   section_responsibilities: job.section_responsibilities,
                   section_requirements: job.section_requirements,

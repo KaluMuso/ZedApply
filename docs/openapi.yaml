@@ -1234,6 +1234,26 @@ components:
         section_about:
           type: string
           nullable: true
+        description_html:
+          type: string
+          nullable: true
+          description: Bleach-sanitized HTML from deep-enrich (migration 086).
+        section_html:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }
+          description: Per-section sanitized HTML (responsibilities, requirements, etc.).
+        deep_enriched_at:
+          type: string
+          format: date-time
+          nullable: true
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+        closure_reason:
+          type: string
+          nullable: true
         requirements: { type: array, items: { type: string } }
         skills_required: { type: array, items: { type: string } }
         skills: { type: array, items: { type: string }, description: "Alias for frontend compatibility" }
@@ -1340,11 +1360,12 @@ components:
 
     DeepEnrichTickResponse:
       type: object
-      required: [processed, enriched, unchanged]
+      required: [enriched, split, failed]
       properties:
-        processed: { type: integer, minimum: 0 }
         enriched: { type: integer, minimum: 0 }
-        unchanged: { type: integer, minimum: 0 }
+        split: { type: integer, minimum: 0 }
+        failed: { type: integer, minimum: 0 }
+        skipped: { type: integer, minimum: 0 }
 
     JobCreate:
       type: object

@@ -38,6 +38,7 @@ import { CountdownRing } from "@/components/CountdownRing";
 import { formatMatchedRelative } from "@/lib/formatMatchedRelative";
 import { isJobPastClosing } from "@/lib/isJobPastClosing";
 import { isJobHiddenFromUserFeed } from "@/lib/isJobHiddenFromUserFeed";
+import { isJobListingClosed } from "@/lib/isJobListingClosed";
 import { trackApplyClick } from "@/lib/trackApplyClick";
 import { ApplyModal } from "@/components/jobs/ApplyModal";
 import { PushPermissionPrompt } from "@/components/notifications/PushPermissionPrompt";
@@ -81,6 +82,7 @@ export default function MatchesPageClient() {
   const [loading, setLoading] = useState(true);
   const [detailMatch, setDetailMatch] = useState<MatchData | null>(null);
   const [scoreFilter, setScoreFilter] = useState(0);
+  const [showClosed, setShowClosed] = useState(false);
   const [keywordFilter, setKeywordFilter] = useState("");
   const [sort, setSort] = useState<"score" | "closing">("score");
   const [prepFor, setPrepFor] = useState<MatchData | null>(null);
@@ -106,9 +108,9 @@ export default function MatchesPageClient() {
   const refreshStartedAtRef = useRef<number | null>(null);
   const deepLinkHandledRef = useRef(false);
 
-  const loadMatches = useCallback(async (authToken: string) => {
+  const loadMatches = useCallback(async (authToken: string, includeClosed = false) => {
     const [matchesRes, subRes, prefsRes, autoPrefsRes] = await Promise.allSettled([
-      matchesApi.get(authToken),
+      matchesApi.get(authToken, { includeClosed }),
       subscriptionApi.get(authToken),
       preferencesApi.get(authToken),
       autoMatchPreferences.get(authToken),
@@ -241,7 +243,7 @@ export default function MatchesPageClient() {
     } catch {
       /* ignore corrupt cache */
     }
-    loadMatches(token).then(async (result) => {
+    loadMatches(token, showClosed).then(async (result) => {
       if (result.unauthorized) {
         logout();
         router.replace("/auth?next=/matches");
@@ -267,7 +269,7 @@ export default function MatchesPageClient() {
         }
       }
     }).finally(() => setLoading(false));
-  }, [token, isAuthenticated, authLoading, router, logout, loadMatches]);
+  }, [token, isAuthenticated, authLoading, router, logout, loadMatches, showClosed]);
 
   useEffect(() => {
     if (!data) return;
@@ -406,15 +408,20 @@ export default function MatchesPageClient() {
   if (!data) return null;
 
   const keyword = keywordFilter.trim().toLowerCase();
-  let filtered = data.matches.filter(
-    (m) =>
-      m.score >= scoreFilter &&
-      !isJobHiddenFromUserFeed(m.job.closing_date) &&
-      (!keyword ||
-        m.job.title.toLowerCase().includes(keyword) ||
-        (m.job.company?.toLowerCase().includes(keyword) ?? false) ||
-        m.matched_skills.some((s) => s.toLowerCase().includes(keyword))),
-  );
+  let filtered = data.matches.filter((m) => {
+    if (m.score < scoreFilter) return false;
+    if (!showClosed && isJobListingClosed(m.job)) return false;
+    if (!showClosed && isJobHiddenFromUserFeed(m.job.closing_date)) return false;
+    if (
+      keyword &&
+      !m.job.title.toLowerCase().includes(keyword) &&
+      !(m.job.company?.toLowerCase().includes(keyword) ?? false) &&
+      !m.matched_skills.some((s) => s.toLowerCase().includes(keyword))
+    ) {
+      return false;
+    }
+    return true;
+  });
   if (sort === "score") {
     filtered = [...filtered].sort((a, b) => b.score - a.score);
   } else {
@@ -620,6 +627,16 @@ export default function MatchesPageClient() {
           ))}
         </div>
         <div className="flex gap-2 items-center flex-wrap justify-end w-full sm:w-auto">
+          <label className="flex items-center gap-2 text-xs" style={{ color: "var(--ink-2)" }}>
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-input"
+              checked={showClosed}
+              onChange={(e) => setShowClosed(e.target.checked)}
+              aria-label="Show closed jobs"
+            />
+            Show closed
+          </label>
           <input
             type="search"
             value={keywordFilter}

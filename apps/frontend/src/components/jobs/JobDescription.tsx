@@ -28,6 +28,18 @@ const MAIN_SUBTITLE_HEADINGS = new Set([
   "minimum qualifications",
 ]);
 
+const SECTION_HTML_META: {
+  key: string;
+  title: string;
+  icon: string;
+}[] = [
+  { key: "responsibilities", title: "Responsibilities", icon: "📋" },
+  { key: "requirements", title: "Requirements", icon: "✅" },
+  { key: "benefits", title: "Benefits", icon: "🎁" },
+  { key: "how_to_apply", title: "How to apply", icon: "📧" },
+  { key: "about", title: "About", icon: "🏢" },
+];
+
 export type JobDescriptionSections = {
   section_responsibilities?: string | null;
   section_requirements?: string | null;
@@ -35,6 +47,14 @@ export type JobDescriptionSections = {
   section_how_to_apply?: string | null;
   section_about?: string | null;
 };
+
+const proseClasses = cn(
+  "job-description-markdown prose prose-zinc max-w-none text-sm",
+  "dark:prose-invert",
+  "prose-headings:mt-8 prose-headings:mb-3",
+  "prose-p:my-4 prose-li:my-1",
+  "prose-h2:text-base prose-h3:text-sm",
+);
 
 function headingText(children: React.ReactNode): string {
   if (typeof children === "string") return children.trim();
@@ -121,9 +141,11 @@ function MarkdownBlock({ md }: { md: string }) {
 function StructuredSectionCard({
   title,
   body,
+  icon,
 }: {
   title: string;
   body: string;
+  icon?: string;
 }) {
   return (
     <section
@@ -131,9 +153,35 @@ function StructuredSectionCard({
       style={{ borderColor: "var(--line)", background: "var(--bg-2)" }}
     >
       <h3 className="job-description-heading text-xs font-bold tracking-widest uppercase text-muted-foreground mb-3">
+        {icon ? `${icon} ` : ""}
         {title}
       </h3>
       <MarkdownBlock md={body} />
+    </section>
+  );
+}
+
+function HtmlSectionCard({
+  title,
+  html,
+  icon,
+}: {
+  title: string;
+  html: string;
+  icon: string;
+}) {
+  return (
+    <section
+      className="rounded-xl border p-4 mb-4"
+      style={{ borderColor: "var(--line)", background: "var(--bg-2)" }}
+    >
+      <h3 className="job-description-heading text-xs font-bold tracking-widest uppercase text-muted-foreground mb-3">
+        {icon} {title}
+      </h3>
+      <div
+        className={proseClasses}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
     </section>
   );
 }
@@ -148,15 +196,47 @@ function hasStructuredSections(sections: JobDescriptionSections): boolean {
   );
 }
 
+function hasSectionHtml(sectionHtml: Record<string, string> | null | undefined): boolean {
+  if (!sectionHtml) return false;
+  return Object.values(sectionHtml).some((v) => v && v.trim());
+}
+
 export function JobDescription({
   description,
   descriptionMarkdown,
+  descriptionHtml,
+  sectionHtml,
   sections,
 }: {
   description: string | null | undefined;
   descriptionMarkdown?: string | null;
+  descriptionHtml?: string | null;
+  sectionHtml?: Record<string, string> | null;
   sections?: JobDescriptionSections;
 }) {
+  if (descriptionHtml?.trim()) {
+    return (
+      <article
+        className={proseClasses}
+        dangerouslySetInnerHTML={{ __html: descriptionHtml.trim() }}
+      />
+    );
+  }
+
+  if (hasSectionHtml(sectionHtml)) {
+    return (
+      <div className={proseClasses}>
+        {SECTION_HTML_META.map(({ key, title, icon }) => {
+          const html = sectionHtml?.[key];
+          if (!html?.trim()) return null;
+          return (
+            <HtmlSectionCard key={key} title={title} html={html} icon={icon} />
+          );
+        })}
+      </div>
+    );
+  }
+
   const structured = sections ?? {};
   if (hasStructuredSections(structured)) {
     const cards: { title: string; body: string }[] = [];
@@ -188,7 +268,7 @@ export function JobDescription({
       cards.push({ title: "About", body: structured.section_about.trim() });
     }
     return (
-      <div className="job-description-markdown prose prose-sm max-w-none text-sm text-foreground/90 dark:text-foreground/90 dark:prose-invert">
+      <div className={proseClasses}>
         {cards.map((card) => (
           <StructuredSectionCard key={card.title} title={card.title} body={card.body} />
         ))}
@@ -209,7 +289,7 @@ export function JobDescription({
   }
 
   return (
-    <div className="job-description-markdown prose prose-sm max-w-none text-sm text-foreground/90 dark:text-foreground/90 dark:prose-invert">
+    <div className={proseClasses}>
       <MarkdownBlock md={md} />
     </div>
   );

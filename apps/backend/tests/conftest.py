@@ -127,6 +127,8 @@ class FakeSupabase:
         self.storage.from_ = MagicMock(return_value=MagicMock())
 
     def table(self, name):
+        if name == "jobs_user_facing" and name not in self._tables:
+            return self._tables.get("jobs", FakeSupabaseQuery())
         return self._tables.get(name, FakeSupabaseQuery())
 
     def set_table(self, name, query: "FakeSupabaseQuery"):

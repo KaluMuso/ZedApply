@@ -9,6 +9,7 @@ import {
   type ApplyJobFields,
 } from "@/lib/applyLink";
 import type { MatchData } from "@/lib/api";
+import { isJobListingClosed } from "@/lib/isJobListingClosed";
 import { SkillBadge } from "@/components/SkillBadge";
 import { Icon } from "@/components/ui/Icon";
 import {
@@ -36,11 +37,13 @@ export function MatchCard({
 }: MatchCardProps) {
   const apply = resolveApplyAction(match.job as ApplyJobFields);
   const useExternalLink = Boolean(apply?.external && !onApplyClick);
+  const closed = isJobListingClosed(match.job);
+  const dimmed = expired || closed;
 
   return (
     <article
       className="card job-card overflow-hidden relative"
-      style={{ opacity: expired ? 0.5 : 1 }}
+      style={{ opacity: dimmed ? 0.55 : 1 }}
       data-testid="match-card"
     >
       {expired && (
@@ -52,6 +55,17 @@ export function MatchCard({
           }}
         >
           EXPIRED
+        </span>
+      )}
+      {closed && !expired && (
+        <span
+          className="absolute top-3 right-3 z-10 px-2 py-0.5 rounded text-[10px] font-bold font-mono tracking-wide"
+          style={{
+            background: "var(--muted)",
+            color: "#faf7f2",
+          }}
+        >
+          CLOSED
         </span>
       )}
       <div
@@ -102,7 +116,7 @@ export function MatchCard({
         </div>
 
         <div className="match-actions flex flex-col gap-2 items-end">
-          {expired ? (
+          {expired || closed ? (
             <button
               type="button"
               className="btn btn-primary btn-sm w-40"

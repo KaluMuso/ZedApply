@@ -63,6 +63,16 @@ describe("MatchCard", () => {
     expect(screen.getByText("EXPIRED")).toBeInTheDocument();
   });
 
+  it("shows CLOSED badge when job is inactive", () => {
+    const match: MatchData = {
+      ...baseMatch,
+      job: { ...baseMatch.job, is_active: false },
+    };
+    render(<MatchCard match={match} onApplyClick={vi.fn()} />);
+    expect(screen.getByText("CLOSED")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /application closed/i })).toBeDisabled();
+  });
+
   it("shows locked tailor button when canTailorCv is false", () => {
     render(<MatchCard match={baseMatch} canTailorCv={false} />);
     expect(screen.getByTestId("match-tailor-cv-locked")).toHaveAttribute(
