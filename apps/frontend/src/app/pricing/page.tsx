@@ -28,6 +28,12 @@ import {
   setLencoMerchantLabel,
 } from "@/lib/lenco";
 import type { LencoPayOptions } from "@/types/lenco-pay";
+import {
+  freeTierComparisonMatches,
+  TIER_MARKETING_FEATURES,
+  tierMatchesFaqAnswer,
+} from "@/lib/tier-marketing";
+import { PricingSkeleton } from "@/components/shared/skeletons/PageSkeletons";
 
 const LENCO_SCRIPT_URL = getLencoScriptUrl();
 
@@ -55,12 +61,7 @@ const plans: Plan[] = [
     price: "K0",
     period: "forever",
     tier: "free",
-    features: [
-      "3 job matches per month (7/mo welcome bonus for your first 2 months)",
-      "WhatsApp alerts",
-      "Basic CV analysis",
-      "Job browsing",
-    ],
+    features: TIER_MARKETING_FEATURES.free,
     highlight: false,
   },
   {
@@ -69,13 +70,7 @@ const plans: Plan[] = [
     price: "K125",
     period: "/month",
     tier: "starter",
-    features: [
-      "50 job matches per month",
-      "AI-generated tailored CVs",
-      "Priority matching",
-      "WhatsApp + web dashboard",
-      "Score breakdowns",
-    ],
+    features: TIER_MARKETING_FEATURES.starter,
     highlight: true,
   },
   {
@@ -84,14 +79,7 @@ const plans: Plan[] = [
     price: "K250",
     period: "/month",
     tier: "professional",
-    features: [
-      "125 job matches per month",
-      "AI cover letter generation",
-      "Career coaching insights",
-      "Priority support",
-      "CV rewriting per role",
-      "Everything in Starter",
-    ],
+    features: TIER_MARKETING_FEATURES.professional,
     highlight: false,
   },
   {
@@ -100,13 +88,7 @@ const plans: Plan[] = [
     price: "K500",
     period: "/month",
     tier: "super_standard",
-    features: [
-      "Unlimited job matches",
-      "Interview prep notes (Interview Call)",
-      "Everything in Professional",
-      "Priority delivery",
-      "Concierge onboarding",
-    ],
+    features: TIER_MARKETING_FEATURES.super_standard,
     highlight: false,
   },
 ];
@@ -122,7 +104,7 @@ const faqs = [
   },
   {
     q: "What counts as a 'match'?",
-    a: "Each time our AI scores your CV against a job listing and delivers the result to you (via WhatsApp or dashboard), that counts as one match. Free includes 7 matches per month for your first 2 months, then 3 per month.",
+    a: tierMatchesFaqAnswer(),
   },
   {
     q: "Is my CV data secure?",
@@ -139,7 +121,7 @@ interface ComparisonFeature {
 }
 
 const comparisonFeatures: ComparisonFeature[] = [
-  { name: "Job matches / month", free: "3 (7 welcome)", starter: "50", pro: "125", super_standard: "Unlimited" },
+  { name: "Job matches / month", free: freeTierComparisonMatches(), starter: "50", pro: "125", super_standard: "Unlimited" },
   { name: "WhatsApp alerts", free: true, starter: true, pro: true, super_standard: true },
   { name: "CV analysis", free: "Basic", starter: "Advanced", pro: "Advanced", super_standard: "Advanced" },
   { name: "Tailored CVs", free: false, starter: true, pro: true, super_standard: true },
@@ -258,8 +240,6 @@ export default function PricingPage() {
   };
 
   const startLencoPayment = async (tier: string) => {
-    console.log("[upgrade-click]", tier);
-
     if (!token || !user?.id) {
       router.push("/auth?next=/pricing");
       return;
@@ -312,7 +292,6 @@ export default function PricingPage() {
           phone: lencoPhone(prof?.phone),
         },
         onSuccess: async (response) => {
-          console.log("[lenco-success]", response.reference);
           try {
             const result = await subscription.verifyPayment(token, {
               reference: response.reference,
@@ -338,7 +317,6 @@ export default function PricingPage() {
           }
         },
         onClose: () => {
-          console.log("[lenco-close]");
           notify.info("Payment cancelled");
           setPayingTier(null);
         },
@@ -360,14 +338,6 @@ export default function PricingPage() {
   };
 
   const handlePlanClick = (tier: string) => {
-    console.log("[plan-click]", tier, {
-      isAuthenticated,
-      authLoading,
-      currentTier,
-      lencoReady,
-      action: planAction(tier),
-    });
-
     if (tier === "free") {
       if (!isAuthenticated) router.push("/auth?next=/pricing");
       return;
@@ -400,7 +370,6 @@ export default function PricingPage() {
         src={LENCO_SCRIPT_URL}
         strategy="afterInteractive"
         onLoad={() => {
-          console.log("[lenco-script] loaded");
           if (isLencoReady()) setLencoReady(true);
         }}
         onError={() => {

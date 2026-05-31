@@ -29,6 +29,7 @@ export function UserMenuDropdown({
     { href: "/dashboard", label: "Dashboard", icon: "home" },
     { href: "/profile", label: "Profile", icon: "user" },
     { href: "/profile?tab=cv-generator", label: "CV Generator", icon: "file" },
+    { href: "/applications", label: "Applications", icon: "briefcase" },
     { href: "/matches", label: "My matches", icon: "sparkle" },
     { href: "/settings/notifications", label: "Notifications", icon: "bell" },
     { href: "/settings/account", label: "Account settings", icon: "settings" },

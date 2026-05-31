@@ -21,6 +21,9 @@ import {
   JobsSidebarMobile,
   type JobsListPreset,
 } from "@/components/jobs/JobsSidebar";
+import { authPath } from "@/lib/auth-paths";
+import { EmptyState } from "@/components/shared/EmptyState";
+import { useRecentSearches } from "@/hooks/useRecentSearches";
 
 const ZAMBIAN_LOCATIONS = [
   "All Locations",
@@ -132,6 +135,8 @@ export default function JobsPageClient() {
   const [listPreset, setListPreset] = useState<JobsListPreset>("all");
   const urlHydratedRef = useRef(false);
   const lastUrlSyncRef = useRef("");
+  const { recent: recentSearches, push: pushRecentSearch, clear: clearRecentSearches } =
+    useRecentSearches();
 
   const syncFiltersToUrl = process.env.VITEST === undefined;
 
@@ -202,10 +207,11 @@ export default function JobsPageClient() {
   useEffect(() => {
     const t = setTimeout(() => {
       setSearchQuery(searchInput);
+      if (searchInput.trim()) pushRecentSearch(searchInput);
       setPage(1);
     }, 300);
     return () => clearTimeout(t);
-  }, [searchInput]);
+  }, [searchInput, pushRecentSearch]);
 
   const effectiveSort =
     listPreset === "closing" ? "closing" : sort;
@@ -344,14 +350,7 @@ export default function JobsPageClient() {
 
       {/* Filter bar */}
       {/* Filter bar — search is debounced (300ms); no submit button. */}
-      <div
-        className="sticky top-[65px] z-30 -mx-6 px-6 py-4 mb-6 flex flex-col md:flex-row gap-3 items-stretch md:items-center dark:bg-background/90 dark:border-border"
-        style={{
-          background: "rgba(250,247,242,0.9)",
-          backdropFilter: "blur(12px)",
-          borderBottom: "1px solid var(--line)",
-        }}
-      >
+      <div className="sticky-surface-bar sticky top-[65px] z-30 -mx-6 px-6 py-4 mb-6 flex flex-col md:flex-row gap-3 items-stretch md:items-center">
         <div className="relative flex-1">
           <Icon
             name="search"
@@ -373,7 +372,15 @@ export default function JobsPageClient() {
             className="field pl-10"
             style={{ height: 44 }}
             aria-label="Search jobs"
+            list="job-recent-searches"
           />
+          {recentSearches.length > 0 ? (
+            <datalist id="job-recent-searches">
+              {recentSearches.map((term) => (
+                <option key={term} value={term} />
+              ))}
+            </datalist>
+          ) : null}
         </div>
 
         <select
@@ -409,6 +416,33 @@ export default function JobsPageClient() {
             </option>
           ))}
         </select>
+
+        {recentSearches.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto" aria-label="Recent searches">
+            {recentSearches.slice(0, 4).map((term) => (
+              <button
+                key={term}
+                type="button"
+                className="tag tag-mono shrink-0"
+                onClick={() => {
+                  setSearchInput(term);
+                  setSearchQuery(term);
+                  setPage(1);
+                }}
+              >
+                {term}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="text-xs underline"
+              style={{ color: "var(--muted)" }}
+              onClick={clearRecentSearches}
+            >
+              Clear
+            </button>
+          </div>
+        ) : null}
 
         {/* task #60: employment type + work arrangement filters.
             Hidden today via FILTERS_AVAILABLE because the columns are
@@ -527,40 +561,31 @@ export default function JobsPageClient() {
           </a>
         </div>
       ) : jobsList.length === 0 ? (
-        <div className="text-center py-20">
-          <div
-            className="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center"
-            style={{
-              border: "2px dashed var(--line-2)",
-              color: "var(--muted)",
-            }}
-          >
-            <Icon name="search" size={24} />
-          </div>
-          <h3
-            className="font-display text-2xl mb-2"
-            style={{ letterSpacing: "-0.01em" }}
-          >
-            {searchQuery || location || employmentType || workArrangement
+        <EmptyState
+          title={
+            searchQuery || location || employmentType || workArrangement
               ? "No jobs match your filters"
-              : "No jobs are open right now"}
-          </h3>
-          <p className="text-sm mb-5 max-w-md mx-auto" style={{ color: "var(--muted)" }}>
-            {searchQuery || location || employmentType || workArrangement
+              : "No jobs are open right now"
+          }
+          description={
+            searchQuery || location || employmentType || workArrangement
               ? "Try a broader search or remove a filter. New listings arrive throughout the week."
-              : "Check back soon — new roles are scraped daily across Zambia."}
-          </p>
-          <div className="flex gap-3 justify-center">
-            {(searchQuery || location || employmentType || workArrangement) && (
-              <button onClick={resetFilters} className="btn btn-ghost btn-sm">
-                Reset filters
-              </button>
-            )}
-            <a href="/signin" className="btn btn-primary btn-sm">
-              Get matches on WhatsApp
-            </a>
-          </div>
-        </div>
+              : "Check back soon — new roles are scraped daily across Zambia."
+          }
+          ctaText="Get matches on WhatsApp"
+          ctaHref={authPath("/matches")}
+          secondaryCtaText={
+            searchQuery || location || employmentType || workArrangement
+              ? "Reset filters"
+              : undefined
+          }
+          onSecondaryCtaClick={
+            searchQuery || location || employmentType || workArrangement
+              ? resetFilters
+              : undefined
+          }
+          className="my-8"
+        />
       ) : (
         <>
           <JobsSidebarMobile

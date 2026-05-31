@@ -11,6 +11,8 @@ import { Icon } from "@/components/ui/Icon";
 import { buttonVariants } from "@/components/ui/button";
 import { UserMenuDropdown, UserMenuTrigger } from "@/components/nav/UserMenuDropdown";
 import { formatTierNavSubtitle } from "@/lib/tier-display";
+import { AUTH_GET_STARTED } from "@/lib/auth-paths";
+import { InterviewPrepNav } from "@/components/nav/InterviewPrepNav";
 import { cn } from "@/lib/utils";
 
 type NavProfile = {
@@ -29,14 +31,7 @@ export function Navbar() {
   const { dark, toggle } = useTheme();
   const pathname = usePathname();
 
-  const interviewPrepSubLinks =
-    subscriptionTier === "super_standard"
-      ? [
-          { href: "/interview-prep/mock", label: "Mock Interview" },
-          { href: "/interview-prep/aptitude", label: "Aptitude Tests" },
-          { href: "/interview-prep/history", label: "History" },
-        ]
-      : [];
+  const showInterviewPrep = subscriptionTier === "super_standard";
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 10);
@@ -84,8 +79,14 @@ export function Navbar() {
   const navLinks = [
     { href: "/jobs", label: "Jobs" },
     { href: "/matches", label: "Matches" },
+    { href: "/applications", label: "Applications", authOnly: true },
+    { href: "/profile", label: "Profile", authOnly: true },
     { href: "/pricing", label: "Pricing" },
   ];
+
+  const visibleNavLinks = navLinks.filter(
+    (link) => !link.authOnly || isAuthenticated,
+  );
 
   const displayName = navProfile?.fullName ?? "Account";
 
@@ -108,7 +109,7 @@ export function Navbar() {
           </Link>
 
           <div className="hidden md:flex items-center gap-8">
-            {navLinks.map((link) => (
+            {visibleNavLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
@@ -125,42 +126,7 @@ export function Navbar() {
                 Dashboard
               </Link>
             ) : null}
-            {interviewPrepSubLinks.length > 0 && (
-              <div className="relative group">
-                <Link
-                  href="/interview-prep"
-                  className={`nav-link ${
-                    pathname.startsWith("/interview-prep") ? "active" : ""
-                  }`}
-                >
-                  Interview Prep
-                </Link>
-                <div
-                  className="absolute left-0 top-full pt-2 hidden group-hover:block z-50"
-                  role="menu"
-                >
-                  <div
-                    className="min-w-[180px] py-2 rounded-xl"
-                    style={{
-                      background: "var(--surface)",
-                      border: "1px solid var(--line)",
-                      boxShadow: "var(--shadow-lg)",
-                    }}
-                  >
-                    {interviewPrepSubLinks.map((link) => (
-                      <Link
-                        key={link.href}
-                        href={link.href}
-                        className="block px-4 py-2 text-sm hover:bg-[var(--bg-2)] transition-colors"
-                        style={{ color: "var(--ink-2)" }}
-                      >
-                        {link.label}
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
+            {showInterviewPrep ? <InterviewPrepNav /> : null}
           </div>
 
           <div className="hidden md:flex items-center gap-3">
@@ -210,7 +176,7 @@ export function Navbar() {
                   Log in
                 </Link>
                 <Link
-                  href="/auth?next=/matches"
+                  href={AUTH_GET_STARTED}
                   className={cn(buttonVariants({ variant: "primary", size: "sm" }))}
                   title="New here? Create your account in under a minute"
                 >
@@ -237,7 +203,7 @@ export function Navbar() {
             style={{ background: "var(--surface)" }}
           >
             <div className="flex flex-col p-6 gap-2">
-              {navLinks.map((link) => (
+              {visibleNavLinks.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
@@ -252,20 +218,12 @@ export function Navbar() {
                   {link.label}
                 </Link>
               ))}
-              {interviewPrepSubLinks.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setMenuOpen(false)}
-                  className="font-display text-2xl py-2 transition-colors pl-4"
-                  style={{
-                    color: pathname === link.href ? "var(--green-700)" : "var(--ink-2)",
-                    borderBottom: "1px solid var(--line)",
-                  }}
-                >
-                  {link.label}
-                </Link>
-              ))}
+              {showInterviewPrep ? (
+                <InterviewPrepNav
+                  variant="stacked"
+                  onNavigate={() => setMenuOpen(false)}
+                />
+              ) : null}
 
               <div className="mt-6 flex flex-col gap-3">
                 <button
@@ -296,6 +254,13 @@ export function Navbar() {
                       className={cn(buttonVariants({ variant: "ghost" }), "w-full justify-start gap-2")}
                     >
                       <Icon name="home" size={16} /> Dashboard
+                    </Link>
+                    <Link
+                      href="/applications"
+                      onClick={() => setMenuOpen(false)}
+                      className={cn(buttonVariants({ variant: "ghost" }), "w-full justify-start gap-2")}
+                    >
+                      <Icon name="briefcase" size={16} /> Applications
                     </Link>
                     <Link
                       href="/profile"
@@ -347,7 +312,7 @@ export function Navbar() {
                       Log in
                     </Link>
                     <Link
-                      href="/auth?next=/matches"
+                      href={AUTH_GET_STARTED}
                       onClick={() => setMenuOpen(false)}
                       className={cn(buttonVariants({ variant: "primary" }), "w-full justify-center gap-2")}
                     >

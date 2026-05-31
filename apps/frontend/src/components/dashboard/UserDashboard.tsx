@@ -27,6 +27,8 @@ export type UserDashboardProps = {
   subscription?: Subscription | null;
   subscriptionTier?: string;
   subscriptionTierLabel?: string;
+  profileCompleteness?: { percent: number; hints: readonly string[] };
+  applicationsCount?: number;
 };
 
 function mapMatchToCondensed(m: MatchData) {
@@ -47,17 +49,30 @@ export function UserDashboard({
   liveData,
   subscription,
   subscriptionTier = "free",
+  profileCompleteness,
+  applicationsCount = 0,
 }: UserDashboardProps) {
   const data = MOCK_DASHBOARD;
   const displayName = userName ?? data.userName;
   const headerDate = formatDashboardHeaderDate(new Date());
   const useLive = Boolean(liveData);
 
+  const quotaPct =
+    subscription && subscription.matches_limit < 99999
+      ? Math.min(100, Math.round((subscription.matches_used / subscription.matches_limit) * 100))
+      : null;
+
   const stats = useLive
     ? [
         {
           label: "Total matches",
           value: String(liveData!.totalMatches),
+          detail: quotaPct != null ? `${quotaPct}% of quota` : undefined,
+        },
+        {
+          label: "In pipeline",
+          value: String(applicationsCount),
+          detail: "applications",
         },
         {
           label: "Saved jobs",
@@ -66,13 +81,7 @@ export function UserDashboard({
         {
           label: "Avg. match score",
           value: liveData!.avgScore != null ? `${liveData!.avgScore}%` : "—",
-        },
-        {
-          label: "Top match today",
-          value:
-            liveData!.topMatches[0] != null
-              ? `${liveData!.topMatches[0].score}%`
-              : "—",
+          detail: liveData!.avgScore != null && liveData!.avgScore >= 70 ? "Strong" : undefined,
         },
       ]
     : data.stats;
@@ -212,21 +221,53 @@ export function UserDashboard({
               </li>
             </ul>
           </div>
-          {!useLive && (
-            <>
-              <ProfileCompletenessRing
-                percent={data.profileCompleteness}
-                hints={data.profileHints}
-              />
-              <RecentActivityTimeline items={data.recentActivity} />
-            </>
+          {profileCompleteness ? (
+            <ProfileCompletenessRing
+              percent={profileCompleteness.percent}
+              hints={profileCompleteness.hints}
+            />
+          ) : !useLive ? (
+            <ProfileCompletenessRing
+              percent={data.profileCompleteness}
+              hints={data.profileHints}
+            />
+          ) : null}
+          {!useLive ? (
+            <RecentActivityTimeline items={data.recentActivity} />
+          ) : (
+            <div
+              className="rounded-xl border p-5"
+              style={{ borderColor: "var(--line)", background: "var(--surface)" }}
+            >
+              <h2 className="type-section-title mb-3">Recent actions</h2>
+              <ul className="space-y-2 text-sm" style={{ color: "var(--muted)" }}>
+                <li>
+                  <Link href="/matches" className="hover:underline" style={{ color: "var(--green-700)" }}>
+                    Review {liveData?.totalMatches ?? 0} matches
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/applications" className="hover:underline" style={{ color: "var(--green-700)" }}>
+                    Track {applicationsCount} applications
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/jobs" className="hover:underline" style={{ color: "var(--green-700)" }}>
+                    Browse open roles
+                  </Link>
+                </li>
+              </ul>
+            </div>
           )}
         </div>
       </section>
 
-      {!useLive && (
-        <UpgradeBanner currentTier={data.currentTier} upgradeTier={data.upgradeTier} />
-      )}
+      {subscriptionTier !== "super_standard" ? (
+        <UpgradeBanner
+          currentTier={useLive ? subscriptionTier : data.currentTier}
+          upgradeTier={useLive ? "starter" : data.upgradeTier}
+        />
+      ) : null}
     </div>
   );
 }

@@ -120,7 +120,7 @@ describe("/jobs page filters", () => {
 
       const user = userEvent.setup();
       await user.type(
-        screen.getByRole("textbox", { name: /search jobs/i }),
+        screen.getByLabelText(/search jobs/i),
         "accountant",
       );
 
@@ -143,7 +143,7 @@ describe("/jobs page filters", () => {
     renderJobsPage();
     await waitFor(() => expect(requestedUrls.length).toBeGreaterThan(0));
 
-    const field = screen.getByRole("textbox", { name: /search jobs/i });
+    const field = screen.getByLabelText(/search jobs/i);
     await user.type(field, "engineer{Enter}");
 
     await waitFor(() => {

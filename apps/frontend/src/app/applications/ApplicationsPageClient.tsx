@@ -18,6 +18,8 @@ import {
 } from "@/lib/application-status";
 import { KanbanColumn } from "@/components/applications/KanbanColumn";
 import { StatusModal } from "@/components/applications/StatusModal";
+import { EmptyState } from "@/components/shared/EmptyState";
+import { DashboardSkeleton } from "@/components/shared/skeletons/PageSkeletons";
 
 function normalizeApplications(
   rows: SavedJobApplication[] | undefined,
@@ -224,16 +226,7 @@ export function ApplicationsPageClient() {
   }, [handleDrop]);
 
   if (authLoading || loading) {
-    return (
-      <div className="mx-auto max-w-[1400px] space-y-4 py-8">
-        <div className="skeleton h-10 w-72" />
-        <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-5">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="skeleton h-64 rounded-xl" />
-          ))}
-        </div>
-      </div>
-    );
+    return <DashboardSkeleton className="max-w-[1400px]" />;
   }
 
   return (
@@ -255,17 +248,12 @@ export function ApplicationsPageClient() {
       </header>
 
       {applications.length === 0 ? (
-        <div
-          className="rounded-xl border px-6 py-12 text-center"
-          style={{ borderColor: "var(--line)", background: "var(--surface)" }}
-        >
-          <p className="text-sm" style={{ color: "var(--muted)" }}>
-            No saved jobs yet. Save roles from the jobs feed to start tracking applications.
-          </p>
-          <Link href="/jobs" className="btn btn-primary btn-sm mt-4 inline-flex">
-            Browse jobs
-          </Link>
-        </div>
+        <EmptyState
+          title="No applications yet"
+          description="Save roles from the jobs feed, then drag them through your pipeline here."
+          ctaText="Browse jobs"
+          ctaHref="/jobs"
+        />
       ) : isMobile ? (
         <div className="space-y-3">
           {KANBAN_COLUMNS.map((column) => (

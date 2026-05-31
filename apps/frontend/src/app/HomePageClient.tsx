@@ -11,6 +11,8 @@ import { Counter } from "@/components/ui/Counter";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
 import { useAuth } from "@/lib/auth";
 import { publicStats, type PublicStats } from "@/lib/api";
+import { freeTierMatchesBlurb, freeTierFaqMatchExplanation } from "@/lib/tier-marketing";
+import { AUTH_GET_STARTED } from "@/lib/auth-paths";
 
 interface Plan {
   name: string;
@@ -25,7 +27,7 @@ const plans: Plan[] = [
     name: "Free",
     price: "K0",
     period: "forever",
-    blurb: "10 matches/month + WhatsApp alerts",
+    blurb: `${freeTierMatchesBlurb()} + WhatsApp alerts`,
     highlight: false,
   },
   {
@@ -79,7 +81,7 @@ const faqs: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "Is it free?",
-    a: "Yes. The Free tier gives you 10 matches per month, WhatsApp alerts, and full job browsing — forever. Paid tiers (K125–K500/month) unlock more matches and AI features like tailored CVs and cover letters.",
+    a: `Yes. ${freeTierFaqMatchExplanation()} WhatsApp alerts and full job browsing are included on the Free tier. Paid tiers (K125–K500/month) unlock more matches and AI features like tailored CVs and cover letters.`,
   },
   {
     q: "Where do the jobs come from?",
