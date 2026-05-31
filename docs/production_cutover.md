@@ -4,9 +4,10 @@ Move from sandbox integrations to production credentials and soft launch.
 Run `python scripts/production_readiness_audit.py` from `apps/backend/` before
 each phase and after deploys.
 
-**Repo migrations:** `001`–`080` under `infra/supabase/migrations/` (latest:
-`080_apply_url_backfill_log.sql`). Apply any pending files on Supabase before
-enabling features that depend on them (074–079 for Wave B/D). If prod already
+**Repo migrations:** `001`–`088` under `infra/supabase/migrations/` (latest:
+`088_employer_rls_policies.sql`). Apply any pending files on Supabase before
+enabling features that depend on them (**074–088** for Wave B/D/E: Kanban,
+employer portal, web push, cover letters, employer RLS). If prod already
 has schema under **old** duplicate prefixes, run **only** `059_audit_idempotent.sql`
 to verify — see `docs/migrations.md`. Do not re-apply renumbered files.
 
@@ -102,6 +103,8 @@ curl -s https://api.zedcv.com/api/v1/health | jq .
 
 ## Related docs
 
+- `docs/RUNBOOK_INDEX.md` — ops runbooks (Lenco, WAHA, Resend, migrations, backfill, n8n)
+- `docs/staging.md` — Supabase branch / staging env matrix and smoke list
 - `docs/lenco_production_cutover.md` — Lenco sandbox → production (env swap + smoke test)
 - `DEPLOY.md` — routine deploy steps
 - `AGENTS.md` §3 — known failure modes (CORS, WAHA, matching)

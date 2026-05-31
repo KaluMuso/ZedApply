@@ -26,27 +26,35 @@ Zed CV is an AI-powered job matching SaaS for Zambia. It scrapes/ingests job lis
 | Frontend | Next.js 14 (App Router, TypeScript) | Vercel | Free |
 | Automation | n8n | Oracle Cloud Always Free | Free |
 | WhatsApp | WAHA (self-hosted Docker) | Oracle Cloud Always Free | Free |
-| Embeddings | OpenAI text-embedding-3-small | OpenAI API | ~$2/mo |
-| LLM (parsing) | Claude Haiku (with prompt caching) | API | ~$5-15/mo |
+| Embeddings | Google `gemini-embedding-001` (768 dim, cosine) | Gemini API | Free tier + cache |
+| LLM (parsing) | Gemini Flash via OpenRouter (+ Claude where cached) | API | ~$5-15/mo |
 | Payments | DPO Pay | DPO Pay API | Per-txn |
 | Currency | ZMW (Zambian Kwacha) | — | — |
 
 ## Database (Supabase)
 - Project ID: chnesgmcuxyhwhzomdov
 - Region: eu-west-2
-- Uses `pgvector` extension for embedding storage (1536 dimensions)
+- Uses `pgvector` extension for embedding storage (**768 dimensions**, `vector(768)` since migration 007)
+- Embedding model invariant: **`gemini-embedding-001`** — changing without re-embedding jobs and CVs yields zero matches
 - Heartbeat cron via n8n every 6 hours to prevent free tier pausing
 - All migrations in `infra/supabase/migrations/`
 - RPC functions for matching queries (avoid N+1 from application layer)
 
 ## Matching Algorithm
-```
-final_score = (vector_similarity * 0.6) + (skill_overlap * 0.3) + (bonus_signals * 0.1)
-```
-- **vector_similarity** (60%): cosine similarity between CV embedding and job embedding
-- **skill_overlap** (30%): |intersection(user_skills, job_skills)| / |job_skills|
-- **bonus_signals** (10%): location match, experience range, recency, job quality score
-- LLM explanation generated ONLY for matches with score > 70
+
+Implemented in Postgres RPC `match_jobs_for_user` (migration **060**). Weights are **additive components** (max 100), not a single cosine blend:
+
+| Component | Weight | Notes |
+|-----------|--------|--------|
+| Semantic | **50%** | `(1 - cosine_distance) * 50` between CV and job embeddings |
+| Skills | **20%** | Required-skill overlap |
+| Experience | **15%** | `compute_experience_score` vs job min/max years |
+| Location | **10%** | Exact location or remote/hybrid |
+| Recency | **5%** | Linear decay over ~30 days |
+
+- **Hard floor:** RPC returns nothing below **35**; HTTP `/matches` typically filters at **50** (`p_min_score`).
+- **Explanations:** Human-readable breakdown from `app/services/match_explanation.py` (stored on match rows). Do not change RPC column names without updating OpenAPI and frontend Zod schemas.
+- **Re-embed:** If `EMBEDDING_MODEL` changes, run `POST /api/v1/admin/re-embed?target=all` on both jobs and CVs.
 
 ## Job Quality Score (0-100)
 - Company name present: +15
@@ -129,10 +137,11 @@ zed-cv/
 ## Environment Variables Required
 ```
 SUPABASE_URL=https://chnesgmcuxyhwhzomdov.supabase.co
-SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_KEY=
-OPENAI_API_KEY=
-ANTHROPIC_API_KEY=
+SUPABASE_KEY=              # service_role (backend)
+GEMINI_API_KEY=
+OPENROUTER_API_KEY=
+EMBEDDING_MODEL=gemini-embedding-001
+ANTHROPIC_API_KEY=         # optional; prompt caching when used
 DPO_PAY_COMPANY_TOKEN=
 DPO_PAY_SERVICE_TYPE=
 WAHA_API_URL=http://localhost:3000
