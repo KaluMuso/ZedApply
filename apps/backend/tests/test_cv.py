@@ -206,16 +206,24 @@ class TestCVUpload:
         mock_embed.assert_not_called()
 
     @patch("app.api.v1.cv._sniff_mime", side_effect=_mime_for_pdf)
+    @patch("app.api.v1.cv.parse_cv_via_vision", new_callable=AsyncMock)
     @patch("app.api.v1.cv.extract_text_from_file", new_callable=AsyncMock)
     def test_upload_image_scanned_pdf_rejected(
         self,
         mock_extract,
+        mock_vision,
         mock_sniff,
         client,
         auth_headers,
     ):
-        """Scanned PDFs with no extractable text return a structured 422."""
+        """Scanned PDFs with no extractable text return 422 after vision fails."""
         mock_extract.return_value = "   \n  "
+        mock_vision.return_value = {
+            "full_name": "",
+            "skills": [],
+            "experience_summary": "",
+            "confidence": 0.0,
+        }
 
         resp = client.post(
             "/api/v1/cv/upload",
@@ -227,3 +235,100 @@ class TestCVUpload:
         body = resp.json()
         assert body["detail"] == "image_scanned_pdf"
         assert "scanned image" in body["user_message"].lower()
+        mock_vision.assert_called_once()
+
+    @patch("app.api.v1.cv._sniff_mime", side_effect=_mime_for_pdf)
+    @patch("app.api.v1.cv.resolve_skill_ids", new_callable=AsyncMock)
+    @patch("app.api.v1.cv.generate_embedding", new_callable=AsyncMock)
+    @patch("app.api.v1.cv.parse_cv_with_llm", new_callable=AsyncMock)
+    @patch("app.api.v1.cv.parse_cv_via_vision", new_callable=AsyncMock)
+    @patch("app.api.v1.cv.extract_text_from_file", new_callable=AsyncMock)
+    def test_text_pdf_does_not_invoke_vision(
+        self,
+        mock_extract,
+        mock_vision,
+        mock_parse_llm,
+        mock_embed,
+        mock_resolve,
+        mock_sniff,
+        client,
+        auth_headers,
+        fake_supabase,
+    ):
+        """PDFs with sufficient extracted text skip the vision path."""
+        mock_resolve.return_value = []
+        mock_extract.return_value = "John Doe\n" + ("Python developer. " * 30)
+        mock_parse_llm.return_value = {
+            "full_name": "John Doe",
+            "skills": ["python"],
+            "experience_summary": "Developer",
+            "confidence": 0.9,
+        }
+        mock_embed.return_value = [0.1] * 768
+
+        fake_supabase.set_table(
+            "cvs",
+            FakeSupabaseQuery(
+                data=[{"id": "cv-001", "user_id": "test-user-id", "file_url": "x"}]
+            ),
+        )
+        fake_supabase.set_table("skills", FakeSupabaseQuery(data=[]))
+        fake_supabase.set_table("user_skills", FakeSupabaseQuery(data=[]))
+
+        resp = client.post(
+            "/api/v1/cv/upload",
+            headers=auth_headers,
+            files={"file": ("resume.pdf", b"fake-pdf-content", "application/pdf")},
+        )
+
+        assert resp.status_code == 200, resp.text
+        mock_vision.assert_not_called()
+        mock_parse_llm.assert_called_once()
+
+    @patch("app.api.v1.cv._sniff_mime", side_effect=_mime_for_pdf)
+    @patch("app.api.v1.cv.resolve_skill_ids", new_callable=AsyncMock)
+    @patch("app.api.v1.cv.generate_embedding", new_callable=AsyncMock)
+    @patch("app.api.v1.cv.parse_cv_with_llm", new_callable=AsyncMock)
+    @patch("app.api.v1.cv.parse_cv_via_vision", new_callable=AsyncMock)
+    @patch("app.api.v1.cv.extract_text_from_file", new_callable=AsyncMock)
+    def test_upload_vision_fallback_success(
+        self,
+        mock_extract,
+        mock_vision,
+        mock_parse_llm,
+        mock_embed,
+        mock_resolve,
+        mock_sniff,
+        client,
+        auth_headers,
+        fake_supabase,
+    ):
+        """Short PDF text triggers vision; successful vision skips text LLM parse."""
+        mock_resolve.return_value = []
+        mock_extract.return_value = "  "
+        mock_vision.return_value = {
+            "full_name": "Scanned User",
+            "skills": ["excel"],
+            "experience_summary": "Accountant with ten years of experience in Lusaka.",
+            "confidence": 0.8,
+        }
+        mock_embed.return_value = [0.1] * 768
+
+        fake_supabase.set_table(
+            "cvs",
+            FakeSupabaseQuery(
+                data=[{"id": "cv-scan", "user_id": "test-user-id", "file_url": "x"}]
+            ),
+        )
+        fake_supabase.set_table("skills", FakeSupabaseQuery(data=[]))
+        fake_supabase.set_table("user_skills", FakeSupabaseQuery(data=[]))
+
+        resp = client.post(
+            "/api/v1/cv/upload",
+            headers=auth_headers,
+            files={"file": ("scan.pdf", b"fake-pdf-content", "application/pdf")},
+        )
+
+        assert resp.status_code == 200, resp.text
+        mock_vision.assert_called_once()
+        mock_parse_llm.assert_not_called()

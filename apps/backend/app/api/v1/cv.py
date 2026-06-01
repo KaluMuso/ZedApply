@@ -17,6 +17,11 @@ from app.services.cv_parser import (
     extract_text_from_file,
     parse_cv_with_llm,
 )
+from app.services.cv_vision_parser import (
+    is_vision_parse_empty,
+    parse_cv_via_vision,
+    vision_parsed_to_raw_text,
+)
 from app.services.cv_parse_context import CVParseDebugContext
 from app.services.cv_generator import analyze_cv, generate_cv_structured, _render_sections_to_text
 from app.services.cv_pdf_renderer import render_cv_pdf
@@ -364,16 +369,43 @@ async def upload_cv(
 
     page_count = count_pdf_pages(file_bytes) if file_type == "pdf" else None
     extracted_len = len(raw_text.strip())
+    vision_parsed: dict | None = None
 
     if file_type == "pdf" and extracted_len < 50:
-        raise ProblemHTTPException(
-            status_code=422,
-            code="image_scanned_pdf",
-            user_message=(
-                "We couldn't read text from this PDF — it looks like a scanned image. "
-                "Please re-upload an OCR'd or text-based PDF."
-            ),
-        )
+        settings = get_settings()
+        if settings.cv_vision_ocr_enabled:
+            try:
+                candidate = await parse_cv_via_vision(file_bytes)
+                if not is_vision_parse_empty(candidate):
+                    vision_parsed = candidate
+                    raw_text = vision_parsed_to_raw_text(candidate)
+                    extracted_len = len(raw_text.strip())
+            except Exception as exc:
+                try:
+                    import sentry_sdk
+
+                    sentry_sdk.add_breadcrumb(
+                        category="cv.parse",
+                        message="vision_fallback_failed",
+                        level="warning",
+                        data={
+                            "error": str(exc),
+                            "page_count": page_count,
+                        },
+                    )
+                except Exception:
+                    pass
+
+        if vision_parsed is None and extracted_len < 50:
+            raise ProblemHTTPException(
+                status_code=422,
+                code="image_scanned_pdf",
+                user_message=(
+                    "We couldn't read text from this PDF — it looks like a scanned image. "
+                    "Please re-upload an OCR'd or text-based PDF."
+                ),
+            )
+
     if not raw_text or extracted_len < 50:
         raise HTTPException(
             status_code=422,
@@ -402,7 +434,7 @@ async def upload_cv(
     # and we drain the queue after midnight UTC when caps reset.
     # We also pre-upload the file to storage so the queued row references
     # something durable — file_bytes isn't kept anywhere otherwise.
-    parsed = _cache_get(supabase, parse_cache_key)
+    parsed = vision_parsed if vision_parsed is not None else _cache_get(supabase, parse_cache_key)
     if parsed is None:
         try:
             parsed = await parse_cv_with_llm(raw_text, debug_context=parse_debug)
