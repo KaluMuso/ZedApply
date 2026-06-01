@@ -1,6 +1,6 @@
 # Bwana chatbot — implementation record & agent prompts
 
-This document captures **Phase 1** (merged PR #211) and **Phase 2** (admin FAQ JSON, ticket IDs, analytics, interview alignment).
+This document captures **Phase 1** (merged PR #211), **Phase 2** (admin FAQ JSON, ticket IDs, analytics, interview alignment), and **Phase 3** (FAQ form UI, user escalation email, n8n parity).
 
 ---
 
@@ -71,6 +71,32 @@ psql "$DATABASE_URL" -f infra/supabase/migrations/093_bwana_phase2_faq_analytics
 ```bash
 cd ~/n8n-docker && docker compose build zedcv-backend && docker compose up -d --force-recreate zedcv-backend
 ```
+
+---
+
+## Phase 3 completion report
+
+**Migration:** `094_bwana_user_escalation_email.sql`
+
+### Features
+
+1. **FAQ intent form UI** — `BwanaFaqIntentsEditor` (add/remove rows, comma-separated triggers, optional raw JSON).
+2. **User escalation acknowledgement email** — Resend to the user's profile email when an escalation opens (`channels` includes `user_email` in `bwana_escalation_log`).
+3. **n8n alignment** — `bwana_chat_pipeline.json` FAQ router + OpenRouter system prompt aligned with `bwana_faq.py` / `bwana_config.py` (chatbot wording, 50/20/15/10/5, Starter tier copy).
+
+### Apply migration
+
+```bash
+psql "$DATABASE_URL" -f infra/supabase/migrations/094_bwana_user_escalation_email.sql
+```
+
+### Smoke
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | Escalate as user with email on profile | User receives ack with `{ticket_id}` |
+| 2 | Save custom FAQ via form rows | Persists in `faq_intents_json` |
+| 3 | n8n only if `BWANA_N8N_WEBHOOK_URL` set | Same tier/matching copy as backend |
 
 ---
 

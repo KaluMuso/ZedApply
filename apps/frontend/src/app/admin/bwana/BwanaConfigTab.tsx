@@ -8,6 +8,7 @@ import {
   type FaqIntentItem,
 } from "@/lib/api";
 import { BwanaAnalyticsPanel } from "./BwanaAnalyticsPanel";
+import { BwanaFaqIntentsEditor } from "./BwanaFaqIntentsEditor";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,21 +25,19 @@ function toForm(cfg: BwanaConfig): EditableConfig {
 
 export function BwanaConfigTab({ token }: { token: string }) {
   const [form, setForm] = useState<EditableConfig | null>(null);
+  const [faqIntents, setFaqIntents] = useState<FaqIntentItem[]>([]);
   const [preview, setPreview] = useState<string>("");
   const [previewChars, setPreviewChars] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [faqJson, setFaqJson] = useState("[]");
-  const [faqJsonError, setFaqJsonError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const cfg = await adminBwana.getConfig(token);
       setForm(toForm(cfg));
-      setFaqJson(JSON.stringify(cfg.faq_intents_json ?? [], null, 2));
-      setFaqJsonError(null);
+      setFaqIntents(cfg.faq_intents_json ?? []);
       const prev = await adminBwana.preview(token);
       setPreview(prev.system_prompt_preview);
       setPreviewChars(prev.char_count);
@@ -57,25 +56,8 @@ export function BwanaConfigTab({ token }: { token: string }) {
     setForm((prev) => (prev ? { ...prev, ...patch } : prev));
   };
 
-  const parseFaqJson = (): FaqIntentItem[] | null => {
-    try {
-      const parsed: unknown = JSON.parse(faqJson);
-      if (!Array.isArray(parsed)) {
-        setFaqJsonError("Must be a JSON array");
-        return null;
-      }
-      setFaqJsonError(null);
-      return parsed as FaqIntentItem[];
-    } catch {
-      setFaqJsonError("Invalid JSON");
-      return null;
-    }
-  };
-
   const handleSave = async () => {
     if (!form) return;
-    const faqIntents = parseFaqJson();
-    if (faqIntents === null) return;
     setSaving(true);
     try {
       const body: BwanaConfigPatch = {
@@ -91,9 +73,12 @@ export function BwanaConfigTab({ token }: { token: string }) {
         public_knowledge_extra: form.public_knowledge_extra,
         faq_intents_json: faqIntents,
         enable_email_escalation: form.enable_email_escalation,
+        enable_user_escalation_ack: form.enable_user_escalation_ack,
+        user_escalation_ack_template: form.user_escalation_ack_template,
       };
       const saved = await adminBwana.patchConfig(token, body);
       setForm(toForm(saved));
+      setFaqIntents(saved.faq_intents_json ?? []);
       const prev = await adminBwana.preview(token);
       setPreview(prev.system_prompt_preview);
       setPreviewChars(prev.char_count);
@@ -198,6 +183,17 @@ export function BwanaConfigTab({ token }: { token: string }) {
             />
             Email escalations to support address
           </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.enable_user_escalation_ack}
+              onChange={(e) =>
+                update({ enable_user_escalation_ack: e.target.checked })
+              }
+            />
+            Email acknowledgement to user when escalation opens (requires email on
+            profile)
+          </label>
         </CardContent>
       </Card>
 
@@ -210,6 +206,7 @@ export function BwanaConfigTab({ token }: { token: string }) {
               ["human_escalation_reply_template", "Human escalation"],
               ["unsatisfied_reply_template", "Unsatisfied user"],
               ["contact_admin_reply_template", "Contact admin (info only)"],
+              ["user_escalation_ack_template", "User escalation acknowledgement email"],
             ] as const
           ).map(([key, label]) => (
             <label key={key} className="text-sm block space-y-1">
@@ -228,19 +225,8 @@ export function BwanaConfigTab({ token }: { token: string }) {
 
       <Card>
         <CardContent className="p-4 space-y-3">
-          <h2 className="text-lg font-semibold">Custom FAQ intents (JSON)</h2>
-          <p className="text-xs text-muted-foreground">
-            Matched after built-in FAQs. Each item: intent_id (snake_case), enabled,
-            triggers (substring list), response. Max 50 intents.
-          </p>
-          <textarea
-            className="w-full min-h-[160px] font-mono text-xs rounded-md border border-input bg-background px-3 py-2"
-            value={faqJson}
-            onChange={(e) => setFaqJson(e.target.value)}
-          />
-          {faqJsonError && (
-            <p className="text-xs text-destructive">{faqJsonError}</p>
-          )}
+          <h2 className="text-lg font-semibold">Custom FAQ intents</h2>
+          <BwanaFaqIntentsEditor intents={faqIntents} onChange={setFaqIntents} />
         </CardContent>
       </Card>
 
