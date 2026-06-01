@@ -100,6 +100,10 @@ Bwana live workflow already uses `$env.OPENROUTER_API_KEY` and `$env.WAHA_API_KE
 
 If **AI Parse \*** nodes return `Your project has been denied access`, the live workflow is still calling **Google AI Studio** (`generativelanguage.googleapis.com`) with a blocked project. Re-import repo `job_scraper.json`: all four **AI Parse** nodes now use **OpenRouter** (`OPENROUTER_API_KEY`), same as the backend.
 
+### Combine All Sources: jobs with `source_url: null`
+
+OpenRouter can return valid `choices[0].message.content` while every job still has `source_url` / `apply_url` null and `posted_at` like `9h ago`. **Prep \*** nodes extract `href` links into `extractedLinks` before HTML strip; **Normalize and Deduplicate** reads those links from each Prep node (by branch index) and fuzzy-matches titles to URLs when the LLM omitted `source_url`. It also converts relative `posted_at` to ISO `YYYY-MM-DD`. Re-import `job_scraper.json` after any change to Prep or Normalize nodes.
+
 ## Job Scraper — patch live workflow (`rsgZLi6UAcC3lXvu`)
 
 Repo export `job_scraper.json` is the source of truth. Live n8n must match it before the next scrape run.
