@@ -24,6 +24,7 @@ import { StyleStepForm } from "./StyleStepForm";
 import { useTailoredCvBuilderStore } from "./store";
 import type { BuilderStep } from "./types";
 import { useHydrateBuilderFromProfile } from "./useHydrateBuilderFromProfile";
+import { useHydrateBuilderFromGeneration } from "./useHydrateBuilderFromGeneration";
 import "./builder.css";
 import "./print.css";
 
@@ -84,6 +85,7 @@ export function TailoredCvBuilder() {
   const { token } = useAuth();
   const jobId = searchParams.get("jobId");
   const matchId = searchParams.get("matchId");
+  const generationId = searchParams.get("generationId");
   const jobTitle = searchParams.get("jobTitle") ?? "";
   const company = searchParams.get("company") ?? "";
   const [subscriptionTier, setSubscriptionTier] = useState<string | null>(null);
@@ -101,21 +103,27 @@ export function TailoredCvBuilder() {
   const step = useTailoredCvBuilderStore((s) => s.step);
   const setStep = useTailoredCvBuilderStore((s) => s.setStep);
   const hydratedFromProfile = useTailoredCvBuilderStore((s) => s.hydratedFromProfile);
+  const hydratedFromGeneration = useTailoredCvBuilderStore(
+    (s) => s.hydratedFromGeneration,
+  );
   const resetDraft = useTailoredCvBuilderStore((s) => s.resetDraft);
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const [previewOpen, setPreviewOpen] = useState(false);
 
-  useHydrateBuilderFromProfile(token);
+  useHydrateBuilderFromGeneration(token, generationId);
+  useHydrateBuilderFromProfile(token, generationId);
 
   return (
     <div className="w-full">
-      {hydratedFromProfile ? (
+      {hydratedFromProfile || hydratedFromGeneration ? (
         <div
           className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg border px-4 py-3 text-sm"
           style={{ borderColor: "var(--line)", background: "var(--green-50)" }}
         >
           <span style={{ color: "var(--green-700)" }}>
-            Loaded from your uploaded CV. Edit any section — the preview updates live.
+            {hydratedFromGeneration
+              ? "Loaded from your match-tailored CV. Edit any section — the preview updates live."
+              : "Loaded from your uploaded CV. Edit any section — the preview updates live."}
           </span>
           <button type="button" className="btn btn-ghost btn-sm shrink-0" onClick={resetDraft}>
             Reset sample data
