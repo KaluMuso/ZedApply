@@ -3,6 +3,8 @@ import asyncio
 import hashlib
 import logging
 import time
+import uuid
+from html import escape
 from typing import Any, Literal
 
 import httpx
@@ -10,30 +12,33 @@ from openai import APIError, AuthenticationError, OpenAI, RateLimitError
 from supabase import Client
 
 from app.core.config import get_settings
+from app.schemas.bwana_config import BwanaConfig, BwanaEscalationReason
 from app.schemas.db_enums import CacheType, validate_cache_type
 from app.lib.retry import DEGRADED_LLM_USER_MESSAGE, circuit_is_open
-from app.services.bwana_faq import is_escalation_request, match_faq
+from app.services.bwana_config import (
+    build_bwana_system_prompt,
+    get_bwana_config,
+    render_template,
+)
+from app.services.bwana_faq import (
+    is_contact_admin_request,
+    is_escalation_request,
+    is_unsatisfied_request,
+    match_faq,
+    wants_callback,
+)
+from app.services.email import _send
 from app.services.llm import FEATURE_BWANA, LlmLogContext
 from app.services.openrouter_helpers import (
     create_chat_completion_with_retries,
     get_completion_content,
 )
+from app.services.prompt_safety import wrap_user_content
 from app.services.whatsapp import send_whatsapp_message
 
 logger = logging.getLogger(__name__)
 
 BwanaSource = Literal["faq", "llm", "escalated"]
-
-BWANA_SYSTEM_PROMPT = """You are Bwana, ZedApply's AI career assistant for Zambian professionals.
-You know the platform: matching algorithm (60% semantic + 30% skills + 10% bonus),
-tiers (Free 10/mo, Starter K125 50/mo, Professional K250 125/mo, Super Standard K500 unlimited),
-Lenco payments via MTN/Airtel, WhatsApp digest at 07:00, etc.
-You can help with career questions, CV tips, interview prep.
-Keep responses under 150 words. Suggest paid features (Tailored CV, Cover Letter) where relevant."""
-
-_ESCALATION_USER_REPLY = (
-    "I've flagged this for Kaluba — he'll WhatsApp you within 24h."
-)
 
 
 def session_cache_key(user_id: str, session_id: str) -> str:
@@ -121,12 +126,98 @@ def append_and_persist_history(
         supabase.table("ai_cache").insert(record).execute()
 
 
+def _log_escalation(
+    supabase: Client,
+    *,
+    user_id: str,
+    session_id: str,
+    message: str,
+    reason: BwanaEscalationReason,
+    channels: list[str],
+) -> None:
+    try:
+        supabase.table("bwana_escalation_log").insert(
+            {
+                "user_id": user_id,
+                "session_id": session_id,
+                "message_excerpt": message[:500],
+                "reason": reason,
+                "channels": channels,
+            }
+        ).execute()
+    except Exception as exc:
+        logger.warning("bwana_escalation_log insert failed: %s", exc)
+
+
+async def _send_escalation_email(
+    config: BwanaConfig,
+    *,
+    user_id: str,
+    message: str,
+    reason: BwanaEscalationReason,
+) -> bool:
+    if not config.enable_email_escalation:
+        return False
+    subject = f"[Bwana {reason}] User {user_id[:8]}…"
+    html = (
+        f"<p>Bwana escalation (<b>{escape(reason)}</b>)</p>"
+        f"<p>User ID: <code>{escape(user_id)}</code></p>"
+        f"<p>Message excerpt:</p><pre>{escape(message[:500])}</pre>"
+    )
+    idem = f"bwana-esc-{user_id}-{reason}-{hashlib.sha256(message.encode()).hexdigest()[:16]}"
+    return _send(config.support_email, subject, html, idempotency_key=idem)
+
+
+async def _notify_escalation(
+    supabase: Client,
+    config: BwanaConfig,
+    *,
+    user_id: str,
+    session_id: str,
+    message: str,
+    reason: BwanaEscalationReason,
+    notify_whatsapp: bool = True,
+) -> list[str]:
+    """WAHA + optional email + audit log. Returns channels used."""
+    channels: list[str] = []
+    phone = config.escalation_whatsapp_phone.strip()
+    if notify_whatsapp and phone:
+        text = f"Bwana [{reason}] from user {user_id}: {message[:500]}"
+        try:
+            await send_whatsapp_message(phone, text)
+            channels.append("whatsapp")
+        except Exception as exc:
+            logger.warning("Bwana escalation WAHA failed: %s", exc)
+
+    if await _send_escalation_email(config, user_id=user_id, message=message, reason=reason):
+        channels.append("email")
+
+    _log_escalation(
+        supabase,
+        user_id=user_id,
+        session_id=session_id,
+        message=message,
+        reason=reason,
+        channels=channels,
+    )
+    return channels
+
+
+def _escalation_reply(config: BwanaConfig, reason: BwanaEscalationReason) -> str:
+    if reason == "unsatisfied":
+        return render_template(config.unsatisfied_reply_template, config)
+    if reason == "contact_admin":
+        return render_template(config.contact_admin_reply_template, config)
+    return render_template(config.human_escalation_reply_template, config)
+
+
 async def _call_openrouter_llm(
     message: str,
     history: list[dict[str, str]],
     *,
     user_id: str | None = None,
     supabase: Client | None = None,
+    config: BwanaConfig | None = None,
 ) -> str:
     settings = get_settings()
     if not settings.openrouter_api_key:
@@ -134,16 +225,25 @@ async def _call_openrouter_llm(
     if circuit_is_open():
         return DEGRADED_LLM_USER_MESSAGE
 
+    if supabase is None or config is None:
+        raise ValueError("Bwana config required for LLM")
+
+    system_prompt = await build_bwana_system_prompt(config, supabase)
     client = OpenAI(
         api_key=settings.openrouter_api_key,
         base_url="https://openrouter.ai/api/v1",
     )
     messages: list[dict[str, str]] = [
-        {"role": "system", "content": BWANA_SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt},
     ]
     for turn in history:
-        messages.append({"role": turn["role"], "content": turn["content"]})
-    messages.append({"role": "user", "content": message})
+        messages.append(
+            {
+                "role": turn["role"],
+                "content": wrap_user_content(turn["content"]),
+            }
+        )
+    messages.append({"role": "user", "content": wrap_user_content(message)})
 
     def _sync_call() -> str:
         try:
@@ -177,16 +277,6 @@ async def _call_openrouter_llm(
     return await asyncio.to_thread(_sync_call)
 
 
-async def _notify_kaluba_escalation(user_id: str, message: str) -> None:
-    settings = get_settings()
-    phone = (settings.bwana_escalation_phone or "").strip() or settings.admin_alert_phone
-    text = f"Bwana escalation from user {user_id}: {message[:500]}"
-    try:
-        await send_whatsapp_message(phone, text)
-    except Exception as exc:
-        logger.warning("Bwana escalation WAHA failed: %s", exc)
-
-
 async def process_bwana_message(
     *,
     user_id: str,
@@ -200,19 +290,53 @@ async def process_bwana_message(
     if not text:
         raise ValueError("Message cannot be empty")
 
+    config = get_bwana_config(supabase)
+
     faq = match_faq(text)
     if faq:
         return faq.response, "faq"
 
+    if is_contact_admin_request(text):
+        reply = _escalation_reply(config, "contact_admin")
+        if wants_callback(text):
+            await _notify_escalation(
+                supabase,
+                config,
+                user_id=user_id,
+                session_id=session_id,
+                message=text,
+                reason="contact_admin",
+            )
+            return reply, "escalated"
+        return reply, "faq"
+
+    if is_unsatisfied_request(text):
+        await _notify_escalation(
+            supabase,
+            config,
+            user_id=user_id,
+            session_id=session_id,
+            message=text,
+            reason="unsatisfied",
+        )
+        return _escalation_reply(config, "unsatisfied"), "escalated"
+
     if is_escalation_request(text):
-        await _notify_kaluba_escalation(user_id, text)
-        return _ESCALATION_USER_REPLY, "escalated"
+        await _notify_escalation(
+            supabase,
+            config,
+            user_id=user_id,
+            session_id=session_id,
+            message=text,
+            reason="human_request",
+        )
+        return _escalation_reply(config, "human_request"), "escalated"
 
     hist = history if history is not None else load_conversation_history(
         supabase, user_id, session_id
     )
     reply = await _call_openrouter_llm(
-        text, hist, user_id=user_id, supabase=supabase
+        text, hist, user_id=user_id, supabase=supabase, config=config
     )
     return reply, "llm"
 
@@ -301,3 +425,13 @@ async def handle_bwana_chat(
     )
     took_ms = int((time.perf_counter() - started) * 1000)
     return response, source, took_ms  # type: ignore[return-value]
+
+
+async def send_test_escalation_whatsapp(supabase: Client) -> None:
+    """Admin smoke: ping escalation WhatsApp with a test message."""
+    config = get_bwana_config(supabase, force=True)
+    test_id = str(uuid.uuid4())[:8]
+    await send_whatsapp_message(
+        config.escalation_whatsapp_phone,
+        f"Bwana test escalation (admin) — id {test_id}",
+    )

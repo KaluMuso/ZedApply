@@ -1,7 +1,7 @@
 {
   "name": "ZedApply - Bwana Chat Pipeline",
   "meta": {
-    "description": "FAQ fast path, WAHA escalation, OpenRouter LLM fallback. Secrets via n8n env only.",
+    "description": "Optional legacy pipeline. Prefer backend in-process FAQ/escalation/LLM when BWANA_N8N_WEBHOOK_URL is empty on OCI. Escalation WAHA uses env ADMIN_ALERT_PHONE unless backend bwana_platform_config is used. Secrets via n8n env only.",
     "n8nWorkflowId": "TPDJ5S1HaRKZTdb1",
     "requiredEnv": [
       "OPENROUTER_API_KEY",

@@ -6,6 +6,7 @@ export type AdminSection =
   | "subscriptions"
   | "matches"
   | "tier-config"
+  | "bwana"
   | "legal";
 
 export const ADMIN_NAV: {
@@ -55,6 +56,12 @@ export const ADMIN_NAV: {
     label: "Tier config",
     description: "Pricing and match limits per plan",
     href: "/admin/tier-config",
+  },
+  {
+    slug: "bwana",
+    label: "Bwana",
+    description: "Chatbot contact, escalation templates, and knowledge",
+    href: "/admin/bwana",
   },
   {
     slug: "legal",

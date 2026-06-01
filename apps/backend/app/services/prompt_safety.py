@@ -58,3 +58,8 @@ def build_delimited_user_message(*blocks: str) -> str:
     """Join one or more delimiter blocks into a single user message."""
     parts = [b for b in blocks if b and b.strip()]
     return "\n\n".join(parts)
+
+
+def wrap_user_content(content: str, *, max_chars: int = 4_000) -> str:
+    """Delimit a single chat turn (Bwana history + current message)."""
+    return wrap_user_data_block("CHAT", content, max_chars=max_chars)

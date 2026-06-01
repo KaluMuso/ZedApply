@@ -23,6 +23,7 @@ from app.api.v1 import (
     interview_prep,
     bwana_interview_routes,
     bwana,
+    admin_bwana,
     me,
     contact,
     stats,
@@ -122,6 +123,7 @@ def create_app() -> FastAPI:
     application.include_router(interview_prep.router, prefix="/api/v1")
     application.include_router(bwana_interview_routes.router, prefix="/api/v1")
     application.include_router(bwana.router, prefix="/api/v1")
+    application.include_router(admin_bwana.router, prefix="/api/v1")
     application.include_router(me.router, prefix="/api/v1")
     application.include_router(contact.router, prefix="/api/v1")
     application.include_router(stats.router, prefix="/api/v1")

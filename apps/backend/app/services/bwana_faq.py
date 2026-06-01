@@ -3,6 +3,7 @@ import re
 from dataclasses import dataclass
 
 from app.schemas.subscription import TIER_LIMITS, TIER_PRICES
+from app.services.matching_weights_copy import MATCH_SCORE_FAQ_ANSWER
 from app.services.tier_marketing import TIER_WHATSAPP_BLURB
 
 _ESCALATION_PHRASES = (
@@ -13,9 +14,50 @@ _ESCALATION_PHRASES = (
     "support agent",
     "customer support",
     "kaluba",
+    "speak to someone",
+    "talk to someone",
 )
 _ESCALATION_WORDS = re.compile(
     r"\b(support|agent)\b", re.IGNORECASE
+)
+
+_UNSATISFIED_PHRASES = (
+    "not satisfied",
+    "unsatisfied",
+    "not happy",
+    "unhappy with",
+    "this is useless",
+    "doesn't help",
+    "does not help",
+    "waste of time",
+    "terrible service",
+    "awful experience",
+)
+
+_CONTACT_ADMIN_PHRASES = (
+    "contact admin",
+    "contact support",
+    "support email",
+    "support phone",
+    "admin email",
+    "admin phone",
+    "how do i contact",
+    "how to contact",
+    "customer service number",
+    "support number",
+    "what's your email",
+    "what is your email",
+    "your phone number",
+    "call support",
+)
+
+_CALLBACK_PHRASES = (
+    "call me back",
+    "contact me back",
+    "reach out to me",
+    "get back to me",
+    "whatsapp me back",
+    "message me back",
 )
 
 
@@ -37,7 +79,7 @@ def _pricing_block() -> str:
         f"• Free — {_kwacha(TIER_PRICES['free'])}, {TIER_LIMITS['free']} matches/mo\n"
         f"• Starter — {_kwacha(TIER_PRICES['starter'])}, {TIER_LIMITS['starter']} matches/mo\n"
         f"• Professional — {_kwacha(TIER_PRICES['professional'])}, "
-        f"{TIER_LIMITS['professional']} matches/mo (+ cover letters)\n"
+        f"{TIER_LIMITS['professional']} matches/mo (+ cover letters + tailored CVs)\n"
         f"• Super Standard — {_kwacha(TIER_PRICES['super_standard'])}, "
         "unlimited matches + Bwana Interview\n"
         "Upgrade at /pricing. Pay with MTN/Airtel (Lenco) or card (DPO)."
@@ -49,11 +91,31 @@ def _contains_any(text: str, needles: tuple[str, ...]) -> bool:
 
 
 def is_escalation_request(message: str) -> bool:
-    """True when the user asks for a human."""
+    """True when the user asks for a human (not contact-info-only)."""
     norm = message.strip().lower()
+    if is_contact_admin_request(norm) and not wants_callback(norm):
+        return False
     if _contains_any(norm, _ESCALATION_PHRASES):
         return True
     return bool(_ESCALATION_WORDS.search(norm))
+
+
+def is_unsatisfied_request(message: str) -> bool:
+    norm = message.strip().lower()
+    return _contains_any(norm, _UNSATISFIED_PHRASES)
+
+
+def is_contact_admin_request(message: str) -> bool:
+    norm = message.strip().lower()
+    return _contains_any(norm, _CONTACT_ADMIN_PHRASES)
+
+
+def wants_callback(message: str) -> bool:
+    """True when the user wants a human to reach out (not contact-info-only)."""
+    norm = message.strip().lower()
+    if _contains_any(norm, _CALLBACK_PHRASES):
+        return True
+    return _contains_any(norm, _ESCALATION_PHRASES)
 
 
 def match_faq(message: str) -> FaqMatch | None:
@@ -62,12 +124,25 @@ def match_faq(message: str) -> FaqMatch | None:
     if not norm:
         return None
 
+    if is_contact_admin_request(norm):
+        return None
+
+    if is_unsatisfied_request(norm):
+        return None
+
     if _contains_any(norm, ("how do i apply", "how to apply", "apply for job")):
         return FaqMatch(
             "apply",
             "To apply through ZedApply: upload your CV on /profile, wait for parsing "
             "(~1 min), then check /matches. Reply to your daily WhatsApp digest (around "
-            "07:00) with 1–5 to see job details. Starter+ can generate tailored CVs per job.",
+            "07:00) with 1–5 to see job details. Tailored CVs are on Professional+.",
+        )
+
+    if "starter" in norm and "professional" not in norm:
+        return FaqMatch(
+            "starter_tier",
+            f"Starter: {_kwacha(TIER_PRICES['starter'])}/mo, {TIER_LIMITS['starter']} matches. "
+            f"{TIER_WHATSAPP_BLURB['starter']}. Tailored CVs start on Professional. See /pricing.",
         )
 
     if _contains_any(
@@ -80,8 +155,8 @@ def match_faq(message: str) -> FaqMatch | None:
         return FaqMatch(
             "cancel",
             "Manage or cancel your plan in /settings → Subscription. Paid tiers renew "
-            "monthly until you cancel. For billing help, type \"talk to human\" and "
-            "Kaluba will WhatsApp you within 24 hours.",
+            "monthly until you cancel. For billing help, ask to contact support or type "
+            "\"talk to human\".",
         )
 
     if _contains_any(norm, ("where is my cv", "my cv", "upload cv", "cv status", "cv upload")):
@@ -95,7 +170,7 @@ def match_faq(message: str) -> FaqMatch | None:
         return FaqMatch(
             "matches",
             "View saved and fresh matches at /matches. If results are thin, add skills "
-            "on /profile or upload a fuller CV — matching is 60% semantic fit + 30% skills.",
+            f"on /profile or upload a fuller CV — {MATCH_SCORE_FAQ_ANSWER[:80]}…",
         )
 
     if _contains_any(norm, ("digest", "whatsapp time", "daily message", "07:00", "7am")):
@@ -112,13 +187,18 @@ def match_faq(message: str) -> FaqMatch | None:
             "/pricing. You'll get a receipt on WhatsApp when payment confirms.",
         )
 
-    if _contains_any(norm, ("matching works", "match score", "algorithm", "how do you match")):
-        return FaqMatch(
+    if _contains_any(
+        norm,
+        (
+            "matching works",
+            "matching work",
+            "how does matching",
+            "match score",
             "algorithm",
-            "Scores blend 60% CV–job semantic similarity (Gemini embeddings), 30% skill "
-            "overlap, and 10% bonus signals (location, seniority). Scores ≥50% surface in "
-            "your digest and /matches.",
-        )
+            "how do you match",
+        ),
+    ):
+        return FaqMatch("algorithm", MATCH_SCORE_FAQ_ANSWER)
 
     if _contains_any(norm, ("cover letter",)):
         return FaqMatch(
@@ -130,8 +210,8 @@ def match_faq(message: str) -> FaqMatch | None:
     if _contains_any(norm, ("tailored cv", "rewrite cv", "cv generator")):
         return FaqMatch(
             "tailored_cv",
-            "Tailored CVs start on Starter (K125/mo): pick a job on /matches → Tailored CV. "
-            "We reshape your CV for that role while keeping facts accurate.",
+            "Tailored CVs are on Professional and Super Standard: pick a job on /matches → "
+            "Tailored CV. Starter includes advanced CV analysis but not per-job tailoring.",
         )
 
     if _contains_any(norm, ("otp", "verification code", "login code")):
@@ -150,22 +230,15 @@ def match_faq(message: str) -> FaqMatch | None:
     if _contains_any(norm, ("hours", "when open", "response time")):
         return FaqMatch(
             "support_hours",
-            "Bwana is instant 24/7 for FAQs. Human support (Kaluba) replies on WhatsApp "
-            "within 24h — type \"talk to human\" to escalate.",
+            "Bwana is instant 24/7 for FAQs. Human support replies within 24h — ask to "
+            "contact support or type \"talk to human\" to escalate.",
         )
 
     if _contains_any(norm, ("free plan", "free tier", "10 matches")):
         return FaqMatch(
             "free_tier",
             f"Free tier: {_kwacha(TIER_PRICES['free'])}/mo, {TIER_LIMITS['free']} matches, "
-            "CV upload + WhatsApp digest. Upgrade anytime on /pricing.",
-        )
-
-    if "starter" in norm and "professional" not in norm:
-        return FaqMatch(
-            "starter_tier",
-            f"Starter: {_kwacha(TIER_PRICES['starter'])}/mo, {TIER_LIMITS['starter']} matches, "
-            f"{TIER_WHATSAPP_BLURB['starter']}. Tailored CVs from Professional. See /pricing.",
+            f"{TIER_WHATSAPP_BLURB['free']}. Upgrade anytime on /pricing.",
         )
 
     if _contains_any(norm, ("professional", " pro plan", "pro tier")):
@@ -193,14 +266,15 @@ def match_faq(message: str) -> FaqMatch | None:
         return FaqMatch(
             "privacy",
             "Read how we handle data at /legal/privacy. To delete your account or export "
-            "data, use /contact or escalate to a human.",
+            "data, contact support or escalate to a human.",
         )
 
     if _contains_any(norm, ("hi", "hello", "hey bwana", "good morning", "good afternoon")):
         return FaqMatch(
             "hello",
-            "Hey — I'm Bwana, ZedApply's career assistant. Ask about pricing, your CV, "
-            "matches, or interview tips. Type \"talk to human\" for Kaluba.",
+            "Hey — I'm Bwana, ZedApply's chatbot career assistant. Ask about pricing, your CV, "
+            "matches, or interview tips. Say \"contact support\" for email/phone or "
+            "\"talk to human\" to escalate.",
         )
 
     return None

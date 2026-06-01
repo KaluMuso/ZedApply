@@ -1,0 +1,47 @@
+# Bwana admin configuration
+
+Admin UI: **https://www.zedapply.com/admin/bwana** (requires admin or superadmin JWT).
+
+## What you can edit
+
+| Field | Purpose |
+| --- | --- |
+| `support_email` | Shown to users + receives escalation emails (Resend) |
+| `support_phone` | Public +260 E.164 line in contact replies |
+| `escalation_whatsapp_phone` | WAHA destination for human / unsatisfied escalations |
+| `escalation_sla_hours` | Substituted as `{sla}` in reply templates |
+| Reply templates | `{email}`, `{phone}`, `{sla}`, `{operator}`, `{chatbot_name}` |
+| `public_knowledge_extra` | Max 2000 chars appended to Bwana system prompt (no secrets) |
+| `enable_email_escalation` | When true, escalations also email `support_email` |
+
+Do **not** store API keys, ingest secrets, or scraper credentials in this table.
+
+## API
+
+- `GET /api/v1/admin/bwana/config`
+- `PATCH /api/v1/admin/bwana/config`
+- `GET /api/v1/admin/bwana/config/preview` — truncated assembled system prompt
+- `POST /api/v1/admin/bwana/test-escalation` — one WAHA ping to escalation phone
+
+Public (no auth): `GET /api/v1/bwana/public-config` — email, phone, SLA (no escalation WhatsApp).
+
+## Apply migration
+
+```bash
+# Supabase SQL editor or CLI
+psql "$DATABASE_URL" -f infra/supabase/migrations/092_bwana_platform_config.sql
+```
+
+Default seed: `convergeozambia@gmail.com`, `+260761359005` (matches `admin_alert_phone`).
+
+## n8n pipeline
+
+`infra/n8n/bwana_chat_pipeline.json` is optional. On OCI, leave `BWANA_N8N_WEBHOOK_URL` empty to run FAQ + escalation + LLM **in-process** on the backend (recommended). Escalation WAHA still uses `escalation_whatsapp_phone` from DB (falls back to env `ADMIN_ALERT_PHONE` only when the table is missing).
+
+## Smoke checklist
+
+1. "What's your support email?" → configured email in reply
+2. "I'm not satisfied" → apology template + WAHA + log row
+3. "Talk to human" → human template + WAHA
+4. "What is your ingest API key?" → refusal (boundaries)
+5. Widget badge shows **Bwana**, not "AI"

@@ -1943,6 +1943,66 @@ components:
         took_ms: { type: integer }
         session_id: { type: string }
 
+    BwanaPublicConfig:
+      type: object
+      required: [chatbot_display_name, support_email, support_phone, escalation_sla_hours]
+      properties:
+        chatbot_display_name: { type: string }
+        support_email: { type: string, format: email }
+        support_phone: { type: string, pattern: '^\+260[0-9]{9}$' }
+        escalation_sla_hours: { type: integer, minimum: 1, maximum: 168 }
+
+    BwanaConfig:
+      type: object
+      required:
+        - chatbot_display_name
+        - operator_display_name
+        - support_email
+        - support_phone
+        - escalation_whatsapp_phone
+        - escalation_sla_hours
+        - human_escalation_reply_template
+        - unsatisfied_reply_template
+        - contact_admin_reply_template
+        - enable_email_escalation
+      properties:
+        id: { type: integer }
+        chatbot_display_name: { type: string }
+        operator_display_name: { type: string }
+        support_email: { type: string, format: email }
+        support_phone: { type: string, pattern: '^\+260[0-9]{9}$' }
+        escalation_whatsapp_phone: { type: string, pattern: '^\+260[0-9]{9}$' }
+        escalation_sla_hours: { type: integer, minimum: 1, maximum: 168 }
+        human_escalation_reply_template: { type: string }
+        unsatisfied_reply_template: { type: string }
+        contact_admin_reply_template: { type: string }
+        public_knowledge_extra: { type: string, maxLength: 2000 }
+        enable_email_escalation: { type: boolean }
+        updated_at: { type: string, format: date-time, nullable: true }
+        updated_by: { type: string, format: uuid, nullable: true }
+
+    BwanaConfigPatch:
+      type: object
+      properties:
+        chatbot_display_name: { type: string }
+        operator_display_name: { type: string }
+        support_email: { type: string, format: email }
+        support_phone: { type: string, pattern: '^\+260[0-9]{9}$' }
+        escalation_whatsapp_phone: { type: string, pattern: '^\+260[0-9]{9}$' }
+        escalation_sla_hours: { type: integer, minimum: 1, maximum: 168 }
+        human_escalation_reply_template: { type: string }
+        unsatisfied_reply_template: { type: string }
+        contact_admin_reply_template: { type: string }
+        public_knowledge_extra: { type: string, maxLength: 2000 }
+        enable_email_escalation: { type: boolean }
+
+    BwanaConfigPreview:
+      type: object
+      required: [system_prompt_preview, char_count]
+      properties:
+        system_prompt_preview: { type: string }
+        char_count: { type: integer }
+
     InterviewPrepRequest:
       type: object
       required: [job_id]
@@ -3878,6 +3938,17 @@ paths:
               schema: { $ref: '#/components/schemas/DailyDigestBatchResponse' }
         '401': { description: Invalid admin or ingest API key }
 
+  /bwana/public-config:
+    get:
+      operationId: getBwanaPublicConfig
+      summary: Public Bwana support contact (widget footer)
+      tags: [Bwana]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BwanaPublicConfig' }
+
   /bwana/chat:
     post:
       operationId: bwanaChat
@@ -3896,6 +3967,61 @@ paths:
               schema: { $ref: '#/components/schemas/BwanaChatResponse' }
         '401': { description: Unauthorized }
         '503': { description: Pipeline or AI unavailable }
+
+  /admin/bwana/config:
+    get:
+      operationId: getAdminBwanaConfig
+      summary: Read Bwana platform config (admin)
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BwanaConfig' }
+        '403': { description: Admin only }
+    patch:
+      operationId: patchAdminBwanaConfig
+      summary: Update Bwana platform config (admin)
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BwanaConfigPatch' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BwanaConfig' }
+        '403': { description: Admin only }
+        '422': { description: Validation error }
+
+  /admin/bwana/config/preview:
+    get:
+      operationId: getAdminBwanaConfigPreview
+      summary: Preview assembled Bwana system prompt (admin)
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BwanaConfigPreview' }
+        '403': { description: Admin only }
+
+  /admin/bwana/test-escalation:
+    post:
+      operationId: testAdminBwanaEscalation
+      summary: Send test WAHA message to Bwana escalation phone (admin)
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Test message sent
+        '403': { description: Admin only }
+        '503': { description: WAHA delivery failed }
 
   /interview-prep:
     get:

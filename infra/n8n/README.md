@@ -63,6 +63,12 @@ Prod instance already has workflow `qA4Zi46MAWx3gTTL` active as of 2026-05-30.
 
 **Duplicate:** `Zed CV - Supabase Heartbeat` (`Gun5al1RkCKPSlfW`) is also active and runs the same 6h schedule. Keep one (prefer `qA4Zi46MAWx3gTTL` + service role key) and **deactivate** the other to avoid redundant RPC calls.
 
+## Bwana chat: backend vs n8n
+
+**Recommended (OCI):** leave `BWANA_N8N_WEBHOOK_URL` empty in `apps/backend/.env` so FAQ, escalation, and LLM run **in-process** (`app/services/bwana_chat.py`). Escalation WAHA uses `bwana_platform_config.escalation_whatsapp_phone` (admin UI `/admin/bwana`). See `docs/BWANA_ADMIN.md`.
+
+The n8n workflow `TPDJ5S1HaRKZTdb1` remains optional for legacy routing; escalation there still uses env `ADMIN_ALERT_PHONE`.
+
 ## Bwana chat: FAQ matching weights
 
 Production RPC `match_jobs_for_user` (migration 060) uses **50% semantic / 20% skills / 15% experience / 10% location / 5% recency** (hard floor 35).
