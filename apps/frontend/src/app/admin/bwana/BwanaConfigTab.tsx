@@ -8,7 +8,6 @@ import {
   type FaqIntentItem,
 } from "@/lib/api";
 import { BwanaAnalyticsPanel } from "./BwanaAnalyticsPanel";
-import { BwanaFaqIntentsEditor } from "./BwanaFaqIntentsEditor";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,13 +30,16 @@ export function BwanaConfigTab({ token }: { token: string }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [faqJson, setFaqJson] = useState("[]");
+  const [faqJsonError, setFaqJsonError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const cfg = await adminBwana.getConfig(token);
       setForm(toForm(cfg));
-      setFaqIntents(cfg.faq_intents_json ?? []);
+      setFaqJson(JSON.stringify(cfg.faq_intents_json ?? [], null, 2));
+      setFaqJsonError(null);
       const prev = await adminBwana.preview(token);
       setPreview(prev.system_prompt_preview);
       setPreviewChars(prev.char_count);
@@ -56,8 +58,25 @@ export function BwanaConfigTab({ token }: { token: string }) {
     setForm((prev) => (prev ? { ...prev, ...patch } : prev));
   };
 
+  const parseFaqJson = (): FaqIntentItem[] | null => {
+    try {
+      const parsed: unknown = JSON.parse(faqJson);
+      if (!Array.isArray(parsed)) {
+        setFaqJsonError("Must be a JSON array");
+        return null;
+      }
+      setFaqJsonError(null);
+      return parsed as FaqIntentItem[];
+    } catch {
+      setFaqJsonError("Invalid JSON");
+      return null;
+    }
+  };
+
   const handleSave = async () => {
     if (!form) return;
+    const faqIntents = parseFaqJson();
+    if (faqIntents === null) return;
     setSaving(true);
     try {
       const body: BwanaConfigPatch = {
@@ -225,8 +244,19 @@ export function BwanaConfigTab({ token }: { token: string }) {
 
       <Card>
         <CardContent className="p-4 space-y-3">
-          <h2 className="text-lg font-semibold">Custom FAQ intents</h2>
-          <BwanaFaqIntentsEditor intents={faqIntents} onChange={setFaqIntents} />
+          <h2 className="text-lg font-semibold">Custom FAQ intents (JSON)</h2>
+          <p className="text-xs text-muted-foreground">
+            Matched after built-in FAQs. Each item: intent_id (snake_case), enabled,
+            triggers (substring list), response. Max 50 intents.
+          </p>
+          <textarea
+            className="w-full min-h-[160px] font-mono text-xs rounded-md border border-input bg-background px-3 py-2"
+            value={faqJson}
+            onChange={(e) => setFaqJson(e.target.value)}
+          />
+          {faqJsonError && (
+            <p className="text-xs text-destructive">{faqJsonError}</p>
+          )}
         </CardContent>
       </Card>
 

@@ -45,10 +45,6 @@ _DEFAULT_CONFIG = BwanaConfig(
         "within {sla} hours on business days."
     ),
     faq_intents_json=[],
-    user_escalation_ack_template=(
-        "Thanks for reaching out. Reference {ticket_id}. {operator} will follow up "
-        "within {sla} hours at {email} or {phone}."
-    ),
 )
 
 
@@ -60,12 +56,6 @@ def clear_bwana_config_cache() -> None:
 def _row_to_config(row: dict[str, Any]) -> BwanaConfig:
     data = dict(row)
     data["faq_intents_json"] = parse_faq_intents_json(data.get("faq_intents_json"))
-    if data.get("user_escalation_ack_template") is None:
-        data["user_escalation_ack_template"] = (
-            _DEFAULT_CONFIG.user_escalation_ack_template
-        )
-    if data.get("enable_user_escalation_ack") is None:
-        data["enable_user_escalation_ack"] = True
     return BwanaConfig.model_validate(data)
 
 

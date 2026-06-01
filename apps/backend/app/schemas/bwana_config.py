@@ -39,6 +39,7 @@ class BwanaConfigBase(BaseModel):
     user_escalation_ack_template: str = Field(..., min_length=10, max_length=2000)
 
 
+
     @field_validator("support_email")
     @classmethod
     def _validate_email(cls, value: str) -> str:
@@ -86,6 +87,7 @@ class BwanaConfigPatch(BaseModel):
     user_escalation_ack_template: str | None = Field(
         default=None, min_length=10, max_length=2000
     )
+
 
 
     @field_validator("support_email")

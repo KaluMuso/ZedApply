@@ -25,9 +25,6 @@ class Settings(BaseSettings):
     embedding_model: str = "gemini-embedding-001"
     embedding_dimensions: int = 768
 
-    # AI: OpenAI (cover letters via ai_service.py)
-    openai_api_key: str = ""
-
     # AI: LLM via OpenRouter
     # Stable OpenRouter slug for Gemini 2.0 Flash. The shorthand
     # 'google/gemini-flash-2.0' (without version suffix) is rejected by
@@ -36,6 +33,8 @@ class Settings(BaseSettings):
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     llm_model: str = "google/gemini-2.0-flash-001"
+    # Image-scanned PDF fallback: render pages → Gemini vision (OpenRouter).
+    cv_vision_ocr_enabled: bool = True
     # Global daily AI budget guards (0 = disabled). Checked against
     # llm_usage_log.cost_usd / token sums before each provider call.
     # USD aligns with OpenRouter/Gemini billing; use token cap as a

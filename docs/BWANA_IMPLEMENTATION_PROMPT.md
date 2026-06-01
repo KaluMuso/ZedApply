@@ -1,6 +1,6 @@
 # Bwana chatbot — implementation record & agent prompts
 
-This document captures **Phase 1** (merged PR #211), **Phase 2** (admin FAQ JSON, ticket IDs, analytics, interview alignment), and **Phase 3** (FAQ form UI, user escalation email, n8n parity).
+This document captures **Phase 1** (merged PR #211) and **Phase 2** (admin FAQ JSON, ticket IDs, analytics, interview alignment).
 
 ---
 

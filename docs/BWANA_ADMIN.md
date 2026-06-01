@@ -11,7 +11,7 @@ Admin UI: **https://www.zedapply.com/admin/bwana** (requires admin or superadmin
 | `escalation_whatsapp_phone` | WAHA destination for human / unsatisfied escalations |
 | `escalation_sla_hours` | Substituted as `{sla}` in reply templates |
 | Reply templates | `{email}`, `{phone}`, `{sla}`, `{operator}`, `{chatbot_name}`, `{ticket_id}` |
-| `faq_intents_json` | Custom FAQ intents (form rows in admin UI, or JSON) |
+| `faq_intents_json` | Admin-editable FAQ array (see below) |
 | `public_knowledge_extra` | Max 2000 chars appended to Bwana system prompt (no secrets) |
 | `enable_email_escalation` | When true, escalations also email `support_email` |
 | `enable_user_escalation_ack` | When true and the user has an email on file, send acknowledgement via Resend |
@@ -35,12 +35,7 @@ Public (no auth): `GET /api/v1/bwana/public-config` — email, phone, SLA (no es
 # Supabase SQL editor or CLI
 psql "$DATABASE_URL" -f infra/supabase/migrations/092_bwana_platform_config.sql
 psql "$DATABASE_URL" -f infra/supabase/migrations/093_bwana_phase2_faq_analytics_tickets.sql
-psql "$DATABASE_URL" -f infra/supabase/migrations/094_bwana_user_escalation_email.sql
 ```
-
-### Custom FAQ intents
-
-Use the **form rows** on `/admin/bwana` (intent ID, triggers, response) or **Edit as JSON** for bulk edits. Intents are matched after built-in FAQs.
 
 ### Custom FAQ JSON example
 
