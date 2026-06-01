@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
   admin,
@@ -260,10 +261,16 @@ export function JobsTab({ token }: { token: string }) {
             <option value="active">Active only</option>
             <option value="expired">Expired & still active</option>
           </select>
+          <Link
+            href="/admin/jobs/new"
+            className="inline-flex min-h-9 items-center rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-muted"
+          >
+            New job
+          </Link>
           <Button
             type="button"
             size="sm"
-            className="min-h-9 ml-auto"
+            className="min-h-9"
             disabled={editingId !== null}
             onClick={() => {
               // Close edit mode if it was open, so we never show both
