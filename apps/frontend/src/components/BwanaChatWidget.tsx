@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { MessageCircle, Send, X } from "lucide-react";
 
-import { ApiError, bwana } from "@/lib/api";
+import { ApiError, bwana, type BwanaPublicConfig } from "@/lib/api";
 import {
   getOrCreateBwanaSessionId,
   useChatStore,
@@ -15,11 +15,13 @@ const SUGGESTED_PROMPTS = [
   "How do I apply?",
   "Pricing?",
   "Where's my CV?",
+  "Contact support",
+  "I'm not satisfied",
   "Talk to human",
 ] as const;
 
 const INTRO_MESSAGE =
-  "Hey — I'm Bwana, your ZedApply assistant. Ask about matches, billing, or careers. Pick a prompt below or type your question.";
+  "Hey — I'm Bwana, ZedApply's chatbot career assistant. Ask about matches, billing, or careers. Pick a prompt below or type your question.";
 
 interface BwanaChatWidgetProps {
   userName?: string;
@@ -32,13 +34,16 @@ function sourceBadgeLabel(source: BwanaMessageSource): string {
     case "escalated":
       return "Escalated to human";
     default:
-      return "AI";
+      return "Bwana";
   }
 }
 
 export function BwanaChatWidget({ userName }: BwanaChatWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [draft, setDraft] = useState("");
+  const [publicConfig, setPublicConfig] = useState<BwanaPublicConfig | null>(
+    null,
+  );
   const {
     messages,
     sessionId,
@@ -56,6 +61,13 @@ export function BwanaChatWidget({ userName }: BwanaChatWidgetProps) {
       ensureSession();
     }
   }, [isOpen, ensureSession]);
+
+  useEffect(() => {
+    bwana
+      .publicConfig()
+      .then(setPublicConfig)
+      .catch(() => setPublicConfig(null));
+  }, []);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -100,7 +112,7 @@ export function BwanaChatWidget({ userName }: BwanaChatWidgetProps) {
 
   const greeting =
     userName && userName !== "there"
-      ? `Hey ${userName} — I'm Bwana, your ZedApply assistant.`
+      ? `Hey ${userName} — I'm Bwana, ZedApply's chatbot career assistant.`
       : INTRO_MESSAGE;
 
   const showIntro = messages.length === 0;
@@ -174,6 +186,25 @@ export function BwanaChatWidget({ userName }: BwanaChatWidgetProps) {
               </p>
             ) : null}
           </div>
+
+          {publicConfig ? (
+            <p className="border-t border-white/10 px-4 py-2 text-center text-[10px] text-white/50">
+              <a
+                href={`mailto:${publicConfig.support_email}`}
+                className="underline hover:text-white/80"
+              >
+                Contact support
+              </a>
+              {" · "}
+              <a
+                href={`tel:${publicConfig.support_phone}`}
+                className="underline hover:text-white/80"
+              >
+                {publicConfig.support_phone}
+              </a>
+              {` · replies within ${publicConfig.escalation_sla_hours}h`}
+            </p>
+          ) : null}
 
           <form
             className="flex items-center gap-2 border-t border-white/10 px-3 py-3"

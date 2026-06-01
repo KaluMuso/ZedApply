@@ -6,9 +6,23 @@ from pydantic import BaseModel, Field
 
 from app.core.deps import get_current_user, get_supabase
 from app.core.rate_limit import limiter
+from app.schemas.bwana_config import BwanaPublicConfig
+from app.services.bwana_config import get_bwana_config
 from app.services.bwana_chat import handle_bwana_chat
 
 router = APIRouter(prefix="/bwana", tags=["Bwana"])
+
+
+@router.get("/public-config", response_model=BwanaPublicConfig)
+async def bwana_public_config(supabase=Depends(get_supabase)) -> BwanaPublicConfig:
+    """Public support contact for widget footer (no escalation WhatsApp)."""
+    cfg = get_bwana_config(supabase)
+    return BwanaPublicConfig(
+        chatbot_display_name=cfg.chatbot_display_name,
+        support_email=cfg.support_email,
+        support_phone=cfg.support_phone,
+        escalation_sla_hours=cfg.escalation_sla_hours,
+    )
 
 
 class BwanaChatRequest(BaseModel):

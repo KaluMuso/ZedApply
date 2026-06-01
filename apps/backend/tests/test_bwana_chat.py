@@ -11,7 +11,28 @@ from app.services.bwana_chat import (
     session_cache_key,
 )
 from app.services.bwana_faq import is_escalation_request, match_faq
+from app.services.bwana_config import build_bwana_system_prompt
+from app.schemas.bwana_config import BwanaConfig
 from tests.conftest import FakeSupabaseQuery
+
+BWANA_CONFIG_ROW = {
+    "id": 1,
+    "chatbot_display_name": "Bwana",
+    "operator_display_name": "ZedApply Support",
+    "support_email": "support@zedapply.com",
+    "support_phone": "+260971234567",
+    "escalation_whatsapp_phone": "+260971234567",
+    "escalation_sla_hours": 24,
+    "human_escalation_reply_template": (
+        "I've flagged this for {operator}. Email {email} or call {phone} within {sla}h."
+    ),
+    "unsatisfied_reply_template": (
+        "Sorry — {operator} will follow up at {email} within {sla}h."
+    ),
+    "contact_admin_reply_template": "Contact {operator}: {email} or {phone}.",
+    "public_knowledge_extra": "",
+    "enable_email_escalation": False,
+}
 
 
 def _seed_user(fake_supabase):
@@ -33,6 +54,12 @@ def _seed_user(fake_supabase):
 def bwana_cache_table(fake_supabase):
     q = FakeSupabaseQuery(data=[])
     fake_supabase.set_table("ai_cache", q)
+    fake_supabase.set_table(
+        "bwana_platform_config",
+        FakeSupabaseQuery(data=[BWANA_CONFIG_ROW.copy()]),
+    )
+    fake_supabase.set_table("bwana_escalation_log", FakeSupabaseQuery(data=[]))
+    fake_supabase.set_table("tier_config", FakeSupabaseQuery(data=[]))
     return q
 
 
@@ -67,8 +94,59 @@ async def test_bwana_escalates_via_pipeline(fake_supabase, bwana_cache_table):
             supabase=fake_supabase,
         )
     assert source == "escalated"
-    assert "Kaluba" in response
+    assert "support@zedapply.com" in response
     mock_wa.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_contact_admin_returns_email_without_waha(
+    fake_supabase, bwana_cache_table
+):
+    with patch(
+        "app.services.bwana_chat.send_whatsapp_message",
+        new_callable=AsyncMock,
+    ) as mock_wa:
+        response, source = await process_bwana_message(
+            user_id="test-user-id",
+            message="What's your support email?",
+            session_id="sess-contact",
+            supabase=fake_supabase,
+        )
+    assert source == "faq"
+    assert "support@zedapply.com" in response
+    mock_wa.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unsatisfied_triggers_escalation_log(
+    fake_supabase, bwana_cache_table
+):
+    with patch(
+        "app.services.bwana_chat.send_whatsapp_message",
+        new_callable=AsyncMock,
+    ) as mock_wa:
+        mock_wa.return_value = {"sent": True}
+        response, source = await process_bwana_message(
+            user_id="test-user-id",
+            message="I'm not satisfied with this",
+            session_id="sess-unsat",
+            supabase=fake_supabase,
+        )
+    assert source == "escalated"
+    assert "Sorry" in response or "support@zedapply.com" in response
+    mock_wa.assert_awaited_once()
+    logs = fake_supabase._tables["bwana_escalation_log"]._data
+    assert logs
+    assert logs[0].get("reason") == "unsatisfied"
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_says_chatbot_not_llm(fake_supabase, bwana_cache_table):
+    cfg = BwanaConfig.model_validate(BWANA_CONFIG_ROW)
+    prompt = await build_bwana_system_prompt(cfg, fake_supabase)
+    lower = prompt.lower()
+    assert "chatbot" in lower
+    assert "never say you are an llm" in lower
 
 
 @pytest.mark.asyncio

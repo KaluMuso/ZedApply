@@ -62,6 +62,18 @@ DPO Pay: [DEPLOY.md §1.4](../DEPLOY.md), webhooks in [openapi.yaml](openapi.yam
 
 ---
 
+### Bwana chatbot
+
+| Doc | When to use |
+|-----|-------------|
+| [BWANA_ADMIN.md](BWANA_ADMIN.md) | Admin contact/escalation config, test WAHA, migration **092** |
+| [BWANA_KNOWLEDGE_BOUNDARIES.md](BWANA_KNOWLEDGE_BOUNDARIES.md) | What Bwana must never disclose |
+| [bwana_faq.md](bwana_faq.md) | FAQ intent table + escalation reasons |
+
+**Admin UI:** `/admin/bwana` · **Public config:** `GET /api/v1/bwana/public-config`
+
+---
+
 ### Database — migrations & schema
 
 | Doc | When to use |

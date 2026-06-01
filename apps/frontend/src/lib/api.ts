@@ -1978,6 +1978,39 @@ export interface BwanaChatResponse {
   session_id: string;
 }
 
+export interface BwanaPublicConfig {
+  chatbot_display_name: string;
+  support_email: string;
+  support_phone: string;
+  escalation_sla_hours: number;
+}
+
+export interface BwanaConfig {
+  id?: number;
+  chatbot_display_name: string;
+  operator_display_name: string;
+  support_email: string;
+  support_phone: string;
+  escalation_whatsapp_phone: string;
+  escalation_sla_hours: number;
+  human_escalation_reply_template: string;
+  unsatisfied_reply_template: string;
+  contact_admin_reply_template: string;
+  public_knowledge_extra: string;
+  enable_email_escalation: boolean;
+  updated_at?: string | null;
+  updated_by?: string | null;
+}
+
+export type BwanaConfigPatch = Partial<
+  Omit<BwanaConfig, "id" | "updated_at" | "updated_by">
+>;
+
+export interface BwanaConfigPreview {
+  system_prompt_preview: string;
+  char_count: number;
+}
+
 export const bwana = {
   chat: (message: string, sessionId?: string) =>
     apiFetch<BwanaChatResponse>("/bwana/chat", {
@@ -1987,6 +2020,25 @@ export const bwana = {
         message,
         ...(sessionId ? { session_id: sessionId } : {}),
       },
+    }),
+  publicConfig: () => apiFetch<BwanaPublicConfig>("/bwana/public-config"),
+};
+
+export const adminBwana = {
+  getConfig: (token: string) =>
+    apiFetch<BwanaConfig>("/admin/bwana/config", { token }),
+  patchConfig: (token: string, body: BwanaConfigPatch) =>
+    apiFetch<BwanaConfig>("/admin/bwana/config", {
+      method: "PATCH",
+      token,
+      body: JSON.stringify(body),
+    }),
+  preview: (token: string) =>
+    apiFetch<BwanaConfigPreview>("/admin/bwana/config/preview", { token }),
+  testEscalation: (token: string) =>
+    apiFetch<{ status: string; detail: string }>("/admin/bwana/test-escalation", {
+      method: "POST",
+      token,
     }),
 };
 
