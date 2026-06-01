@@ -9,13 +9,21 @@ import { useTailoredCvBuilderStore } from "./store";
  * Loads the builder draft from the user's uploaded CV (GET /profile → cv_sections).
  * Runs once per mount when a token is present.
  */
-export function useHydrateBuilderFromProfile(token: string | null) {
+export function useHydrateBuilderFromProfile(
+  token: string | null,
+  generationId: string | null,
+) {
   const setDraft = useTailoredCvBuilderStore((s) => s.setDraft);
   const hydratedFromProfile = useTailoredCvBuilderStore((s) => s.hydratedFromProfile);
+  const hydratedFromGeneration = useTailoredCvBuilderStore(
+    (s) => s.hydratedFromGeneration,
+  );
   const ranRef = useRef(false);
 
   useEffect(() => {
-    if (!token || ranRef.current || hydratedFromProfile) return;
+    if (!token || generationId || ranRef.current || hydratedFromProfile || hydratedFromGeneration) {
+      return;
+    }
     ranRef.current = true;
 
     let cancelled = false;
@@ -35,5 +43,5 @@ export function useHydrateBuilderFromProfile(token: string | null) {
     return () => {
       cancelled = true;
     };
-  }, [token, hydratedFromProfile, setDraft]);
+  }, [token, generationId, hydratedFromProfile, hydratedFromGeneration, setDraft]);
 }

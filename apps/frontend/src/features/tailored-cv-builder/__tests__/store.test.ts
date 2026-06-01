@@ -32,4 +32,14 @@ describe("useTailoredCvBuilderStore", () => {
     useTailoredCvBuilderStore.getState().removeExperience(before);
     expect(useTailoredCvBuilderStore.getState().draft.experience).toHaveLength(before);
   });
+
+  it("tracks generation hydration separately from profile", () => {
+    useTailoredCvBuilderStore.getState().setDraft(DEFAULT_DRAFT, {
+      fromGeneration: true,
+    });
+    expect(useTailoredCvBuilderStore.getState().hydratedFromGeneration).toBe(true);
+    expect(useTailoredCvBuilderStore.getState().hydratedFromProfile).toBe(false);
+    useTailoredCvBuilderStore.getState().resetDraft();
+    expect(useTailoredCvBuilderStore.getState().hydratedFromGeneration).toBe(false);
+  });
 });

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
@@ -25,6 +26,7 @@ export function TailoredCvModal({
   onClose,
   token,
   matchId,
+  jobId,
   jobTitle,
   company,
 }: {
@@ -32,9 +34,11 @@ export function TailoredCvModal({
   onClose: () => void;
   token: string;
   matchId: string;
+  jobId: string;
   jobTitle: string;
   company: string | null;
 }) {
+  const router = useRouter();
   const [data, setData] = useState<MatchTailorCvResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +75,19 @@ export function TailoredCvModal({
   const slug =
     `cv-${jobTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}` ||
     "tailored-cv";
+
+  const openInBuilder = () => {
+    if (!data) return;
+    const params = new URLSearchParams({
+      generationId: data.generation_id,
+      matchId,
+      jobId,
+      jobTitle,
+    });
+    if (company) params.set("company", company);
+    onClose();
+    router.push(`/profile/cv-builder?${params.toString()}`);
+  };
 
   return (
     <ModalPortal>
@@ -144,20 +161,31 @@ export function TailoredCvModal({
 
           {data && (
             <footer
-              className="flex items-center justify-between gap-3 p-4 sm:p-5 border-t"
+              className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 sm:p-5 border-t"
               style={{ borderColor: "var(--line)" }}
             >
               <span className="text-xs" style={{ color: "var(--muted)" }}>
                 {data.word_count} words
                 {data.cached ? " · saved copy" : ""}
               </span>
-              <button
-                type="button"
-                className="btn btn-primary btn-sm"
-                onClick={() => downloadMarkdown(`${slug}.md`, data.markdown)}
-              >
-                <Icon name="download" size={14} /> Download as Markdown
-              </button>
+              <div className="flex flex-wrap gap-2 justify-end">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={openInBuilder}
+                  data-testid="tailored-cv-open-builder"
+                >
+                  <Icon name="edit" size={14} /> Open in Builder
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => downloadMarkdown(`${slug}.md`, data.markdown)}
+                  data-testid="tailored-cv-download-md"
+                >
+                  <Icon name="download" size={14} /> Download Markdown
+                </button>
+              </div>
             </footer>
           )}
         </div>

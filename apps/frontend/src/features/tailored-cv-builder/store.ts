@@ -95,8 +95,12 @@ type TailoredCvBuilderState = {
   step: BuilderStep;
   draft: TailoredCvDraft;
   hydratedFromProfile: boolean;
+  hydratedFromGeneration: boolean;
   setStep: (step: BuilderStep) => void;
-  setDraft: (draft: TailoredCvDraft, options?: { fromProfile?: boolean }) => void;
+  setDraft: (
+    draft: TailoredCvDraft,
+    options?: { fromProfile?: boolean; fromGeneration?: boolean },
+  ) => void;
   updateBasics: (patch: Partial<TailoredCvDraft["basics"]>) => void;
   setExperience: (entries: ExperienceEntry[]) => void;
   updateExperience: (index: number, patch: Partial<ExperienceEntry>) => void;
@@ -115,11 +119,13 @@ export const useTailoredCvBuilderStore = create<TailoredCvBuilderState>((set) =>
   step: "basics",
   draft: DEFAULT_DRAFT,
   hydratedFromProfile: false,
+  hydratedFromGeneration: false,
   setStep: (step) => set({ step }),
   setDraft: (draft, options) =>
     set({
       draft,
       hydratedFromProfile: options?.fromProfile ?? false,
+      hydratedFromGeneration: options?.fromGeneration ?? false,
     }),
   updateBasics: (patch) =>
     set((state) => ({
@@ -182,5 +188,10 @@ export const useTailoredCvBuilderStore = create<TailoredCvBuilderState>((set) =>
       draft: { ...state.draft, style: { ...state.draft.style, ...patch } },
     })),
   resetDraft: () =>
-    set({ draft: DEFAULT_DRAFT, step: "basics", hydratedFromProfile: false }),
+    set({
+      draft: DEFAULT_DRAFT,
+      step: "basics",
+      hydratedFromProfile: false,
+      hydratedFromGeneration: false,
+    }),
 }));

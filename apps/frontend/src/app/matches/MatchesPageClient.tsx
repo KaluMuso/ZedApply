@@ -43,6 +43,11 @@ import { ApplyModal } from "@/components/jobs/ApplyModal";
 import { PushPermissionPrompt } from "@/components/notifications/PushPermissionPrompt";
 import { btnClass, surfaceCardClass, tagClass } from "@/lib/cn-ui";
 import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // Human-friendly tier label. Free → "Free", super_standard → "Super",
 // etc. Falls back to the raw key if we don't recognize it so we don't
@@ -887,15 +892,20 @@ export default function MatchesPageClient() {
                       Tailor my CV <Icon name="file" size={13} />
                     </button>
                   ) : (
-                    <button
-                      type="button"
-                      className={cn(btnClass("ghost", "sm"), "w-full sm:w-40")}
-                      disabled
-                      title="Professional or Super Standard — tailored CV per match. Upgrade at /pricing."
-                      data-testid="match-tailor-cv-locked"
-                    >
-                      Tailor my CV
-                    </button>
+                    <Tooltip>
+                      <TooltipTrigger
+                        type="button"
+                        className={cn(btnClass("ghost", "sm"), "w-full sm:w-40")}
+                        disabled
+                        style={{ opacity: 0.55, cursor: "not-allowed" }}
+                        data-testid="match-tailor-cv-locked"
+                      >
+                        Tailor my CV
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Professional or Super Standard — tailored CV per match. Upgrade at /pricing.
+                      </TooltipContent>
+                    </Tooltip>
                   )}
                   {canUseCoverLetterEditor(sub?.tier) ? (
                     <button
@@ -982,6 +992,7 @@ export default function MatchesPageClient() {
           onClose={() => setTailorFor(null)}
           token={token}
           matchId={tailorFor.id}
+          jobId={tailorFor.job.id}
           jobTitle={tailorFor.job.title}
           company={tailorFor.job.company}
         />
