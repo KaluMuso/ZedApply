@@ -50,7 +50,7 @@ from app.services.notification_channels import wants_email_digest, wants_whatsap
 from app.services.quiet_hours import user_in_quiet_hours
 from app.services.whatsapp import send_match_digest
 from app.services.notifications import notify_high_match_web_pushes
-from app.services.job_visibility import include_in_default_feed
+from app.services.job_visibility import include_in_default_feed, visibility_from_row
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +144,11 @@ def _rows_to_match_results(
     for raw in rows:
         m = dict(raw)
         job_data = m.pop("jobs", {}) if isinstance(m, dict) else {}
+        if isinstance(job_data, dict) and job_data and not job_data.get("visibility_status"):
+            job_data = {
+                **job_data,
+                "visibility_status": visibility_from_row(job_data),
+            }
         adjusted_score, adjusted_bonus, adjustment_note = apply_preferences_to_match(
             base_score=m["score"],
             base_bonus=float(m.get("bonus_score") or 0),

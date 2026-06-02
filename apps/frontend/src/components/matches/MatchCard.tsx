@@ -10,7 +10,7 @@ import {
   type ApplyJobFields,
 } from "@/lib/applyLink";
 import type { MatchData } from "@/lib/api";
-import { isGreyedClosedListing, isRecentlyClosedJob } from "@/lib/jobVisibility";
+import { computeJobVisibilityStatus } from "@/lib/jobVisibility";
 import { SkillBadge } from "@/components/SkillBadge";
 import { Icon } from "@/components/ui/Icon";
 import { SaveJobButton } from "@/components/SaveJobButton";
@@ -50,9 +50,11 @@ export function MatchCard({
   const useExternalLink = Boolean(
     apply && isExternalApplyHref(apply.href) && !onApplyClick,
   );
-  const recentlyClosed = isRecentlyClosedJob(match.job);
-  const greyed = expired || isGreyedClosedListing(match.job);
-  const closed = expired || recentlyClosed || greyed;
+  const visibility = computeJobVisibilityStatus(match.job);
+  const recentlyClosed = visibility === "recently_closed";
+  const archived = visibility === "archived";
+  const greyed = expired || visibility !== "open";
+  const closed = expired || visibility !== "open";
 
   return (
     <article
@@ -68,12 +70,12 @@ export function MatchCard({
           EXPIRED
         </span>
       )}
-      {recentlyClosed && !expired && (
+      {(recentlyClosed || archived) && !expired && (
         <span
           className="absolute top-3 right-3 z-10 px-2 py-0.5 rounded text-[10px] font-bold font-mono tracking-wide bg-destructive text-destructive-foreground"
           data-testid="match-closed-badge"
         >
-          CLOSED
+          {archived ? "ARCHIVED" : "CLOSED"}
         </span>
       )}
       <div className="match-row p-5 sm:p-6 grid gap-6 items-start">
@@ -110,15 +112,28 @@ export function MatchCard({
             </p>
           ) : null}
           {(match.matched_skills.length > 0 || match.missing_skills.length > 0) && (
-            <div className="flex flex-wrap gap-1.5 mt-3">
-              {match.matched_skills.slice(0, 6).map((s) => (
-                <SkillBadge key={s} skill={s} matched />
-              ))}
-              {match.missing_skills.slice(0, 4).map((s) => (
-                <span key={s} className="tag tag-mono opacity-75">
-                  {s}
-                </span>
-              ))}
+            <div className="mt-3 space-y-2">
+              {match.matched_skills.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {match.matched_skills.slice(0, 6).map((s) => (
+                    <SkillBadge key={s} skill={s} matched />
+                  ))}
+                </div>
+              ) : null}
+              {match.missing_skills.length > 0 ? (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: "var(--copper-600)" }}>
+                    Skill gaps
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {match.missing_skills.slice(0, 4).map((s) => (
+                      <span key={s} className="tag tag-mono opacity-75">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           )}
         </div>
