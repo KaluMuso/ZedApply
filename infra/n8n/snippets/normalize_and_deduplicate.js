@@ -238,7 +238,7 @@ return [{
       ? String($env.FASTAPI_URL).replace(/\/$/, '')
       : 'http://zedcv-backend:8000',
     ingestKey: (typeof $env !== 'undefined' && $env.INGEST_API_KEY)
-      ? String($env.INGEST_API_KEY)
+      ? String($env.INGEST_API_KEY).trim()
       : '',
   },
 }];

@@ -108,8 +108,10 @@ def _require_ingest_header(
     settings: Settings,
     ingest_api_key: str | None,
     x_ingest_api_key: str | None,
+    *,
+    query_api_key: str | None = None,
 ) -> None:
-    supplied = ingest_api_key or x_ingest_api_key
+    supplied = ingest_api_key or x_ingest_api_key or query_api_key
     if not settings.ingest_api_key or supplied != settings.ingest_api_key:
         raise HTTPException(status_code=401, detail="Invalid ingest API key")
 
@@ -568,6 +570,10 @@ async def deep_enrich_tick(
     ),
     ingest_api_key: str | None = Header(None, alias="INGEST_API_KEY"),
     x_ingest_api_key: str | None = Header(None, alias="X-INGEST-API-KEY"),
+    api_key: str | None = Query(
+        None,
+        description="Same secret as bulk ingest body api_key (n8n fallback when headers are stripped).",
+    ),
     supabase=Depends(get_supabase),
     settings: Settings = Depends(get_settings),
 ):
@@ -580,7 +586,9 @@ async def deep_enrich_tick(
     Declared before ``/{job_id}`` so FastAPI does not treat
     ``deep-enrich-tick`` as a job UUID (which would yield HTTP 405 on POST).
     """
-    _require_ingest_header(settings, ingest_api_key, x_ingest_api_key)
+    _require_ingest_header(
+        settings, ingest_api_key, x_ingest_api_key, query_api_key=api_key
+    )
     stats = await run_deep_enrich_tick(
         supabase,
         limit=limit,

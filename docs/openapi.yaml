@@ -3609,7 +3609,8 @@ paths:
         source_url pages for jobs pending deep enrichment, discovers
         apply_url/apply_email/closing_date, splits multi-role listings, and
         clears admin review queue rows when contacts are found. Auth via
-        INGEST_API_KEY / X-INGEST-API-KEY (same as bulk ingest).
+        INGEST_API_KEY / X-INGEST-API-KEY (same as bulk ingest). Optional
+        `api_key` query param when proxies strip custom headers (n8n scraper).
       security: []
       parameters:
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
@@ -3619,6 +3620,10 @@ paths:
           description: |
             When true (default), also deep-enrich jobs with is_review_required=true
             even if is_active=false, so scraper ingest can resolve missing apply paths.
+        - name: api_key
+          in: query
+          schema: { type: string }
+          description: Ingest secret (same as POST /jobs/ingest body api_key).
         - { name: X-INGEST-API-KEY, in: header, schema: { type: string } }
         - { name: INGEST_API_KEY, in: header, schema: { type: string } }
       responses:

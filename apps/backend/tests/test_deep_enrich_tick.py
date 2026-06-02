@@ -71,3 +71,15 @@ class TestDeepEnrichTick:
         assert resp.status_code == 200
         mock_tick.assert_awaited_once()
         assert mock_tick.await_args.kwargs["include_review_queue"] is False
+
+    @patch(
+        "app.api.v1.jobs.run_deep_enrich_tick",
+        new_callable=AsyncMock,
+        return_value={"enriched": 0, "split": 0, "failed": 0, "skipped": 0},
+    )
+    def test_deep_enrich_tick_accepts_api_key_query_param(self, mock_tick, client):
+        resp = client.post(
+            f"{MOUNTED_PATH}?limit=5&api_key=test-ingest-key",
+        )
+        assert resp.status_code == 200
+        mock_tick.assert_awaited_once()
