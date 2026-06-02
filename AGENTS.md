@@ -78,8 +78,8 @@ board.
 
 **Diagnose:**
 ```sql
-SELECT vector_dim, COUNT(*) FROM jobs WHERE embedding IS NOT NULL GROUP BY 1;
-SELECT vector_dim, COUNT(*) FROM cvs WHERE embedding IS NOT NULL GROUP BY 1;
+SELECT vector_dims(embedding) AS dim, COUNT(*) FROM jobs WHERE embedding IS NOT NULL GROUP BY 1;
+SELECT vector_dims(embedding) AS dim, COUNT(*) FROM cvs WHERE embedding IS NOT NULL GROUP BY 1;
 ```
 If dims match but matching is still empty, check `EMBEDDING_MODEL` in
 the deployed env vs what generated the existing embeddings.

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildEmailIntroduction,
   isAggregatorApplyUrl,
+  isExternalApplyHref,
   resolveApplyAction,
   resolveApplyActionOrSupport,
   resolveApplyContactMethods,
@@ -76,6 +77,15 @@ describe("resolveApplyAction", () => {
     expect(action?.label).toBe("Apply");
     expect(action?.href).toBe("#");
     expect(action?.secondary).toBeUndefined();
+  });
+});
+
+describe("isExternalApplyHref", () => {
+  it("accepts_https_urls_only", () => {
+    expect(isExternalApplyHref("https://careers.example.com/apply")).toBe(true);
+    expect(isExternalApplyHref("mailto:a@b.com")).toBe(false);
+    expect(isExternalApplyHref("#")).toBe(false);
+    expect(isExternalApplyHref(null)).toBe(false);
   });
 });
 

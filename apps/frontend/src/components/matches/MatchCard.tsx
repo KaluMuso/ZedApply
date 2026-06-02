@@ -5,6 +5,7 @@ import { MatchScore } from "@/components/MatchScore";
 import { Avatar } from "@/components/ui/Avatar";
 import { formatMatchedRelative } from "@/lib/formatMatchedRelative";
 import {
+  isExternalApplyHref,
   resolveApplyAction,
   type ApplyJobFields,
 } from "@/lib/applyLink";
@@ -42,7 +43,9 @@ export function MatchCard({
   onWhyMatchClick,
 }: MatchCardProps) {
   const apply = resolveApplyAction(match.job as ApplyJobFields);
-  const useExternalLink = Boolean(apply?.external && !onApplyClick);
+  const useExternalLink = Boolean(
+    apply && isExternalApplyHref(apply.href) && !onApplyClick,
+  );
   const recentlyClosed = isRecentlyClosedJob(match.job);
   const greyed = expired || isGreyedClosedListing(match.job);
   const closed = expired || recentlyClosed || greyed;
