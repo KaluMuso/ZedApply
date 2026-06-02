@@ -24,13 +24,25 @@ def test_deep_enrich_tick_route_accepts_post(client):
     with patch(
         "app.api.v1.jobs.run_deep_enrich_tick",
         new_callable=AsyncMock,
-        return_value={"enriched": 0, "split": 0, "failed": 0, "skipped": 0},
+        return_value={
+            "enriched": 0,
+            "split": 0,
+            "failed": 0,
+            "skipped": 0,
+            "attempted": 0,
+        },
     ):
         resp = client.post(f"{MOUNTED_PATH}?limit=50", headers=INGEST_HEADERS)
 
     assert resp.status_code != 405, resp.text
     assert resp.status_code == 200
-    assert resp.json() == {"enriched": 0, "split": 0, "failed": 0, "skipped": 0}
+    assert resp.json() == {
+        "enriched": 0,
+        "split": 0,
+        "failed": 0,
+        "skipped": 0,
+        "attempted": 0,
+    }
 
 
 class TestDeepEnrichTick:
@@ -41,7 +53,13 @@ class TestDeepEnrichTick:
     @patch(
         "app.api.v1.jobs.run_deep_enrich_tick",
         new_callable=AsyncMock,
-        return_value={"enriched": 1, "split": 0, "failed": 1, "skipped": 0},
+        return_value={
+            "enriched": 1,
+            "split": 0,
+            "failed": 1,
+            "skipped": 0,
+            "attempted": 2,
+        },
     )
     def test_deep_enrich_tick_with_ingest_key(self, mock_tick, client, fake_supabase):
         fake_supabase.set_table("jobs", FakeSupabaseQuery(data=[]))
@@ -51,7 +69,13 @@ class TestDeepEnrichTick:
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert body == {"enriched": 1, "split": 0, "failed": 1, "skipped": 0}
+        assert body == {
+            "enriched": 1,
+            "split": 0,
+            "failed": 1,
+            "skipped": 0,
+            "attempted": 2,
+        }
         mock_tick.assert_awaited_once_with(
             fake_supabase,
             limit=10,

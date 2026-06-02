@@ -582,6 +582,7 @@ class DeepEnrichTickResponse(BaseModel):
     split: int
     failed: int
     skipped: int = 0
+    attempted: int = 0
 
 
 # ── Admin CRUD (Wave 4 PR 2) ──────────────────────────────────────────

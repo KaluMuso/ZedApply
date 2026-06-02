@@ -135,6 +135,13 @@ class Settings(BaseSettings):
     # vars without a JSON wrapper. Matched substring-style against both
     # apply_url and source_url, case-insensitive.
     aggregator_domains_blacklist: str = "zimbojobs.com,zimworx.com,zimworx.co.zw"
+    # After n8n ingest: fire-and-forget deep-enrich tick (LLM per job).
+    # Set false when n8n "Deep Enrich After Ingest" runs the same tick (avoids duplicate work).
+    post_ingest_deep_enrich_enabled: bool = True
+    # Cap jobs processed per ingest batch (was hardcoded up to 80).
+    post_ingest_deep_enrich_max_limit: int = 15
+    # Pause between jobs in one tick (seconds). 0 = no delay. Use ~1 on OCI to reduce LLM burst.
+    deep_enrich_inter_job_delay_sec: float = 0.0
 
     # OTP
     otp_cooldown_seconds: int = 60
