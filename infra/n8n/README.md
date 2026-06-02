@@ -147,6 +147,9 @@ After patch: **Save** → **Publish** → manual test. Expect HTTP 200 `{ "inges
    OPENROUTER_API_KEY=sk-or-...   # same key n8n uses for AI Parse
    EMBEDDING_VIA_OPENROUTER=true   # skip Gemini entirely (recommended)
    ```
+   `GEMINI_API_KEY` may be omitted when `EMBEDDING_VIA_OPENROUTER=true` (master after PR #226).
+   If the container crash-loops with `gemini_api_key Field required`, either pull that fix
+   or temporarily add `GEMINI_API_KEY=unused` until redeployed.
 2. Deploy backend code with OpenRouter embedding support (PR #224 branch or `master` after merge):
    ```bash
    # Repo clone on OCI is ~/zedcv (no hyphen) — NOT ~/zed-cv

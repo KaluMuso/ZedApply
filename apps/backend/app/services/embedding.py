@@ -52,6 +52,11 @@ async def _embed_via_gemini(
     supabase,
 ) -> list[float]:
     settings = get_settings()
+    if not settings.gemini_api_key.strip():
+        raise ValueError(
+            "Embedding service is not configured. Set GEMINI_API_KEY or "
+            "EMBEDDING_VIA_OPENROUTER=true with OPENROUTER_API_KEY."
+        )
     url = GEMINI_EMBED_URL.format(model=settings.embedding_model)
     payload = {
         "model": f"models/{settings.embedding_model}",

@@ -390,7 +390,8 @@ def run_audit(*, skip_db: bool, production: bool = False) -> list[CheckResult]:
                 "yellow",
                 "skipped"
                 + (" (--skip-db)" if skip_db else " (incomplete .env)")
-                + "; need SUPABASE_URL, SUPABASE_KEY, JWT_SECRET, GEMINI_API_KEY",
+                + "; need SUPABASE_URL, SUPABASE_KEY, JWT_SECRET"
+                + " (GEMINI_API_KEY unless EMBEDDING_VIA_OPENROUTER=true)",
             )
         )
     else:
