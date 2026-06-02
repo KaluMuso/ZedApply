@@ -100,6 +100,29 @@ Bwana live workflow already uses `$env.OPENROUTER_API_KEY` and `$env.WAHA_API_KE
 
 If **AI Parse \*** nodes return `Your project has been denied access`, the live workflow is still calling **Google AI Studio** (`generativelanguage.googleapis.com`) with a blocked project. Re-import repo `job_scraper.json`: all four **AI Parse** nodes now use **OpenRouter** (`OPENROUTER_API_KEY`), same as the backend.
 
+### Deep Enrich After Ingest: HTTP 401 Invalid ingest API key
+
+**Symptom:** **Send to ZedApply** returns `ingested > 0`, but **Deep Enrich After Ingest** returns 401.
+
+**Cause:** The node was calling the **public** URL (`https://api.zedapply.com`) with `X-INGEST-API-KEY`. Some proxies strip custom headers on external requests. Ingest works because auth is in the **JSON body** (`api_key`).
+
+**Also:** The backend already runs `schedule_post_ingest_deep_enrich` after every successful ingest — the n8n node is an optional extra pass, not required for jobs to land.
+
+**Fix (n8n UI):** In **Deep Enrich After Ingest**, set URL to the **internal Docker hostname** (n8n and backend share the compose network):
+
+```
+={{ 'http://zedcv-backend:8000/api/v1/jobs/deep-enrich-tick?limit=80&include_review_queue=true&api_key=' + encodeURIComponent($('Normalize and Deduplicate').item.json.ingestKey || '') }}
+```
+
+Keep `X-INGEST-API-KEY` header as `$('Normalize and Deduplicate').item.json.ingestKey` (belt and suspenders). Re-import repo `job_scraper.json` after backend PR merge for query-param fallback.
+
+**Smoke from OCI host:**
+
+```bash
+KEY=$(grep ^INGEST_API_KEY= ~/zedcv/apps/backend/.env | cut -d= -f2-)
+curl -sS -X POST "http://127.0.0.1:8000/api/v1/jobs/deep-enrich-tick?limit=5&include_review_queue=true&api_key=$KEY" | jq .
+```
+
 ### Send to ZedApply: HTTP 422 on short title (e.g. `"Chef"`)
 
 **Symptom:** **Send to ZedApply** fails with HTTP 422 and
