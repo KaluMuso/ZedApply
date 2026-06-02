@@ -10,15 +10,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/lib/utils";
-import { tierAtLeast } from "@/lib/tier-features";
+import {
+  hasInterviewPrepAccess,
+  PREMIUM_FEATURE_PURPLE,
+} from "@/lib/premium-nav";
 
 const SUB_LINKS = [
   { href: "/interview-prep/mock", label: "Mock Interview" },
   { href: "/interview-prep/aptitude", label: "Aptitude Tests" },
   { href: "/interview-prep/history", label: "History" },
 ] as const;
-
-const PREMIUM_PURPLE = "#a855f7";
 
 type InterviewPrepNavProps = {
   className?: string;
@@ -27,10 +28,6 @@ type InterviewPrepNavProps = {
   variant?: "dropdown" | "stacked";
   onNavigate?: () => void;
 };
-
-function hasInterviewPrepAccess(tier: string | null | undefined): boolean {
-  return tierAtLeast(tier, "super_standard");
-}
 
 export function InterviewPrepNav({
   className,
@@ -47,7 +44,7 @@ export function InterviewPrepNav({
     className,
   );
   const labelStyle = premium
-    ? { color: PREMIUM_PURPLE }
+    ? { color: PREMIUM_FEATURE_PURPLE }
     : undefined;
 
   const prepLabel = (

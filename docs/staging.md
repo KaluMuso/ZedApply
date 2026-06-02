@@ -134,7 +134,7 @@ Run after deploy or migration apply. All commands assume staging API base `$API`
 | 1 | Health | `curl -s $API/health \| jq .` | `status` healthy or degraded with known flags; `supabase: true` |
 | 2 | Migrations | `cd apps/backend && python scripts/production_readiness_audit.py` | No red migration sentinels for 074–088 |
 | 3 | Auth OTP | Request WhatsApp or email OTP for **test** `+260…` | 200, no CORS mask (if CORS error, see [AGENTS.md](../AGENTS.md) §3.1) |
-| 4 | CV upload | PDF &lt; 5MB | Parse succeeds; embedding `vector_dim` 768 |
+| 4 | CV upload | PDF &lt; 5MB | Parse succeeds; `vector_dims(embedding)` = 768 |
 | 5 | Matches | `GET /matches` as test user | Scores present; not all zero (embedding model drift if zero) |
 | 6 | Lenco | K10 sandbox payment on `/pricing` | Tier updates; refund in sandbox dashboard |
 | 7 | Email | Signup / OTP email | Resend `delivered`; `GET /admin/email-health` → `domain_verified: true` |
@@ -145,8 +145,8 @@ Run after deploy or migration apply. All commands assume staging API base `$API`
 **Embedding sanity (SQL on staging):**
 
 ```sql
-SELECT vector_dim, COUNT(*) FROM jobs WHERE embedding IS NOT NULL GROUP BY 1;
-SELECT vector_dim, COUNT(*) FROM cvs WHERE embedding IS NOT NULL GROUP BY 1;
+SELECT vector_dims(embedding) AS dim, COUNT(*) FROM jobs WHERE embedding IS NOT NULL GROUP BY 1;
+SELECT vector_dims(embedding) AS dim, COUNT(*) FROM cvs WHERE embedding IS NOT NULL GROUP BY 1;
 ```
 
 Expect **768** for both. Mismatch or wrong model → `POST /admin/re-embed?target=all` (admin key).

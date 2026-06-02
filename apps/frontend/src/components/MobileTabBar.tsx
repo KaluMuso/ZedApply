@@ -12,6 +12,11 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { settingsPath } from "@/app/settings/settings-nav";
+import { useUserTier } from "@/hooks/useUserTier";
+import {
+  isPremiumInterviewPrepNav,
+  PREMIUM_FEATURE_PURPLE,
+} from "@/lib/premium-nav";
 
 const MAIN_TABS = [
   { id: "jobs", label: "Jobs", icon: "briefcase", href: "/jobs" },
@@ -35,7 +40,9 @@ export function MobileTabBar() {
   const pathname = usePathname();
   const router = useRouter();
   const { logout, isAuthenticated } = useAuth();
+  const { tier } = useUserTier();
   const [moreOpen, setMoreOpen] = useState(false);
+  const interviewPrepPremium = isPremiumInterviewPrepNav(tier);
 
   const showOn = [
     "/matches",
@@ -103,17 +110,33 @@ export function MobileTabBar() {
             <SheetTitle>More</SheetTitle>
           </SheetHeader>
           <nav className="flex flex-col gap-1 px-2" aria-label="More navigation">
-            {MORE_LINKS.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={() => setMoreOpen(false)}
-                className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium hover:bg-muted/50"
-              >
-                <Icon name={link.icon} size={18} className="opacity-80" />
-                {link.label}
-              </Link>
-            ))}
+            {MORE_LINKS.map((link) => {
+              const isInterviewPrep = link.href === "/interview-prep";
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setMoreOpen(false)}
+                  className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium hover:bg-muted/50"
+                  style={
+                    isInterviewPrep && interviewPrepPremium
+                      ? { color: PREMIUM_FEATURE_PURPLE }
+                      : undefined
+                  }
+                >
+                  <Icon
+                    name={isInterviewPrep && interviewPrepPremium ? "sparkle" : link.icon}
+                    size={18}
+                    className={
+                      isInterviewPrep && interviewPrepPremium
+                        ? "text-[#a855f7]"
+                        : "opacity-80"
+                    }
+                  />
+                  {link.label}
+                </Link>
+              );
+            })}
             <button
               type="button"
               onClick={() => {

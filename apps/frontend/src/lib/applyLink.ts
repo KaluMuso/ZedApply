@@ -220,3 +220,8 @@ export function resolveApplyContactMethods(job: ApplyJobFields): ApplyContactMet
 export function hasStructuredApplyContact(job: ApplyJobFields): boolean {
   return resolveApplyContactMethods(job).length > 0;
 }
+
+/** True when apply should open in a new tab (employer site), not the copy modal. */
+export function isExternalApplyHref(href: string | undefined | null): boolean {
+  return Boolean(href && /^https?:\/\//i.test(href));
+}
