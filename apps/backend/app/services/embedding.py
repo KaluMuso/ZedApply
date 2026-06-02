@@ -112,7 +112,7 @@ async def _embed_via_gemini(
         values = data.get("embedding", {}).get("values")
         if not isinstance(values, list):
             raise ValueError("Embedding service returned an unexpected response.")
-        return values
+        return _ensure_embedding_dim(values, expected=settings.embedding_dimensions)
 
 
 async def _embed_via_openrouter(
@@ -181,7 +181,9 @@ async def _embed_via_openrouter(
             context=ctx,
             supabase=supabase,
         )
-        return rows[0]["embedding"]
+        return _ensure_embedding_dim(
+            rows[0]["embedding"], expected=settings.embedding_dimensions
+        )
 
 
 class _GeminiEmbedAccessDenied(Exception):
@@ -189,6 +191,14 @@ class _GeminiEmbedAccessDenied(Exception):
         self.status = status
         self.detail = detail
         super().__init__(detail)
+
+
+def _ensure_embedding_dim(values: list, *, expected: int) -> list[float]:
+    if len(values) != expected:
+        raise ValueError(
+            f"Embedding dimension mismatch: got {len(values)}, expected {expected}"
+        )
+    return values
 
 
 async def generate_embedding(

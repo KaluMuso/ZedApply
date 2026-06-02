@@ -134,6 +134,37 @@ Downstream HTTP nodes use `$json.fastapiUrl` and `$json.ingestKey` (see repo `jo
 
 After patch: **Save** → **Publish** → manual test. Expect HTTP 200 `{ "ingested": N, ... }`.
 
+### Ingest HTTP 200 but every job `embedding_failed`
+
+**Symptom:** **Send to ZedApply** returns 200 with `"ingested": 0` and `"errors": [{ "reason": "embedding_failed: …" }]`.
+
+**Cause:** The backend still calls **direct Google Gemini** `embedContent` for each job. Your Google AI Studio project is **PERMISSION_DENIED** (same ban that broke the old scraper Gemini nodes). n8n OpenRouter works for LLM parsing, but **embeddings run inside `zedcv-backend`**, not in n8n.
+
+**Fix on OCI (`~/n8n-docker`):**
+
+1. Ensure `apps/backend/.env` (the file the backend container reads) includes:
+   ```
+   OPENROUTER_API_KEY=sk-or-...   # same key n8n uses for AI Parse
+   EMBEDDING_VIA_OPENROUTER=true   # skip Gemini entirely (recommended)
+   ```
+2. Deploy backend code with OpenRouter embedding support (PR #224 branch or `master` after merge):
+   ```bash
+   cd ~/zed-cv   # or your repo clone path
+   git pull origin cursor/fix-n8n-ingest-api-key-72f6
+   cd ~/n8n-docker
+   docker compose build --no-cache zedcv-backend
+   docker compose up -d --force-recreate zedcv-backend
+   ```
+3. Smoke from inside the container:
+   ```bash
+   docker exec zedcv-backend printenv OPENROUTER_API_KEY EMBEDDING_VIA_OPENROUTER | head -2
+   curl -s https://api.zedapply.com/api/v1/health | jq '{openrouter_configured, embedding_via_openrouter}'
+   ```
+   Expect `openrouter_configured: true` and `embedding_via_openrouter: true`.
+4. Re-run the scraper. Expect `"ingested": N` with N > 0 (duplicates OK on re-run).
+
+Without `EMBEDDING_VIA_OPENROUTER=true`, the backend auto-falls back to OpenRouter only **after** Gemini returns 403 **and** `OPENROUTER_API_KEY` is set. Setting the flag avoids the failed Gemini call on every job.
+
 ### Combine All Sources: jobs with `source_url: null`
 
 OpenRouter can return valid `choices[0].message.content` while every job still has `source_url` / `apply_url` null and `posted_at` like `9h ago` or `Posted 19 hours ago`. **Prep \*** nodes extract `href` links into `extractedLinks` before HTML strip; **Normalize and Deduplicate** reads those links from each Prep node (by branch index) and fuzzy-matches titles to URLs when the LLM omitted `source_url`. It keeps per-job aggregator URLs (e.g. `gozambiajobs.com/jobs/123-slug`) and drops homepages only. It also converts relative `posted_at` to ISO `YYYY-MM-DD`.

@@ -22,10 +22,15 @@ def _gemini_denied_response() -> httpx.Response:
     )
 
 
+def _vec768(*values: float) -> list[float]:
+    base = list(values) if values else [0.1]
+    return (base * (768 // len(base) + 1))[:768]
+
+
 def _gemini_ok_response() -> httpx.Response:
     return httpx.Response(
         200,
-        json={"embedding": {"values": [0.1, 0.2]}, "usageMetadata": {"promptTokenCount": 4}},
+        json={"embedding": {"values": _vec768(0.1, 0.2)}, "usageMetadata": {"promptTokenCount": 4}},
     )
 
 
@@ -33,7 +38,7 @@ def _openrouter_ok_response() -> httpx.Response:
     return httpx.Response(
         200,
         json={
-            "data": [{"embedding": [0.3, 0.4], "index": 0}],
+            "data": [{"embedding": _vec768(0.3, 0.4), "index": 0}],
             "model": "gemini-embedding-001",
             "usage": {"prompt_tokens": 2, "cost": 1.5e-7},
         },
@@ -63,7 +68,8 @@ async def test_embedding_via_openrouter_setting():
     ) as mock_log:
         vec = await generate_embedding("test job")
 
-    assert vec == [0.3, 0.4]
+    assert len(vec) == 768
+    assert vec[0] == 0.3
     mock_log.assert_called_once()
     body = mock_client.post.await_args.kwargs.get("json") or mock_client.post.await_args[1].get("json")
     assert body["model"] == "google/gemini-embedding-001"
@@ -103,7 +109,8 @@ async def test_gemini_denied_falls_back_to_openrouter():
     ), patch("app.services.embedding.record_openrouter_embedding"):
         vec = await generate_embedding("accountant lusaka")
 
-    assert vec == [0.3, 0.4]
+    assert len(vec) == 768
+    assert vec[0] == 0.3
     assert mock_client.post.await_count == 2
 
 
@@ -130,6 +137,7 @@ async def test_gemini_ok_without_openrouter():
     ), patch("app.services.embedding.record_gemini_embedding") as mock_log:
         vec = await generate_embedding("hello")
 
-    assert vec == [0.1, 0.2]
+    assert len(vec) == 768
+    assert vec[0] == 0.1
     mock_log.assert_called_once()
     assert mock_client.post.await_count == 1
