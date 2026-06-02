@@ -532,8 +532,10 @@ async def run_deep_enrich_tick(
     result = query.execute()
     rows = filter_deep_enrich_candidates(result.data or [], limit=limit)
 
-    stats = {"enriched": 0, "split": 0, "failed": 0, "skipped": 0}
-    for row in rows:
+    stats = {"enriched": 0, "split": 0, "failed": 0, "skipped": 0, "attempted": 0}
+    delay = get_settings().deep_enrich_inter_job_delay_sec
+    for idx, row in enumerate(rows):
+        stats["attempted"] += 1
         outcome = await enrich_job_deep(supabase, row, dry_run=dry_run)
         if outcome == "enriched":
             stats["enriched"] += 1
@@ -543,6 +545,8 @@ async def run_deep_enrich_tick(
             stats["skipped"] += 1
         else:
             stats["failed"] += 1
+        if delay > 0 and idx < len(rows) - 1:
+            await asyncio.sleep(delay)
     return stats
 
 
@@ -552,9 +556,17 @@ async def schedule_post_ingest_deep_enrich(
     ingested_count: int,
 ) -> dict[str, int]:
     """Fire-and-forget helper after bulk scraper ingest (budget-capped)."""
+    empty = {"enriched": 0, "split": 0, "failed": 0, "skipped": 0, "attempted": 0}
     if ingested_count <= 0:
-        return {"enriched": 0, "split": 0, "failed": 0, "skipped": 0}
-    limit = min(max(ingested_count, 10), 80)
+        return empty
+    settings = get_settings()
+    if not settings.post_ingest_deep_enrich_enabled:
+        logger.info(
+            "post_ingest deep_enrich skipped (POST_INGEST_DEEP_ENRICH_ENABLED=false)"
+        )
+        return empty
+    cap = max(1, settings.post_ingest_deep_enrich_max_limit)
+    limit = min(max(ingested_count, 1), cap)
     try:
         stats = await run_deep_enrich_tick(
             supabase,
@@ -565,4 +577,4 @@ async def schedule_post_ingest_deep_enrich(
         return stats
     except Exception:
         logger.warning("post_ingest deep_enrich tick failed", exc_info=True)
-        return {"enriched": 0, "split": 0, "failed": 0, "skipped": 0}
+        return empty

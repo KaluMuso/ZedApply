@@ -1402,6 +1402,7 @@ components:
         split: { type: integer, minimum: 0 }
         failed: { type: integer, minimum: 0 }
         skipped: { type: integer, minimum: 0 }
+        attempted: { type: integer, minimum: 0, description: Jobs processed in this tick }
 
     JobCreate:
       type: object

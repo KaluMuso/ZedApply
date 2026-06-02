@@ -234,12 +234,25 @@ OpenRouter can return valid `choices[0].message.content` while every job still h
 
 ### Post-ingest deep-enrich + review queue
 
-After scraper ingest, jobs often land in the admin **review queue** (`is_review_required=true`) when apply path or closing date is missing. Two mechanisms clear that backlog:
+After scraper ingest, jobs often land in the admin **review queue** (`is_review_required=true`) when apply path or closing date is missing. Deep-enrich fetches `source_url`, runs LLM extraction, splits multi-role listings, and re-runs review-state so rows can auto-activate when contacts and deadlines are found.
 
-1. **Backend (automatic):** `POST /api/v1/jobs/ingest` schedules `schedule_post_ingest_deep_enrich` (fire-and-forget, limit capped 10–80 from ingest count).
-2. **n8n (explicit):** **Deep Enrich After Ingest** node POSTs `/api/v1/jobs/deep-enrich-tick?limit=80&include_review_queue=true` after **Send to ZedApply** (wired in repo `job_scraper.json`).
+**Avoid duplicate enrich (pick one path):**
 
-The 6h cron export `deep_enrich_cron_6h.json` uses the same `include_review_queue=true` query param. Deep-enrich fetches `source_url`, runs LLM extraction, splits multi-role listings, and re-runs review-state so rows can auto-activate when contacts and deadlines are found.
+| Path | When to use |
+| --- | --- |
+| **n8n only** | Set on OCI `POST_INGEST_DEEP_ENRICH_ENABLED=false` in `apps/backend/.env`, recreate backend. Repo `job_scraper.json` runs **Deep Enrich After Ingest** (`limit=10`, public `fastapiUrl`, 3 min timeout). |
+| **Backend only** | Disable or disconnect the n8n **Deep Enrich After Ingest** node. Leave `POST_INGEST_DEEP_ENRICH_ENABLED=true` (default cap `POST_INGEST_DEEP_ENRICH_MAX_LIMIT=15`). |
+| **6h cron** | `deep_enrich_cron_6h.json` — `limit=15`, `include_review_queue=true`. Complements scraper; does not replace per-ingest tick. |
+
+**One job at a time (manual / Loop Over Items):**
+
+```bash
+curl -sS -X POST "https://api.zedapply.com/api/v1/jobs/deep-enrich-tick?limit=1&include_review_queue=true&api_key=YOUR_INGEST_KEY"
+```
+
+In n8n, use **Loop Over Items** with `limit=1` per iteration (or `limit=5–10` per HTTP call for small batches).
+
+**Optional pacing:** `DEEP_ENRICH_INTER_JOB_DELAY_SEC=1` sleeps between jobs inside one tick (reduces LLM burst).
 
 Re-import `job_scraper.json` after any change to Prep, Normalize, or Deep Enrich nodes.
 
