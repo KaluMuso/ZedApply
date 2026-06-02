@@ -1,7 +1,8 @@
 """Application configuration from environment variables."""
 from functools import lru_cache
+from typing import Self
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 from app.core.phone import normalize_zambian_e164_phone
@@ -21,7 +22,8 @@ class Settings(BaseSettings):
     # supports Matryoshka truncation via outputDimensionality). The older
     # text-embedding-004 was retired from v1beta in 2026-05; do not set
     # EMBEDDING_MODEL to text-embedding-* on production.
-    gemini_api_key: str
+    # Optional when EMBEDDING_VIA_OPENROUTER=true (OpenRouter-only embed path).
+    gemini_api_key: str = ""
     embedding_model: str = "gemini-embedding-001"
     embedding_dimensions: int = 768
     # When True, embed via OpenRouter (google/gemini-embedding-001). Use when
@@ -185,6 +187,19 @@ class Settings(BaseSettings):
         if value is None:
             return "+260761359005"
         return normalize_zambian_e164_phone(str(value))
+
+    @model_validator(mode="after")
+    def _validate_embedding_provider(self) -> Self:
+        if self.embedding_via_openrouter:
+            if not self.openrouter_api_key.strip():
+                raise ValueError(
+                    "OPENROUTER_API_KEY is required when EMBEDDING_VIA_OPENROUTER=true"
+                )
+        elif not self.gemini_api_key.strip():
+            raise ValueError(
+                "GEMINI_API_KEY is required when EMBEDDING_VIA_OPENROUTER is false"
+            )
+        return self
 
 
 def resolve_admin_api_key(settings: Settings) -> str:
