@@ -24,31 +24,25 @@ function decodeUrl(raw) {
     .replace(/&#38;/gi, '&');
 }
 
-// n8n Code sandbox often lacks global URL (see n8n-io/n8n#19434). Regex only.
-function parseHttpUrl(raw) {
-  const cleaned = decodeUrl(raw);
-  if (!/^https?:\/\//i.test(cleaned)) return null;
-  const m = cleaned.match(/^(https?):\/\/([^/?#]+)(\/[^?#]*)?(?:[?#].*)?$/i);
-  if (!m) return null;
-  let host = (m[2] || '').toLowerCase();
-  if (host.startsWith('www.')) host = host.slice(4);
-  const pathname = m[3] || '/';
-  return { host, pathname, href: cleaned.substring(0, 2000) };
-}
-
 function sanitizeListingSourceUrl(raw) {
   if (raw == null || raw === '') return null;
-  const parsed = parseHttpUrl(raw);
-  if (!parsed) return null;
-  const { host, pathname, href } = parsed;
+  const cleaned = decodeUrl(raw);
+  if (!/^https?:\/\//i.test(cleaned)) return null;
+  let u;
+  try {
+    u = new URL(cleaned);
+  } catch {
+    return null;
+  }
+  const host = (u.hostname || '').toLowerCase().replace(/^www\./, '');
   const isAgg =
     AGGREGATOR_HOSTS.has(host) ||
     [...AGGREGATOR_HOSTS].some((d) => host === d || host.endsWith('.' + d));
-  if (!isAgg) return href;
-  const segs = pathname.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
+  if (!isAgg) return cleaned.substring(0, 2000);
+  const segs = (u.pathname || '').replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
   if (segs.length === 0) return null;
   if (segs.length === 1 && AGG_INDEX_SEGMENTS.has(segs[0].toLowerCase())) return null;
-  return href;
+  return cleaned.substring(0, 2000);
 }
 
 function normPostedAt(raw) {
