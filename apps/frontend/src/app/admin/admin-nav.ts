@@ -5,6 +5,7 @@ export type AdminSection =
   | "users"
   | "subscriptions"
   | "matches"
+  | "notifications"
   | "tier-config"
   | "bwana"
   | "legal";
@@ -50,6 +51,12 @@ export const ADMIN_NAV: {
     label: "Matches",
     description: "Recent match scores across users",
     href: "/admin/matches",
+  },
+  {
+    slug: "notifications",
+    label: "Notifications",
+    description: "Compose and send broadcast Web Push alerts",
+    href: "/admin/notifications",
   },
   {
     slug: "tier-config",

@@ -2126,6 +2126,36 @@ export interface BwanaConfigPreview {
   char_count: number;
 }
 
+export type AdminNotificationTargetAudience = "all" | "tier";
+
+export interface AdminNotificationCreate {
+  title: string;
+  body: string;
+  url?: string;
+  target_audience: AdminNotificationTargetAudience;
+  target_tier?: string;
+  scheduled_at?: string;
+}
+
+export interface AdminNotificationCreateResponse {
+  campaign_id: string;
+  status: "scheduled" | "sending" | "completed";
+  target_audience: AdminNotificationTargetAudience;
+  target_tier?: string | null;
+  recipients_queued: number;
+  scheduled_at?: string | null;
+  message: string;
+}
+
+export const adminNotifications = {
+  create: (token: string, body: AdminNotificationCreate) =>
+    apiFetch<AdminNotificationCreateResponse>("/admin/notifications", {
+      method: "POST",
+      token,
+      body: JSON.stringify(body),
+    }),
+};
+
 export const bwana = {
   chat: (message: string, sessionId?: string) =>
     apiFetch<BwanaChatResponse>("/bwana/chat", {

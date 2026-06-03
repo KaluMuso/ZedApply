@@ -89,6 +89,51 @@ components:
         delivered: { type: integer }
         message: { type: string }
 
+    AdminNotificationCreate:
+      type: object
+      required: [title, body, target_audience]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120 }
+        body: { type: string, minLength: 1, maxLength: 500 }
+        url: { type: string, maxLength: 512, nullable: true }
+        target_audience:
+          type: string
+          enum: [all, tier]
+        target_tier:
+          $ref: '#/components/schemas/SubscriptionTier'
+          nullable: true
+        scheduled_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Omit or set in the past to send immediately; future values queue for cron dispatch.
+
+    AdminNotificationCreateResponse:
+      type: object
+      required: [campaign_id, status, target_audience, recipients_queued, message]
+      properties:
+        campaign_id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [scheduled, sending, completed]
+        target_audience:
+          type: string
+          enum: [all, tier]
+        target_tier:
+          $ref: '#/components/schemas/SubscriptionTier'
+          nullable: true
+        recipients_queued: { type: integer }
+        scheduled_at: { type: string, format: date-time, nullable: true }
+        message: { type: string }
+
+    AdminNotificationDispatchResponse:
+      type: object
+      required: [campaigns_processed, recipients_sent, recipients_failed]
+      properties:
+        campaigns_processed: { type: integer }
+        recipients_sent: { type: integer }
+        recipients_failed: { type: integer }
+
     OTPRequest:
       type: object
       required: [phone]
@@ -4068,6 +4113,47 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PushTestResponse' }
+
+  /admin/notifications:
+    post:
+      operationId: createAdminNotification
+      summary: Compose and queue a broadcast Web Push to all users or one tier
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: ADMIN_API_KEY, in: header, required: false, schema: { type: string } }
+        - { name: X-ADMIN-API-KEY, in: header, required: false, schema: { type: string } }
+        - { name: INGEST_API_KEY, in: header, required: false, schema: { type: string } }
+        - { name: X-INGEST-API-KEY, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminNotificationCreate' }
+      responses:
+        '201':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminNotificationCreateResponse' }
+        '401': { description: Superadmin token or admin API key required }
+        '422': { description: Validation error (e.g. tier audience without target_tier) }
+
+  /admin/notifications/dispatch:
+    post:
+      operationId: dispatchScheduledAdminNotifications
+      summary: Cron — deliver admin notifications whose scheduled_at is due
+      tags: [Admin Cron]
+      parameters:
+        - { name: ADMIN_API_KEY, in: header, required: false, schema: { type: string } }
+        - { name: X-ADMIN-API-KEY, in: header, required: false, schema: { type: string } }
+        - { name: INGEST_API_KEY, in: header, required: false, schema: { type: string } }
+        - { name: X-INGEST-API-KEY, in: header, required: false, schema: { type: string } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminNotificationDispatchResponse' }
+        '401': { description: Invalid admin or ingest API key }
 
   /admin/batch-match:
     post:
