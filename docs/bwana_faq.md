@@ -7,7 +7,7 @@ user message (after trim).
 | Intent ID | Trigger patterns (any match) | Response summary |
 | --- | --- | --- |
 | `apply` | how do i apply, how to apply, apply for jobs | Upload CV → matches → WhatsApp digest |
-| `pricing` | price, pricing, cost, how much, tier, plan, k125, k250, k500 | Free / Starter / Pro / Super Standard tiers |
+| `pricing` | price, pricing, cost, how much, tier, plan, live kwacha labels from `tier_config` | Free / Starter / Pro / Super Standard tiers (DB-backed) |
 | `cancel` | cancel, unsubscribe, stop subscription | Settings → subscription; contact support |
 | `cv_location` | where is my cv, my cv, upload cv, cv status | Link to `/profile` CV tab |
 | `matches` | my matches, job matches, no matches | `/matches`; 50/20/15/10/5 scoring |
@@ -19,10 +19,10 @@ user message (after trim).
 | `otp` | otp, verification code, login code | WhatsApp OTP; 5 min expiry |
 | `settings` | settings, account, profile settings | `/settings` preferences |
 | `support_hours` | hours, when open, response time | Escalation SLA from `bwana_platform_config` |
-| `free_tier` | free plan, free tier, 10 matches | Free tier limits |
-| `starter_tier` | starter | Starter K125 — **no tailored CV** (Professional+) |
-| `professional_tier` | professional, pro plan | Professional K250, tailored CV + cover letters |
-| `super_tier` | super standard, unlimited | Super Standard K500 unlimited |
+| `free_tier` | free plan, free tier | Free tier limits (from `tier_config`) |
+| `starter_tier` | starter | Starter price/matches from `tier_config` — **no tailored CV** (Professional+) |
+| `professional_tier` | professional, pro plan | Professional price/matches, tailored CV + cover letters |
+| `super_tier` | super standard, unlimited | Super Standard price + unlimited matches |
 | `interview` | interview prep, bwana interview | Super Standard `/interview-prep` |
 | `privacy` | privacy, data, delete account | `/legal/privacy`; contact support |
 | `hello` | hi, hello, hey bwana, good morning | Greeting as ZedApply chatbot |

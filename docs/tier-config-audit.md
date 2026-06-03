@@ -13,7 +13,8 @@ Audit of how **Admin Tier config** (`public.tier_config`) flows through pricing 
 | `activate_subscription_after_payment` RPC | Tier name only | Sets `subscriptions.tier` + billing period; **does not** store `matches_limit` on the row. |
 | Match quota enforcement | Yes | `get_effective_match_limit()` → `get_tier_limits()` + welcome/referral bonuses. |
 | WhatsApp `plan` command copy | Yes | `build_plan_info_by_tier()` (replaces legacy static `PLAN_INFO_BY_TIER`). |
-| Bwana FAQ pricing bullets | **No** | Still imports `TIER_PRICES` / `TIER_LIMITS` from `subscription.py`. |
+| Bwana FAQ pricing bullets | Yes | `match_faq_from_db()` → `load_tier_pricing_snapshot()` (same cache as `GET /tiers`). |
+| Bwana LLM system prompt tiers | Yes | `build_bwana_system_prompt()` → `load_tier_pricing_snapshot()`. |
 | Homepage / UpgradeButton / `constants.ts` | **No** | Hardcoded K125–K500 and feature bullets in `tier-marketing.ts`. |
 | Feature gates (cover letter, prep, etc.) | **No** | `tier_gating.py` / `tier-features.ts` — code-only, not admin-editable. |
 
@@ -68,6 +69,8 @@ Admin UI (`TierConfigEditor`) uses **PATCH `/admin/tiers/{tier}`** only (price +
 | **POST /subscription/verify-payment** | `get_tier_prices()` + `effective_checkout_price_ngwee()` | Validates collection amount vs promo-aware expected price. |
 | **Match limits** | `get_tier_limits()` + welcome/referral | `get_effective_match_limit()`; free welcome 7/mo first month (user columns, not `tier_config`). |
 | **WhatsApp subscription blurb** | `build_plan_info_by_tier()` | On `plan` / `upgrade` commands. |
+| **Bwana FAQ (sync path)** | `load_tier_pricing_snapshot()` | `match_faq_from_db()` in `process_bwana_message`. |
+| **Bwana LLM system prompt** | `load_tier_pricing_snapshot()` | Tier block in `build_bwana_system_prompt()`. |
 | **Invoices / renewal copy** | `get_tier_prices()` | Invoice line amounts; renewal reminders use static `TIER_DISPLAY`. |
 
 ### 1.5 Webhook activation (paid tier)
@@ -93,15 +96,17 @@ Quota after upgrade comes from **`tier_config.matches_limit`** at read time, not
 
 ---
 
-## 2. Drift found and fixes (this PR)
+## 2. Drift found and fixes
 
-| Issue | Severity | Fix |
-| --- | --- | --- |
-| `/pricing` comparison table hardcoded 50/125/Unlimited | Medium | `buildTierComparisonFeatures()` reads `/tiers` rows. |
-| Plan cards already used `/tiers` | — | No change. |
-| Static `plans` / `TIER_MARKETING_FEATURES` remain as SSR fallback | Low | Documented; acceptable offline fallback. |
+| Issue | Severity | Fix | PR |
+| --- | --- | --- | --- |
+| `/pricing` comparison table hardcoded 50/125/Unlimited | Medium | `buildTierComparisonFeatures()` reads `/tiers` rows. | `cursor/tier-config-audit-fix-9e6a` |
+| Bwana FAQ hardcoded `TIER_PRICES` / `TIER_LIMITS` | Medium | `match_faq_from_db()` + `TierPricingSnapshot` from `tier_config`. | `cursor/tier-config-faq-sync-9e6a` |
+| Bwana FAQ cover letter / interview intents hardcoded K250/K500 | Low | Same snapshot; dynamic `price_label()`. | `cursor/tier-config-faq-sync-9e6a` |
+| Plan cards already used `/tiers` | — | No change. | — |
+| Static `plans` / `TIER_MARKETING_FEATURES` remain as SSR fallback | Low | Documented; acceptable offline fallback. | — |
 
-**Not fixed (documented only):** Bwana FAQ, homepage, `UpgradeButton`, `lib/constants.ts`, `tier-features.ts` price map — still use hardcoded kwacha or schema constants.
+**Not fixed (documented only):** homepage, `UpgradeButton`, `lib/constants.ts`, `tier-features.ts` price map — still use hardcoded kwacha or schema constants.
 
 ---
 
@@ -123,9 +128,9 @@ Today, `activate_subscription_after_payment` stacks `current_period_end` when up
 
 Superadmin bulk PUT supports `display_name`; PATCH UI does not. **Proposal:** add display name field to `TierConfigEditor` or route editor to `PUT /admin/tier-config`. **Risk:** low.
 
-### 3.5 Bwana + homepage catalog sync
+### 3.5 Homepage catalog sync
 
-**Proposal:** load `fetch_tier_config_rows` in `bwana_faq.py` (like `bwana_config.py`) and add `GET /tiers` to homepage client for price blurbs. **Risk:** low; cache TTL same as backend `_cache_rows`.
+**Proposal:** add `GET /tiers` to homepage client for price blurbs (`HomePageClient.tsx`, `constants.ts`). **Risk:** low; cache TTL same as backend `_cache_rows`.
 
 ---
 

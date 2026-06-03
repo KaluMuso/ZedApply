@@ -1,10 +1,16 @@
 """Bwana FAQ intents — tiers and matching weights."""
+import pytest
+
 from app.services.bwana_faq import (
     is_contact_admin_request,
     is_unsatisfied_request,
     match_faq,
+    match_faq_from_db,
 )
 from app.services.matching_weights_copy import MATCH_WEIGHTS
+from app.services.tier_config import TierPricingSnapshot
+from tests.conftest import FakeSupabaseQuery
+from tests.test_tier_config_admin import _tier_config_rows
 
 
 def test_algorithm_faq_uses_50_20_15_10_5():
@@ -25,6 +31,34 @@ def test_starter_tier_no_tailored_cv_claim():
     lower = match.response.lower()
     assert "professional" in lower
     assert "tailored cvs start on professional" in lower
+
+
+def test_pricing_faq_uses_tier_config_snapshot():
+    custom = TierPricingSnapshot(
+        prices={
+            "free": 0,
+            "starter": 15000,
+            "professional": 30000,
+            "super_standard": 60000,
+        },
+        limits={"free": 5, "starter": 40, "professional": 100, "super_standard": 99999},
+    )
+    match = match_faq("how much do plans cost?", pricing=custom)
+    assert match is not None
+    assert match.intent_id == "pricing"
+    assert "K150" in match.response
+    assert "40 matches/mo" in match.response
+    assert "K600" in match.response
+
+
+@pytest.mark.asyncio
+async def test_match_faq_from_db_reads_tier_config(fake_supabase):
+    fake_supabase.set_table("tier_config", FakeSupabaseQuery(data=_tier_config_rows()))
+    match = await match_faq_from_db("what's the price?", fake_supabase)
+    assert match is not None
+    assert match.intent_id == "pricing"
+    assert "K125" in match.response
+    assert "10 matches/mo" in match.response
 
 
 def test_matching_weights_constants():
