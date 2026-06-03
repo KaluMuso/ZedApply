@@ -1,5 +1,7 @@
 import type { Config } from "tailwindcss";
 
+import { HERO_FLOAT_DURATIONS } from "./src/lib/hero-animation";
+
 const config: Config = {
   content: ["./src/**/*.{js,ts,jsx,tsx,mdx}"],
   darkMode: "class",
@@ -171,9 +173,9 @@ const config: Config = {
         },
       },
       animation: {
-        float: "float 6s ease-in-out infinite",
-        "float-delayed": "float-delayed 7s ease-in-out infinite 0.5s",
-        "float-delay-2": "float-delay-2 7s ease-in-out infinite 1s",
+        float: `float ${HERO_FLOAT_DURATIONS.primary}s ease-in-out infinite`,
+        "float-delayed": `float-delayed ${HERO_FLOAT_DURATIONS.staggered}s ease-in-out infinite ${HERO_FLOAT_DURATIONS.delay1}s`,
+        "float-delay-2": `float-delay-2 ${HERO_FLOAT_DURATIONS.staggered}s ease-in-out infinite ${HERO_FLOAT_DURATIONS.delay2}s`,
         "fade-up": "fade-up 320ms cubic-bezier(0.22, 0.61, 0.36, 1)",
         "fade-in": "fade-in 200ms ease-out",
         "scale-in": "scale-in 200ms cubic-bezier(0.34, 1.56, 0.64, 1)",

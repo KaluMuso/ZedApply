@@ -27,7 +27,11 @@ export function FloatingCard({
 
   return (
     <div
-      className={cn("transform-gpu will-change-transform", animation, className)}
+      className={cn(
+        "transform-gpu will-change-transform motion-reduce:animate-none",
+        animation,
+        className
+      )}
       style={{ rotate: `${angle}deg` }}
     >
       {children}
