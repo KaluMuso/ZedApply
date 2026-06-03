@@ -61,11 +61,40 @@
   margin-bottom: 2pt;
 }
 
-.tailored-cv-paper .cv-skills {
+.tailored-cv-paper .cv-skills-block {
+  margin: 0;
+}
+
+/* PDF / print: single skills line (matches server WeasyPrint skills-line). */
+.tailored-cv-paper .cv-skills-line {
+  display: none;
+  margin: 0;
+  font-size: 9.5pt;
+  line-height: 1.45;
+}
+
+/* Screen split-pane: wrapped tags for scannability (hidden when printing). */
+.tailored-cv-paper .cv-skills-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 4pt 8pt;
-  font-size: 9.5pt;
+  gap: 4pt 6pt;
+  margin-top: 4pt;
+}
+
+.tailored-cv-paper .cv-skill-tag {
+  display: inline-block;
+  font-size: 8.5pt;
+  padding: 1pt 5pt;
+  border: 0.5pt solid #d8cebb;
+  border-radius: 2pt;
+  background: #f3f0e8;
+  color: #3a382f;
+}
+
+.tailored-cv-paper .cv-skill-tag--more {
+  font-style: italic;
+  background: transparent;
+  border-style: dashed;
 }
 
 .tailored-cv-paper .cv-entry-title {

@@ -1,6 +1,7 @@
 """Job matching — delegates to Supabase RPC for hybrid scoring."""
 from datetime import datetime, timezone
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 from supabase import Client
 from app.core.config import get_settings
@@ -9,6 +10,9 @@ from app.services.match_explanation import build_match_explanation
 
 # Rows visible in /matches feeds (excludes user-dismissed).
 _MATCH_ACTIVE_STATUSES = ("new", "viewed", "applied", "saved")
+
+# Delivery quota resets on calendar month boundaries in Zambia (matches page copy).
+_DELIVERY_TZ = ZoneInfo("Africa/Lusaka")
 
 
 # Phase 2 Initiative #4 — preference-aware re-rank weights.
@@ -30,11 +34,16 @@ def _first_row(data: Any) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
-def _month_start(now: datetime | None = None) -> datetime:
+def _delivery_month_start(now: datetime | None = None) -> datetime:
+    """Start of the current calendar month in Africa/Lusaka, as UTC."""
     current = now or datetime.now(timezone.utc)
     if current.tzinfo is None:
         current = current.replace(tzinfo=timezone.utc)
-    return current.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    local = current.astimezone(_DELIVERY_TZ)
+    month_start_local = local.replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0
+    )
+    return month_start_local.astimezone(timezone.utc)
 
 
 async def get_user_tier_limit(user_id: str, supabase: Client) -> tuple[str, int, bool]:
@@ -71,36 +80,14 @@ async def _billing_period_start(
     *,
     now: datetime | None = None,
 ) -> datetime:
-    """Start of the current billing window for match quota counting.
+    """Delivery quota window — calendar month in Africa/Lusaka (UTC).
 
-    Uses subscriptions.current_period_start for active paid rows; falls back
-    to calendar month start for free users without a period.
+    Aligns ``matches_used`` / feed filters with the matches page \"This month\"
+    label. Subscription payment periods (``subscriptions.current_period_*``)
+    are separate and not used for delivered-match counting.
     """
-    sub_res = (
-        supabase.table("subscriptions")
-        .select("current_period_start, status")
-        .eq("user_id", user_id)
-        .eq("status", "active")
-        .limit(1)
-        .execute()
-    )
-    sub = _first_row(sub_res.data)
-    period_start = _parse_period_start(sub.get("current_period_start") if sub else None)
-    if period_start is not None:
-        return period_start
-    return _month_start(now)
-
-
-def _parse_period_start(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except (TypeError, ValueError):
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed
+    del user_id, supabase
+    return _delivery_month_start(now)
 
 
 async def match_rpc_limit_for_user(
@@ -174,16 +161,26 @@ async def get_credited_match_count(
     now: datetime | None = None,
 ) -> int:
     period_start = await _billing_period_start(user_id, supabase, now=now)
-    result = (
+    query = (
         supabase.table("matches")
         .select("id", count="exact")
         .eq("user_id", user_id)
+        .in_("status", list(_MATCH_ACTIVE_STATUSES))
         .gte("credited_at", period_start.isoformat())
-        .execute()
     )
+    result = query.execute()
     if result.count is not None:
         return int(result.count)
-    return len(result.data or [])
+    fallback = (
+        supabase.table("matches")
+        .select("id")
+        .eq("user_id", user_id)
+        .in_("status", list(_MATCH_ACTIVE_STATUSES))
+        .gte("credited_at", period_start.isoformat())
+        .limit(1000)
+        .execute()
+    )
+    return len(fallback.data or [])
 
 
 def normalize_rpc_match_row(row: dict[str, Any]) -> dict[str, Any]:

@@ -116,17 +116,22 @@ async def get_stats(supabase=Depends(get_supabase)):
         data = data[0] if data else {}
     if not isinstance(data, dict):
         data = {}
-    try:
-        pending = (
-            supabase.table("jobs")
-            .select("id", count="exact")
-            .not_.is_("admin_review_reason", "null")
-            .is_("admin_reviewed_at", "null")
-            .execute()
-        )
-        data["pending_review_count"] = pending.count or 0
-    except Exception:
-        logger.warning("admin pending review count failed", exc_info=True)
+    if "jobs_need_review" not in data or data.get("jobs_need_review") is None:
+        try:
+            pending = (
+                supabase.table("jobs")
+                .select("id", count="exact")
+                .eq("is_review_required", True)
+                .is_("admin_reviewed_at", "null")
+                .execute()
+            )
+            data["jobs_need_review"] = pending.count or 0
+        except Exception:
+            logger.warning("admin jobs_need_review count failed", exc_info=True)
+    if "jobs_deactivated" not in data or data.get("jobs_deactivated") is None:
+        data["jobs_deactivated"] = data.get("jobs_expired") or 0
+    need_review = int(data.get("jobs_need_review") or 0)
+    data["pending_review_count"] = need_review
     return AdminStats(**data)
 
 
@@ -1183,15 +1188,24 @@ async def dismiss_review_job(
 
 @router.post("/jobs/bulk-deactivate", response_model=BulkDeactivateResponse)
 async def bulk_deactivate(body: BulkDeactivateRequest, supabase=Depends(get_supabase)):
-    """Deactivate jobs by ID, or all expired jobs if expired_only=true.
+    """Deactivate jobs by ID, or expired active jobs if expired_only=true.
 
-    Uses the existing `deactivate_expired_jobs()` RPC for the expired_only path
-    so the row count stays consistent with the WhatsApp/n8n cleanup workflow.
+    Expired means closing_date is set and strictly before today (same rules as
+    the `deactivate_expired_jobs()` RPC used by pg_cron and n8n).
     """
     if body.expired_only:
-        rpc_res = supabase.rpc("deactivate_expired_jobs").execute()
-        count = rpc_res.data if isinstance(rpc_res.data, int) else (rpc_res.data or 0)
-        return BulkDeactivateResponse(deactivated=int(count))
+        from datetime import date
+
+        today = date.today().isoformat()
+        res = (
+            supabase.table("jobs")
+            .update({"is_active": False})
+            .eq("is_active", True)
+            .not_.is_("closing_date", "null")
+            .lt("closing_date", today)
+            .execute()
+        )
+        return BulkDeactivateResponse(deactivated=len(res.data or []))
 
     if not body.job_ids:
         raise HTTPException(status_code=422, detail="Provide job_ids or set expired_only=true")

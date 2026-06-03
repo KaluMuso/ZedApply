@@ -603,6 +603,8 @@ export interface AdminStats {
   revenue_ngwee_30d: number;
   revenue_ngwee_total: number;
   pending_review_count: number;
+  jobs_deactivated: number;
+  jobs_need_review: number;
 }
 
 export interface AdminLlmCostByModel {
@@ -992,6 +994,18 @@ export const admin = {
       token,
       body: JSON.stringify({ job_ids: jobIds }),
     }),
+  bulkAutoDismissHiddenReview: (
+    token: string,
+    body?: { dry_run?: boolean; limit?: number }
+  ) =>
+    apiFetch<{ dry_run: boolean; eligible: number; dismissed: number }>(
+      "/admin/review-jobs/bulk-auto-dismiss-hidden",
+      {
+        method: "POST",
+        token,
+        body: JSON.stringify(body ?? {}),
+      }
+    ),
   approveReviewJob: (token: string, jobId: string, data: AdminJobReviewUpdate) =>
     apiFetch<{ id: string; is_active: boolean; admin_reviewed_at: string }>(
       `/admin/jobs/${encodeURIComponent(jobId)}/approve`,
@@ -1377,6 +1391,8 @@ export interface Job {
   posted_at?: string | null;
   quality_score: number;
   skills: string[];
+  requirements?: string[] | null;
+  skills_required?: string[] | null;
   description: string | null;
   salary_min?: number | null;
   salary_max?: number | null;

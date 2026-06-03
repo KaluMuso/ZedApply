@@ -603,6 +603,21 @@ components:
         revenue_ngwee_30d: { type: integer }
         revenue_ngwee_total: { type: integer }
         pending_review_count: { type: integer }
+        jobs_deactivated: { type: integer }
+        jobs_need_review: { type: integer }
+
+    ReviewQueueAutoDismissRequest:
+      type: object
+      properties:
+        dry_run: { type: boolean, default: false }
+        limit: { type: integer, minimum: 1, maximum: 5000, default: 2000 }
+
+    ReviewQueueAutoDismissResponse:
+      type: object
+      properties:
+        dry_run: { type: boolean }
+        eligible: { type: integer }
+        dismissed: { type: integer }
 
     AdminUserRow:
       type: object
@@ -1696,7 +1711,7 @@ components:
       properties:
         matches: { type: array, items: { $ref: '#/components/schemas/MatchResult' } }
         remaining_quota: { type: integer, description: 'Deliveries left this billing period' }
-        matches_used: { type: integer, description: 'Unique jobs credited this billing period' }
+        matches_used: { type: integer, description: 'Unique jobs credited this calendar month (Africa/Lusaka)' }
         credited_count: { type: integer, description: 'Alias of matches_used' }
         matches_limit: { type: integer, description: 'Monthly cap; 99999 = unlimited' }
         matches_unlimited: { type: boolean, description: 'True when matches_limit is unlimited sentinel' }
@@ -2974,6 +2989,25 @@ paths:
         '403': { description: Not an admin }
         '404': { description: Job not found }
 
+  /admin/review-jobs/bulk-auto-dismiss-hidden:
+    post:
+      operationId: adminTrack4eBulkAutoDismissHidden
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      description: |
+        Idempotent: clear review flags for jobs already inactive with no apply path
+        (review_reason both or no_apply_path). See docs/admin_job_review_cleanup.md.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewQueueAutoDismissRequest' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewQueueAutoDismissResponse' }
+        '403': { description: Not an admin }
+
   /admin/review-jobs/bulk-mark-duplicate:
     post:
       operationId: adminTrack4eBulkMarkDuplicate
@@ -3108,6 +3142,11 @@ paths:
       operationId: adminBulkDeactivateJobs
       tags: [Admin]
       security: [{ bearerAuth: [] }]
+      description: |
+        Deactivate jobs by explicit `job_ids`, or when `expired_only=true` set
+        `is_active=false` only on rows that are currently active with a
+        `closing_date` strictly before today (same rule as pg_cron
+        `deactivate_expired_jobs()`).
       requestBody:
         content:
           application/json:
@@ -3811,7 +3850,13 @@ paths:
       tags: [Matching]
       security: [{ bearerAuth: [] }]
       parameters:
-        - { name: match_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: match_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+          description: >
+            Match row UUID from GET /matches `id`, or job UUID when the feed
+            exposed `job_id` as `id` (live RPC path).
       requestBody:
         required: false
         content:

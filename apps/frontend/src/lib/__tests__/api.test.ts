@@ -333,6 +333,17 @@ describe("additional API modules", () => {
     expect(init.method).toBe("POST");
   });
 
+  it("matches.dismiss POSTs to /matches/{id}/dismiss with optional reason", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ match_id: "match-1", status: "dismissed", reason: "not_relevant" }),
+    );
+    await matches.dismiss("tok", "match-1", { reason: "not_relevant" });
+    const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${API_BASE}/matches/match-1/dismiss`);
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(JSON.stringify({ reason: "not_relevant" }));
+  });
+
   it("preferencesApi.patch sends JSON body", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       jsonResponse({
@@ -546,6 +557,8 @@ describe("additional API modules", () => {
           revenue_ngwee_30d: 0,
           revenue_ngwee_total: 0,
           pending_review_count: 0,
+          jobs_deactivated: 0,
+          jobs_need_review: 0,
         }),
       )
       .mockResolvedValueOnce(jsonResponse({ skills: [{ name: "Python", proficiency: "advanced", source: "manual" }] }));

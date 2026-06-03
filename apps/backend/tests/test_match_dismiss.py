@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 MATCH_ID = "00000000-0000-4000-8000-000000000099"
+JOB_ID = "00000000-0000-4000-8000-000000000097"
 MISSING_ID = "00000000-0000-4000-8000-000000000098"
 
 
@@ -59,6 +60,42 @@ def test_dismiss_match_sets_status(client, auth_headers):
     update_payload = table.update.call_args[0][0]
     assert update_payload["status"] == "dismissed"
     assert "dismissed_at" in update_payload
+
+
+def test_dismiss_match_by_job_id(client, auth_headers):
+    from app.core.deps import get_supabase
+    from main import app
+
+    select_chain = _Chain(SimpleNamespace(data=[]))
+    select_chain.execute = MagicMock(
+        side_effect=[
+            SimpleNamespace(data=[]),
+            SimpleNamespace(
+                data=[{"id": MATCH_ID, "status": "new", "job_id": JOB_ID}]
+            ),
+        ]
+    )
+    table = MagicMock()
+    table.select.return_value = select_chain
+    table.update.return_value = _Chain(
+        SimpleNamespace(data=[{"id": MATCH_ID, "status": "dismissed"}])
+    )
+    supabase = MagicMock()
+    supabase.table.return_value = table
+
+    app.dependency_overrides[get_supabase] = lambda: supabase
+    try:
+        res = client.post(
+            f"/api/v1/matches/{JOB_ID}/dismiss",
+            headers=auth_headers,
+        )
+    finally:
+        app.dependency_overrides.pop(get_supabase, None)
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["match_id"] == MATCH_ID
+    table.update.assert_called_once()
 
 
 def test_dismiss_match_not_found(client, auth_headers):

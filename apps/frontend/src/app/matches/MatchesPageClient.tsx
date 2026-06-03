@@ -45,7 +45,7 @@ import { cn } from "@/lib/utils";
 // Human-friendly tier label. Free → "Free", super_standard → "Super",
 // etc. Falls back to the raw key if we don't recognize it so we don't
 // hide unknown tiers entirely.
-const MATCHES_CACHE_KEY = "zedapply_matches_cache_v2";
+const MATCHES_CACHE_KEY = "zedapply_matches_cache_v3";
 
 function formatLastBatchRun(iso: string | null | undefined): string | null {
   if (!iso) return null;
@@ -491,7 +491,7 @@ export default function MatchesPageClient() {
             })}
           </div>
           <h1
-            className="font-display mb-4"
+            className="font-display mb-4 text-foreground"
             style={{
               fontSize: "clamp(40px, 5.5vw, 72px)",
               letterSpacing: "-0.025em",
@@ -531,30 +531,40 @@ export default function MatchesPageClient() {
             <div>
               <div className="eyebrow">This month</div>
               <div className="mt-2 font-display text-4xl leading-none">
-                {matchesUsed}
-                {!quotaUnlimited && (
-                  <span
-                    className="text-2xl"
-                    style={{ color: "var(--muted)" }}
-                  >
-                    {" "}
-                    / {quotaLimitLabel}
-                  </span>
-                )}
-                {quotaUnlimited && (
-                  <span
-                    className="text-lg ml-2"
-                    style={{ color: "var(--muted)" }}
-                  >
-                    · Unlimited
-                  </span>
+                {quotaUnlimited ? (
+                  matchesUsed > 0 ? (
+                    <>
+                      {matchesUsed}
+                      <span
+                        className="text-lg ml-2"
+                        style={{ color: "var(--muted)" }}
+                      >
+                        · Unlimited
+                      </span>
+                    </>
+                  ) : (
+                    <span>Unlimited</span>
+                  )
+                ) : (
+                  <>
+                    {matchesUsed}
+                    <span
+                      className="text-2xl"
+                      style={{ color: "var(--muted)" }}
+                    >
+                      {" "}
+                      / {quotaLimitLabel}
+                    </span>
+                  </>
                 )}
               </div>
               <div
                 className="text-xs mt-1"
                 style={{ color: "var(--muted)" }}
               >
-                matches delivered
+                {quotaUnlimited && matchesUsed === 0
+                  ? "Unlimited plan — deliveries appear here as they arrive"
+                  : "matches delivered"}
               </div>
             </div>
             <span className={tagClass("copper", "inline-flex items-center gap-1")}>

@@ -66,9 +66,28 @@ export function OverviewTab({
           loading={statsLoading}
         />
         <StatCard
-          label="Jobs in DB"
+          label="Jobs live"
           value={stats ? stats.jobs_active.toLocaleString() : ""}
-          hint={stats ? `${stats.jobs_expired} expired & still active` : undefined}
+          hint={stats ? `${stats.jobs_total.toLocaleString()} total in DB` : undefined}
+          loading={statsLoading}
+        />
+        <StatCard
+          label="Jobs deactivated"
+          value={
+            stats
+              ? (stats.jobs_deactivated ?? stats.jobs_expired).toLocaleString()
+              : ""
+          }
+          loading={statsLoading}
+        />
+        <StatCard
+          label="Need review"
+          value={
+            stats
+              ? (stats.jobs_need_review ?? stats.pending_review_count).toLocaleString()
+              : ""
+          }
+          hint="Missing apply path or deadline"
           loading={statsLoading}
         />
         <StatCard

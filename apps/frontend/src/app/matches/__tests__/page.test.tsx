@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 
@@ -169,6 +169,55 @@ describe("Quota card", () => {
     expect(await screen.findByText("5", {}, { timeout: 5000 })).toBeInTheDocument();
     expect(screen.getByText("/ 50")).toBeInTheDocument();
   });
+
+  it("shows unlimited headline without a leading zero when usage is unknown", async () => {
+    server.use(
+      http.get(`${API}/matches`, () =>
+        HttpResponse.json({
+          matches: [MATCH_OBJ],
+          remaining_quota: 99999,
+          matches_limit: 99999,
+          matches_unlimited: true,
+        }),
+      ),
+      http.get(`${API}/subscription`, () =>
+        HttpResponse.json({
+          tier: "super_standard",
+          matches_used: 0,
+          matches_limit: 99999,
+          matches_unlimited: true,
+          remaining_quota: 99999,
+        }),
+      ),
+    );
+    renderWithProviders(<MatchesPageClient />);
+    expect(await screen.findByText("Unlimited", {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.queryByText("0 · Unlimited")).not.toBeInTheDocument();
+  });
+
+  it("shows super standard delivered count from remaining quota on match list", async () => {
+    server.use(
+      http.get(`${API}/matches`, () =>
+        HttpResponse.json({
+          matches: Array.from({ length: 10 }, () => MATCH_OBJ),
+          remaining_quota: 99989,
+          matches_limit: 99999,
+          matches_unlimited: true,
+        }),
+      ),
+      http.get(`${API}/subscription`, () =>
+        HttpResponse.json({
+          tier: "super_standard",
+          matches_used: 0,
+          matches_limit: 99999,
+          matches_unlimited: true,
+        }),
+      ),
+    );
+    renderWithProviders(<MatchesPageClient />);
+    expect(await screen.findByText("10", {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.getByText("· Unlimited")).toBeInTheDocument();
+  });
 });
 
 describe("Refresh button", () => {
@@ -272,6 +321,30 @@ describe("Apply modal", () => {
     expect(dialog).toBeInTheDocument();
     expect(screen.getByText(/how to apply/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^copy$/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("Hide match", () => {
+  it("POSTs dismiss with match id and removes the card", async () => {
+    let dismissedPath: string | null = null;
+    withHandlers({ matches: [MATCH_OBJ] });
+    server.use(
+      http.post(`${API}/matches/:matchId/dismiss`, ({ params }) => {
+        dismissedPath = String(params.matchId);
+        return HttpResponse.json({ match_id: "m1", status: "dismissed" });
+      }),
+    );
+    renderWithProviders(<MatchesPageClient />);
+    await screen.findByText("Engineer", {}, { timeout: 5000 });
+    await userEvent.click(screen.getByTestId("match-dismiss"));
+    const dialog = await screen.findByRole("dialog", { name: /hide this match/i });
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: /^hide match$/i }),
+    );
+    await waitFor(() => {
+      expect(dismissedPath).toBe("m1");
+      expect(screen.queryByText("Engineer")).not.toBeInTheDocument();
+    });
   });
 });
 
