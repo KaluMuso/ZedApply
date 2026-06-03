@@ -557,6 +557,8 @@ describe("additional API modules", () => {
           revenue_ngwee_30d: 0,
           revenue_ngwee_total: 0,
           pending_review_count: 0,
+          jobs_deactivated: 0,
+          jobs_need_review: 0,
         }),
       )
       .mockResolvedValueOnce(jsonResponse({ skills: [{ name: "Python", proficiency: "advanced", source: "manual" }] }));

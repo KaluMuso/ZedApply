@@ -66,6 +66,8 @@ class AdminStats(BaseModel):
     jobs_total: int = 0
     jobs_active: int = 0
     jobs_expired: int = 0
+    jobs_deactivated: int = 0
+    jobs_need_review: int = 0
     matches_24h: int = 0
     matches_total: int = 0
     revenue_ngwee_30d: int = 0

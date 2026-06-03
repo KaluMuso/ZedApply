@@ -603,6 +603,21 @@ components:
         revenue_ngwee_30d: { type: integer }
         revenue_ngwee_total: { type: integer }
         pending_review_count: { type: integer }
+        jobs_deactivated: { type: integer }
+        jobs_need_review: { type: integer }
+
+    ReviewQueueAutoDismissRequest:
+      type: object
+      properties:
+        dry_run: { type: boolean, default: false }
+        limit: { type: integer, minimum: 1, maximum: 5000, default: 2000 }
+
+    ReviewQueueAutoDismissResponse:
+      type: object
+      properties:
+        dry_run: { type: boolean }
+        eligible: { type: integer }
+        dismissed: { type: integer }
 
     AdminUserRow:
       type: object
@@ -2967,6 +2982,25 @@ paths:
         '200': { description: Job updated; may promote to active }
         '403': { description: Not an admin }
         '404': { description: Job not found }
+
+  /admin/review-jobs/bulk-auto-dismiss-hidden:
+    post:
+      operationId: adminTrack4eBulkAutoDismissHidden
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      description: |
+        Idempotent: clear review flags for jobs already inactive with no apply path
+        (review_reason both or no_apply_path). See docs/admin_job_review_cleanup.md.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewQueueAutoDismissRequest' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewQueueAutoDismissResponse' }
+        '403': { description: Not an admin }
 
   /admin/review-jobs/bulk-mark-duplicate:
     post:

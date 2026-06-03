@@ -27,7 +27,11 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
           setOk(true);
           admin
             .stats(token)
-            .then((stats) => setPendingReviewCount(stats.pending_review_count ?? 0))
+            .then((stats) =>
+              setPendingReviewCount(
+                stats.jobs_need_review ?? stats.pending_review_count ?? 0
+              )
+            )
             .catch(() => setPendingReviewCount(0));
         } else {
           router.replace("/");

@@ -26,12 +26,13 @@ export default function AdminJobReviewPage() {
   const [loading, setLoading] = useState(true);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [bulkClearing, setBulkClearing] = useState(false);
 
   const loadQueue = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
-      const res = await admin.reviewQueue(token, { page, per_page: 10 });
+      const res = await admin.track4eReviewQueue(token, { page, per_page: 10 });
       setJobs(res.jobs);
       setPages(res.pages);
       setDrafts((current) => {
@@ -91,10 +92,48 @@ export default function AdminJobReviewPage() {
     }
   };
 
+  const autoDismissHidden = async (dryRun: boolean) => {
+    if (!token) return;
+    setBulkClearing(true);
+    try {
+      const res = await admin.bulkAutoDismissHiddenReview(token, { dry_run: dryRun });
+      if (dryRun) {
+        notify.custom.info(
+          `${res.eligible} hidden job(s) can be cleared from the queue (already off /jobs).`
+        );
+      } else {
+        notify.custom.success(`Cleared ${res.dismissed} hidden job(s) from review.`);
+        await loadQueue();
+      }
+    } catch (e) {
+      notify.error(e instanceof Error ? e.message : "Bulk clear failed");
+    } finally {
+      setBulkClearing(false);
+    }
+  };
+
   if (!token) return null;
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          disabled={bulkClearing}
+          onClick={() => void autoDismissHidden(true)}
+        >
+          Preview hidden backlog clear
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={bulkClearing}
+          onClick={() => void autoDismissHidden(false)}
+        >
+          Clear hidden backlog
+        </Button>
+      </div>
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading review queue...</p>
       ) : jobs.length === 0 ? (

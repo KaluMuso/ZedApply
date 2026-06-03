@@ -116,17 +116,22 @@ async def get_stats(supabase=Depends(get_supabase)):
         data = data[0] if data else {}
     if not isinstance(data, dict):
         data = {}
-    try:
-        pending = (
-            supabase.table("jobs")
-            .select("id", count="exact")
-            .not_.is_("admin_review_reason", "null")
-            .is_("admin_reviewed_at", "null")
-            .execute()
-        )
-        data["pending_review_count"] = pending.count or 0
-    except Exception:
-        logger.warning("admin pending review count failed", exc_info=True)
+    if "jobs_need_review" not in data or data.get("jobs_need_review") is None:
+        try:
+            pending = (
+                supabase.table("jobs")
+                .select("id", count="exact")
+                .eq("is_review_required", True)
+                .is_("admin_reviewed_at", "null")
+                .execute()
+            )
+            data["jobs_need_review"] = pending.count or 0
+        except Exception:
+            logger.warning("admin jobs_need_review count failed", exc_info=True)
+    if "jobs_deactivated" not in data or data.get("jobs_deactivated") is None:
+        data["jobs_deactivated"] = data.get("jobs_expired") or 0
+    need_review = int(data.get("jobs_need_review") or 0)
+    data["pending_review_count"] = need_review
     return AdminStats(**data)
 
 
