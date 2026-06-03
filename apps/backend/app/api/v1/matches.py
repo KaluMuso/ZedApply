@@ -360,8 +360,14 @@ async def dismiss_match(
 ):
     """Soft-hide a match from the user's feed (status dismissed)."""
     reason = body.reason if body else None
+    note = (body.note or "").strip() if body and body.note else None
     if reason is not None and reason not in VALID_DISMISS_REASONS:
         raise HTTPException(status_code=422, detail="Invalid dismiss reason")
+    if note and reason != "other":
+        raise HTTPException(
+            status_code=422,
+            detail="Note is only accepted when reason is other",
+        )
 
     row = _resolve_owned_match_row(user_id, match_id, supabase)
     resolved_match_id = str(row["id"])
@@ -376,6 +382,8 @@ async def dismiss_match(
     }
     if reason:
         patch["dismiss_reason"] = reason
+    if note:
+        patch["dismiss_note"] = note
     updated = (
         supabase.table("matches")
         .update(patch)
@@ -394,6 +402,7 @@ async def dismiss_match(
                     "match_id": resolved_match_id,
                     "job_id": row.get("job_id"),
                     "reason": reason,
+                    "note": note,
                 },
             }
         ).execute()
