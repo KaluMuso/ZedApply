@@ -104,6 +104,17 @@ cd apps/backend && python scripts/production_readiness_audit.py
 
 ---
 
+### Admin — job review queue
+
+| Doc | When to use |
+|-----|-------------|
+| [admin_job_review_cleanup.md](admin_job_review_cleanup.md) | Auto-hide vs review queue criteria, per-endpoint dismiss rules |
+| [RUNBOOK_REVIEW_QUEUE_CLEAR.md](RUNBOOK_REVIEW_QUEUE_CLEAR.md) | **Prod:** clear ~446 safe hidden backlog after #256 deploy (`bulk-dismiss-safe`, human-only) |
+
+**Helper:** `scripts/admin_review_queue_dry_run.sh` — set `ADMIN_JWT`, `API_URL`, `DRY_RUN=true|false`. Not run in CI.
+
+---
+
 ### Admin — match delivery quota
 
 | Action | When to use |
