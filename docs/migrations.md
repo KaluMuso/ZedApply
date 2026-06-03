@@ -131,3 +131,17 @@ SELECT name FROM supabase_migrations.schema_migrations
 -- Expect: … 064_deletion_export_consent, 065_llm_usage_log,
 --         066_hnsw_and_pruning, 067_job_expiration_cron
 ```
+
+## Notifications train (099–104)
+
+See [NOTIFICATIONS_MIGRATIONS.md](NOTIFICATIONS_MIGRATIONS.md) for full apply order and retention policy.
+
+| File | Purpose |
+|------|---------|
+| `100_in_app_notifications.sql` | In-app inbox (`notifications` table) |
+| `101_admin_broadcast_notifications.sql` | Admin broadcast campaigns |
+| `102_admin_stats_jobs_active_public.sql` | Admin stats RPC |
+| `103_zambia_skill_aliases_fix.sql` | Skill alias repair |
+| `104_user_notifications_retention.sql` | 90-day prune for digest dedup ledger (`user_notifications`); weekly pg_cron |
+
+**Retention:** `104` prunes **`user_notifications` only** (dedup ledger). The **`notifications`** inbox (100) is not pruned — target 30d visible / 90d archive is documented for a future product migration.
