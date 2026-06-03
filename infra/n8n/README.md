@@ -13,10 +13,13 @@ Sanitized JSON snapshots of production workflows on `https://automation.vergeo.c
 | Daily Match Digest (orphan) | `XAmpEqMqahFa6uOI` | Varies | **No** | `daily_digest_workflow.json` |
 | Bwana Chat Pipeline | `TPDJ5S1HaRKZTdb1` | Yes | Yes | `bwana_chat_pipeline.json` |
 | Job Scraper | `rsgZLi6UAcC3lXvu` | Yes | Yes | `job_scraper.json` |
+| Deep Enrich Cron Every 6h | `9szi5Hx0EGCrDo8P` | **Yes (dup)** | **No** | `deep_enrich_cron_6h.json` |
 | Admin notification dispatch | _(import from repo)_ | No | Yes | `admin_notification_dispatch_every_15m.json` |
 | Sentry → WhatsApp Alert | _(import from repo)_ | No | Yes | `sentry_whatsapp_alert.json` |
 
 **Digest dedup (human checklist):** [docs/RUNBOOK_N8N_DIGEST_DEDUP.md](../../docs/RUNBOOK_N8N_DIGEST_DEDUP.md) — deactivate `MW5KETbBdrAOk04y` + `XAmpEqMqahFa6uOI`; keep `j6U2CDRZi0FI5G32` + `bqBV6XNPu3z3Ikx5`. Agents: **do not** n8n-publish without maintainer approval.
+
+**Deep-enrich dedup (human checklist):** Primary path is **backend post-ingest** (`POST_INGEST_DEEP_ENRICH_ENABLED=true`, default `POST_INGEST_DEEP_ENRICH_MAX_LIMIT=15`, `include_review_queue=true`). Deactivate redundant n8n enrich paths — see [Post-ingest deep-enrich + review queue](#post-ingest-deep-enrich--review-queue) below.
 
 ## Sentry → WhatsApp alerts (Wave A.1)
 
@@ -145,10 +148,12 @@ If **AI Parse \*** nodes return `Your project has been denied access`, the live 
 **Fix (n8n UI):** In **Deep Enrich After Ingest**, set URL to the **internal Docker hostname** (n8n and backend share the compose network):
 
 ```
-={{ 'http://zedcv-backend:8000/api/v1/jobs/deep-enrich-tick?limit=80&include_review_queue=true&api_key=' + encodeURIComponent($('Normalize and Deduplicate').item.json.ingestKey || '') }}
+={{ ($('Normalize and Deduplicate').item.json.fastapiUrl || 'http://zedcv-backend:8000') + '/api/v1/jobs/deep-enrich-tick?limit=15&include_review_queue=true&api_key=' + encodeURIComponent($('Normalize and Deduplicate').item.json.ingestKey || '') }}
 ```
 
-Keep `X-INGEST-API-KEY` header as `$('Normalize and Deduplicate').item.json.ingestKey` (belt and suspenders). Re-import repo `job_scraper.json` after backend PR merge for query-param fallback.
+Keep `X-INGEST-API-KEY` and `INGEST_API_KEY` headers as `$('Normalize and Deduplicate').item.json.ingestKey` (belt and suspenders). Re-import repo `job_scraper.json` after backend PR merge for query-param fallback.
+
+**Default (budget):** Repo export **disables** this node and disconnects it from **Send to ZedApply** — backend `schedule_post_ingest_deep_enrich` is the single primary path. Re-enable only when `POST_INGEST_DEEP_ENRICH_ENABLED=false` on OCI.
 
 **Smoke from OCI host:**
 
@@ -254,8 +259,8 @@ Without `EMBEDDING_VIA_OPENROUTER=true`, the backend auto-falls back to OpenRout
 | --- | --- | --- |
 | **Gemini free embeds** | OCI `EMBEDDING_VIA_OPENROUTER=false` + valid `GEMINI_API_KEY` | Scraped job embeddings use Google free tier instead of OpenRouter |
 | **Lower scraper output cap** | `job_scraper.json` AI Parse nodes (`max_tokens: 8192`, was 32768) | Cuts worst-case chat cost per 6h run (~4×) |
-| **Smaller deep-enrich batches** | n8n **Deep Enrich After Ingest** `limit=5–15` (not 80) | Avoids 10‑minute timeouts and limits LLM calls per run |
-| **Skip duplicate enrich** | Rely on backend `schedule_post_ingest_deep_enrich` only, or disable the n8n Deep Enrich node | One enrich path per ingest instead of two |
+| **Smaller deep-enrich batches** | Backend `POST_INGEST_DEEP_ENRICH_MAX_LIMIT=15` (default) | Matches one post-ingest tick cap; avoids duplicate 50-job cron batches |
+| **Skip duplicate enrich** | Backend post-ingest ON; disable n8n **Deep Enrich After Ingest** + **Deep Enrich Cron** | One enrich path per ingest instead of three |
 | **Daily cap** | `LLM_DAILY_SPEND_CAP_USD` in backend `.env` | Hard stop when estimated LLM spend exceeds cap |
 
 Re-import `job_scraper.json` after changing `max_tokens` or Deep Enrich URL/limit.
@@ -270,13 +275,33 @@ OpenRouter can return valid `choices[0].message.content` while every job still h
 
 After scraper ingest, jobs often land in the admin **review queue** (`is_review_required=true`) when apply path or closing date is missing. Deep-enrich fetches `source_url`, runs LLM extraction, splits multi-role listings, and re-runs review-state so rows can auto-activate when contacts and deadlines are found.
 
-**Avoid duplicate enrich (pick one path):**
+**Primary path (recommended — one enrich tick per ingest):**
+
+| Component | Setting | Role |
+| --- | --- | --- |
+| **Backend post-ingest** | `POST_INGEST_DEEP_ENRICH_ENABLED=true` (default), `POST_INGEST_DEEP_ENRICH_MAX_LIMIT=15` | Fires `run_deep_enrich_tick(limit≤15, include_review_queue=true)` after every successful `/jobs/ingest` |
+| **Job scraper n8n node** | **Deep Enrich After Ingest** — disabled in repo export | Duplicate LLM pass on every scrape; leave disabled unless backend path is off |
+| **6h cron n8n workflow** | **Zed CV - Deep Enrich Cron Every 6h** (`9szi5Hx0EGCrDo8P`) — deactivate | Backlog tick only; redundant when post-ingest is ON |
+
+**Deactivate in n8n UI (when backend post-ingest is ON):**
+
+1. **Zed CV - Deep Enrich Cron Every 6h** — workflow ID `9szi5Hx0EGCrDo8P` → toggle **Inactive**.
+2. **ZedApply Job Scraper** (`rsgZLi6UAcC3lXvu`) → confirm **Deep Enrich After Ingest** is disabled/disconnected (repo default after re-import).
+
+**Re-enable cron only if** you set `POST_INGEST_DEEP_ENRICH_ENABLED=false` on OCI and need a scheduled backlog enrich. Repo `deep_enrich_cron_6h.json` calls:
+
+```
+POST http://zedcv-backend:8000/api/v1/jobs/deep-enrich-tick?limit=15&include_review_queue=true&api_key=…
+```
+
+(300s HTTP timeout; no trailing spaces in query params — live drift was `limit=50 ` without `include_review_queue`.)
+
+**Alternate path (n8n-only — not recommended with default backend):**
 
 | Path | When to use |
 | --- | --- |
-| **n8n only** | Set on OCI `POST_INGEST_DEEP_ENRICH_ENABLED=false` in `apps/backend/.env`, recreate backend. Repo `job_scraper.json` runs **Deep Enrich After Ingest** (`limit=10`, public `fastapiUrl`, 3 min timeout). |
-| **Backend only** | Disable or disconnect the n8n **Deep Enrich After Ingest** node. Leave `POST_INGEST_DEEP_ENRICH_ENABLED=true` (default cap `POST_INGEST_DEEP_ENRICH_MAX_LIMIT=15`). |
-| **6h cron** | `deep_enrich_cron_6h.json` — `limit=15`, `include_review_queue=true`. Complements scraper; does not replace per-ingest tick. |
+| **n8n scraper only** | Set on OCI `POST_INGEST_DEEP_ENRICH_ENABLED=false`, recreate backend. Re-enable **Deep Enrich After Ingest** in `job_scraper.json` (`limit=15`, internal `http://zedcv-backend:8000`, 300s timeout). |
+| **6h cron only** | Same backend flag false; activate `9szi5Hx0EGCrDo8P` instead of scraper follow-up — not both. |
 
 **One job at a time (manual / Loop Over Items):**
 

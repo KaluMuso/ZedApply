@@ -1,7 +1,7 @@
 {
   "name": "ZedApply Job Scraper",
   "meta": {
-    "description": "Scrapes 4 Zambian job sites every 12h. LLM via OpenRouter (default google/gemini-2.0-flash, max_tokens 8192). Ingest auth via Normalize passthrough (fastapiUrl/ingestKey from $env in Code node).",
+    "description": "Scrapes 4 Zambian job sites every 12h. LLM via OpenRouter (default google/gemini-2.0-flash, max_tokens 8192). Ingest auth via Normalize passthrough (fastapiUrl/ingestKey from $env in Code node). Deep Enrich After Ingest is disabled by default — backend post-ingest tick is the primary enrich path.",
     "n8nWorkflowId": "rsgZLi6UAcC3lXvu",
     "exportNote": "Import into n8n; set OPENROUTER_API_KEY (+ optional OPENROUTER_MODEL) in n8n env; set INGEST_API_KEY."
   },
@@ -443,12 +443,16 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ ($('Normalize and Deduplicate').item.json.fastapiUrl || 'https://api.zedapply.com') + '/api/v1/jobs/deep-enrich-tick?limit=10&include_review_queue=true&api_key=' + encodeURIComponent($('Normalize and Deduplicate').item.json.ingestKey || '') }}",
+        "url": "={{ ($('Normalize and Deduplicate').item.json.fastapiUrl || 'http://zedcv-backend:8000') + '/api/v1/jobs/deep-enrich-tick?limit=15&include_review_queue=true&api_key=' + encodeURIComponent($('Normalize and Deduplicate').item.json.ingestKey || '') }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "X-INGEST-API-KEY",
+              "value": "={{ $('Normalize and Deduplicate').item.json.ingestKey }}"
+            },
+            {
+              "name": "INGEST_API_KEY",
               "value": "={{ $('Normalize and Deduplicate').item.json.ingestKey }}"
             }
           ]
@@ -459,7 +463,7 @@
               "neverError": true
             }
           },
-          "timeout": 180000
+          "timeout": 300000
         }
       },
       "name": "Deep Enrich After Ingest",
@@ -468,7 +472,8 @@
       "position": [
         2000,
         400
-      ]
+      ],
+      "disabled": true
     }
   ],
   "connections": {
@@ -698,13 +703,7 @@
     },
     "Send to ZedApply": {
       "main": [
-        [
-          {
-            "node": "Deep Enrich After Ingest",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Deep Enrich After Ingest": {
