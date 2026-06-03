@@ -11,13 +11,12 @@ from supabase import Client
 
 from app.schemas.bwana_config import BwanaConfig, FaqIntentItem
 from app.services.bwana_faq_custom import faq_intents_for_db, parse_faq_intents_json
-from app.schemas.subscription import TIER_LIMITS, TIER_PRICES
 from app.services.matching_weights_copy import (
     MATCH_SCORE_FAQ_ANSWER,
     MATCH_WEIGHTS_HYBRID_LINE,
 )
 from app.services.prompt_safety import augment_system_prompt
-from app.services.tier_config import fetch_tier_config_rows
+from app.services.tier_config import load_tier_pricing_snapshot
 from app.services.tier_marketing import TIER_WHATSAPP_BLURB
 
 logger = logging.getLogger(__name__)
@@ -136,24 +135,17 @@ def config_row_for_db(config: BwanaConfig) -> dict[str, Any]:
     return row
 
 
-def _kwacha(ngwee: int) -> str:
-    if ngwee == 0:
-        return "K0"
-    return f"K{ngwee // 100}"
-
-
 async def _tier_pricing_block(supabase: Client) -> str:
-    rows = await fetch_tier_config_rows(supabase)
-    by_tier = {r["tier"]: r for r in rows}
+    pricing = await load_tier_pricing_snapshot(supabase)
     lines = ["ZedApply plans (ZMW/month):"]
     for tier in ("free", "starter", "professional", "super_standard"):
-        row = by_tier.get(tier, {})
-        price = int(row.get("price_ngwee", TIER_PRICES.get(tier, 0)))
-        limit = int(row.get("matches_limit", TIER_LIMITS.get(tier, 0)))
         label = tier.replace("_", " ").title()
         blurb = TIER_WHATSAPP_BLURB.get(tier, "")
+        limit = pricing.limit(tier)
         limit_txt = "unlimited" if limit >= 99999 else f"{limit} matches/mo"
-        lines.append(f"• {label} — {_kwacha(price)}, {limit_txt}. {blurb}")
+        lines.append(
+            f"• {label} — {pricing.price_label(tier)}, {limit_txt}. {blurb}"
+        )
     lines.append("Upgrade at /pricing. Pay with MTN/Airtel (Lenco) or card (DPO).")
     return "\n".join(lines)
 

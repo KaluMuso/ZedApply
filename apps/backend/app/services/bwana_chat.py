@@ -25,7 +25,7 @@ from app.services.bwana_faq import (
     is_contact_admin_request,
     is_escalation_request,
     is_unsatisfied_request,
-    match_faq,
+    match_faq_from_db,
     wants_callback,
 )
 from app.services.bwana_faq_custom import match_custom_faq
@@ -388,7 +388,7 @@ async def process_bwana_message(
 
     config = get_bwana_config(supabase)
 
-    faq = match_faq(text)
+    faq = await match_faq_from_db(text, supabase)
     if faq:
         return BwanaTurnResult(faq.response, "faq", intent_id=faq.intent_id)
 

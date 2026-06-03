@@ -1,9 +1,13 @@
 """Scripted FAQ intents for Bwana chat (sync fast path)."""
+from __future__ import annotations
+
 import re
 from dataclasses import dataclass
 
-from app.schemas.subscription import TIER_LIMITS, TIER_PRICES
+from supabase import Client
+
 from app.services.matching_weights_copy import MATCH_SCORE_FAQ_ANSWER
+from app.services.tier_config import TierPricingSnapshot, load_tier_pricing_snapshot
 from app.services.tier_marketing import TIER_WHATSAPP_BLURB
 
 _ESCALATION_PHRASES = (
@@ -67,21 +71,24 @@ class FaqMatch:
     response: str
 
 
-def _kwacha(ngwee: int) -> str:
-    if ngwee == 0:
-        return "K0"
-    return f"K{ngwee // 100}"
-
-
-def _pricing_block() -> str:
+def _pricing_block(pricing: TierPricingSnapshot) -> str:
+    free_limit = pricing.matches_label("free")
+    starter_limit = pricing.matches_label("starter")
+    pro_limit = pricing.matches_label("professional")
+    super_limit = pricing.limit("super_standard")
+    super_matches = (
+        "unlimited matches + Bwana Interview"
+        if super_limit >= 99999
+        else f"{super_limit} matches/mo + Bwana Interview"
+    )
     return (
         "ZedApply plans (ZMW/month):\n"
-        f"• Free — {_kwacha(TIER_PRICES['free'])}, {TIER_LIMITS['free']} matches/mo\n"
-        f"• Starter — {_kwacha(TIER_PRICES['starter'])}, {TIER_LIMITS['starter']} matches/mo\n"
-        f"• Professional — {_kwacha(TIER_PRICES['professional'])}, "
-        f"{TIER_LIMITS['professional']} matches/mo (+ cover letters + tailored CVs)\n"
-        f"• Super Standard — {_kwacha(TIER_PRICES['super_standard'])}, "
-        "unlimited matches + Bwana Interview\n"
+        f"• Free — {pricing.price_label('free')}, {free_limit} matches/mo\n"
+        f"• Starter — {pricing.price_label('starter')}, {starter_limit} matches/mo\n"
+        f"• Professional — {pricing.price_label('professional')}, "
+        f"{pro_limit} matches/mo (+ cover letters + tailored CVs)\n"
+        f"• Super Standard — {pricing.price_label('super_standard')}, "
+        f"{super_matches}\n"
         "Upgrade at /pricing. Pay with MTN/Airtel (Lenco) or card (DPO)."
     )
 
@@ -118,8 +125,13 @@ def wants_callback(message: str) -> bool:
     return _contains_any(norm, _ESCALATION_PHRASES)
 
 
-def match_faq(message: str) -> FaqMatch | None:
+def match_faq(
+    message: str,
+    *,
+    pricing: TierPricingSnapshot | None = None,
+) -> FaqMatch | None:
     """Return a canned FAQ answer when the message matches a known intent."""
+    tier_pricing = pricing or TierPricingSnapshot.from_defaults()
     norm = message.strip().lower()
     if not norm:
         return None
@@ -141,15 +153,13 @@ def match_faq(message: str) -> FaqMatch | None:
     if "starter" in norm and "professional" not in norm:
         return FaqMatch(
             "starter_tier",
-            f"Starter: {_kwacha(TIER_PRICES['starter'])}/mo, {TIER_LIMITS['starter']} matches. "
+            f"Starter: {tier_pricing.price_label('starter')}/mo, "
+            f"{tier_pricing.matches_label('starter')} matches. "
             f"{TIER_WHATSAPP_BLURB['starter']}. Tailored CVs start on Professional. See /pricing.",
         )
 
-    if _contains_any(
-        norm,
-        ("price", "pricing", "cost", "how much", " tier", "plan", "k125", "k250", "k500"),
-    ):
-        return FaqMatch("pricing", _pricing_block())
+    if _contains_any(norm, tier_pricing.pricing_trigger_keywords()):
+        return FaqMatch("pricing", _pricing_block(tier_pricing))
 
     if _contains_any(norm, ("cancel", "unsubscribe", "stop subscription", "stop paying")):
         return FaqMatch(
@@ -201,9 +211,10 @@ def match_faq(message: str) -> FaqMatch | None:
         return FaqMatch("algorithm", MATCH_SCORE_FAQ_ANSWER)
 
     if _contains_any(norm, ("cover letter",)):
+        pro_price = tier_pricing.price_label("professional")
         return FaqMatch(
             "cover_letter",
-            "Cover letters are on the Professional plan (K250/mo): open a match → Generate "
+            f"Cover letters are on the Professional plan ({pro_price}/mo): open a match → Generate "
             "cover letter. Each letter is ~200–250 words, editable, export PDF.",
         )
 
@@ -234,32 +245,43 @@ def match_faq(message: str) -> FaqMatch | None:
             "contact support or type \"talk to human\" to escalate.",
         )
 
-    if _contains_any(norm, ("free plan", "free tier", "10 matches")):
+    free_limit = tier_pricing.matches_label("free")
+    if _contains_any(norm, ("free plan", "free tier")) or (
+        "10 matches" in norm and free_limit == "10"
+    ):
         return FaqMatch(
             "free_tier",
-            f"Free tier: {_kwacha(TIER_PRICES['free'])}/mo, {TIER_LIMITS['free']} matches, "
+            f"Free tier: {tier_pricing.price_label('free')}/mo, {free_limit} matches, "
             f"{TIER_WHATSAPP_BLURB['free']}. Upgrade anytime on /pricing.",
         )
 
     if _contains_any(norm, ("professional", " pro plan", "pro tier")):
         return FaqMatch(
             "professional_tier",
-            f"Professional: {_kwacha(TIER_PRICES['professional'])}/mo, "
-            f"{TIER_LIMITS['professional']} matches, {TIER_WHATSAPP_BLURB['professional']}.",
+            f"Professional: {tier_pricing.price_label('professional')}/mo, "
+            f"{tier_pricing.matches_label('professional')} matches, "
+            f"{TIER_WHATSAPP_BLURB['professional']}.",
         )
 
     if _contains_any(norm, ("super standard", "unlimited matches")):
+        super_limit = tier_pricing.limit("super_standard")
+        limit_txt = (
+            "unlimited matches"
+            if super_limit >= 99999
+            else f"{super_limit} matches"
+        )
         return FaqMatch(
             "super_tier",
-            f"Super Standard: {_kwacha(TIER_PRICES['super_standard'])}/mo, unlimited matches, "
+            f"Super Standard: {tier_pricing.price_label('super_standard')}/mo, {limit_txt}, "
             "Bwana Interview prep at /interview-prep.",
         )
 
     if _contains_any(norm, ("interview prep", "bwana interview")):
+        super_price = tier_pricing.price_label("super_standard")
         return FaqMatch(
             "interview",
             "Bwana Interview (quizzes, dress code, likely questions) is included on Super "
-            "Standard (K500/mo) at /interview-prep.",
+            f"Standard ({super_price}/mo) at /interview-prep.",
         )
 
     if _contains_any(norm, ("privacy", "delete account", "my data")):
@@ -278,3 +300,9 @@ def match_faq(message: str) -> FaqMatch | None:
         )
 
     return None
+
+
+async def match_faq_from_db(message: str, supabase: Client) -> FaqMatch | None:
+    """FAQ match using tier_config DB (same source as GET /tiers)."""
+    pricing = await load_tier_pricing_snapshot(supabase)
+    return match_faq(message, pricing=pricing)
