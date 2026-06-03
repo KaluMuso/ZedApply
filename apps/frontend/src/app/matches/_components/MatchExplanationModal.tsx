@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import type { MatchData } from "@/lib/api";
 import { MatchScoreBreakdown } from "@/components/MatchScoreBreakdown";
-import { SkillBadge } from "@/components/SkillBadge";
+import { MatchSkillsBreakdown } from "@/components/matches/MatchSkillsBreakdown";
 import { Icon } from "@/components/ui/Icon";
 import { ModalPortal } from "@/components/shared/ModalPortal";
 import { splitMatchExplanation } from "@/lib/matchExplanationDisplay";
@@ -35,7 +35,6 @@ export function MatchExplanationModal({
   if (!open || !match) return null;
 
   const { main, preferencesNote } = splitMatchExplanation(match.explanation);
-  const missing = match.missing_skills;
   const requiredSkillsNote = formatRequiredSkillsDetail(countRequiredJobSkills(match));
 
   return (
@@ -132,47 +131,11 @@ export function MatchExplanationModal({
                     </div>
                 )}
 
-                {missing.length > 0 && (
-                  <div
-                    className="p-4 rounded-lg"
-                    style={{
-                      background: "var(--copper-100)",
-                      border: "1px solid color-mix(in srgb, var(--copper-500) 45%, var(--line))",
-                    }}
-                  >
-                    <div
-                      className="text-[10px] font-bold uppercase tracking-wider mb-2"
-                      style={{ color: "var(--copper-600)" }}
-                    >
-                      Skill gap
-                    </div>
-                    <p className="text-sm mb-3 leading-relaxed" style={{ color: "var(--ink-2)" }}>
-                      These required skills aren&apos;t on your CV yet — consider highlighting
-                      related experience or upskilling before you apply.
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {missing.map((skill) => (
-                        <SkillBadge key={skill} skill={skill} matched={false} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {match.matched_skills.length > 0 && (
-                  <div className="mt-4">
-                    <div
-                      className="text-[10px] uppercase tracking-wider mb-2"
-                      style={{ color: "var(--muted)" }}
-                    >
-                      Matched skills
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {match.matched_skills.map((skill) => (
-                        <SkillBadge key={skill} skill={skill} matched />
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <MatchSkillsBreakdown
+                  className="mt-4"
+                  matchedSkills={match.matched_skills}
+                  missingSkills={match.missing_skills}
+                />
               </div>
             </div>
           </div>

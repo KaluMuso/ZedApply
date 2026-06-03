@@ -40,9 +40,22 @@ describe("MatchExplanationModal", () => {
     expect(screen.getByRole("dialog")).toHaveClass("modal-panel");
     expect(screen.getByText("Preferences match")).toBeInTheDocument();
     expect(screen.getByText(/remote arrangement, salary range overlap/)).toBeInTheDocument();
-    expect(screen.getByText("Skill gap")).toBeInTheDocument();
+    expect(screen.getByText("Matched skills")).toBeInTheDocument();
+    expect(screen.getByText("Skills to develop")).toBeInTheDocument();
+    expect(screen.getByText("python")).toBeInTheDocument();
     expect(screen.getByText("kubernetes")).toBeInTheDocument();
     expect(screen.getByText("terraform")).toBeInTheDocument();
+  });
+
+  it("omits skill breakdown when both lists are empty", () => {
+    render(
+      <MatchExplanationModal
+        match={{ ...MATCH, matched_skills: [], missing_skills: [] }}
+        open
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("match-skills-breakdown")).not.toBeInTheDocument();
   });
 
   it("calls onClose when backdrop is clicked", async () => {

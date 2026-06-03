@@ -27,6 +27,7 @@ export default defineConfig({
         "src/lib/jobSource.ts",
         "src/lib/matchBreakdown.ts",
         "src/lib/matchExplanationDisplay.ts",
+        "src/lib/matchSkillsDisplay.ts",
         "src/lib/formatMatchRelativeTime.ts",
         "src/lib/pushNotifications.ts",
         "src/lib/site-metadata.ts",
