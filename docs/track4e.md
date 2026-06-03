@@ -42,6 +42,11 @@ python3 scripts/backfill_review_queue.py [--limit N] [--dry-run]
 - `src/components/jobs/DeadlineBadge.tsx` — color-coded countdown
 - `src/app/admin/_tabs/ReviewJobsTab.tsx` — Track 4e admin queue tab
 
+## Review queue cleanup
+
+See **`docs/admin_job_review_cleanup.md`** for auto-hide vs needs-review criteria and
+`POST /admin/review-jobs/bulk-auto-dismiss-hidden` (hidden backlog).
+
 ## Ops (WhatsApp channel H)
 
 Add channel ID to OCI `WHATSAPP_SCRAPE_CHANNELS`:

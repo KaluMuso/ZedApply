@@ -11,6 +11,10 @@ from pydantic import BaseModel, Field
 from app.core.deps import get_supabase, require_admin
 from app.schemas.admin import AdminJobReviewQueue, AdminJobReviewRow, AdminJobReviewUpdate
 from app.services.job_activation import can_publish_after_admin_edit
+from app.services.review_queue_cleanup import (
+    AUTO_DISMISS_REVIEW_REASONS,
+    build_hidden_inactive_dismiss_patch,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +27,17 @@ router = APIRouter(
 
 class ReviewJobsBulkRequest(BaseModel):
     job_ids: list[str] = Field(..., min_length=1, max_length=100)
+
+
+class ReviewQueueAutoDismissRequest(BaseModel):
+    dry_run: bool = False
+    limit: int = Field(2000, ge=1, le=5000)
+
+
+class ReviewQueueAutoDismissResponse(BaseModel):
+    dry_run: bool
+    eligible: int
+    dismissed: int
 
 
 def _split_reasons(value: str | None) -> list[str]:
@@ -115,6 +130,63 @@ async def update_review_job(
     if not result.data:
         raise HTTPException(status_code=404, detail="Job not found")
     return {"id": job_id, "is_active": can_publish, "is_review_required": not can_publish}
+
+
+@router.post(
+    "/review-jobs/bulk-auto-dismiss-hidden",
+    response_model=ReviewQueueAutoDismissResponse,
+)
+async def bulk_auto_dismiss_hidden(
+    body: ReviewQueueAutoDismissRequest,
+    current_user: dict = Depends(require_admin),
+    supabase=Depends(get_supabase),
+):
+    """Clear review flags for jobs already inactive with no apply path (idempotent).
+
+    See docs/admin_job_review_cleanup.md — does not touch ``no_deadline`` rows or
+    jobs that are still ``is_active``.
+    """
+    count_query = (
+        supabase.table("jobs")
+        .select("id", count="exact")
+        .eq("is_review_required", True)
+        .is_("admin_reviewed_at", "null")
+        .eq("is_active", False)
+        .in_("review_reason", list(AUTO_DISMISS_REVIEW_REASONS))
+    )
+    eligible = count_query.execute().count or 0
+
+    if body.dry_run or eligible == 0:
+        return ReviewQueueAutoDismissResponse(
+            dry_run=body.dry_run,
+            eligible=eligible,
+            dismissed=0,
+        )
+
+    patch = build_hidden_inactive_dismiss_patch()
+    patch["admin_reviewed_by_user_id"] = current_user["id"]
+
+    result = (
+        supabase.table("jobs")
+        .update(patch)
+        .eq("is_review_required", True)
+        .is_("admin_reviewed_at", "null")
+        .eq("is_active", False)
+        .in_("review_reason", list(AUTO_DISMISS_REVIEW_REASONS))
+        .execute()
+    )
+    dismissed = len(result.data or []) if result.data else eligible
+    logger.info(
+        "review_queue_auto_dismiss_hidden admin=%s eligible=%s dismissed=%s",
+        current_user["id"],
+        eligible,
+        dismissed,
+    )
+    return ReviewQueueAutoDismissResponse(
+        dry_run=False,
+        eligible=eligible,
+        dismissed=dismissed,
+    )
 
 
 @router.post("/review-jobs/bulk-mark-duplicate")
