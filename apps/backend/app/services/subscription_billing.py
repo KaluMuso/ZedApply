@@ -72,4 +72,17 @@ def activate_subscription_after_payment(
         period_iso["end"],
         payload.get("subscription_id"),
     )
+
+    try:
+        from app.services.referral import reward_referral_on_first_paid_subscription
+
+        reward_referral_on_first_paid_subscription(user_id, new_tier, supabase)
+    except Exception:
+        logger.warning(
+            "referral reward failed for user=%s tier=%s",
+            user_id,
+            new_tier,
+            exc_info=True,
+        )
+
     return period_iso

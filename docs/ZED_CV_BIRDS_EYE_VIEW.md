@@ -337,12 +337,12 @@ The platform is **deployed but not yet in active use**. Verified via Supabase: *
 - [ ] Tier gate: Free sees ranges, Starter+ sees detailed breakdowns
 
 **3D — Referral Program**
-- [ ] `referrals` table: referrer_id, referred_id, code, status (pending/completed/rewarded), created_at
-- [ ] Each user gets a unique referral code/link
-- [ ] Rewards: Refer 3 friends → 1 free month of Starter. Refer 10 → 1 free month of Professional.
-- [ ] Referral dashboard in profile page: track invites, see rewards
-- [ ] WhatsApp: Share referral link via WhatsApp command
-- [ ] Anti-abuse: Referred user must upload a CV and trigger at least 1 match to count
+- [x] `referral_events` + `users.referral_code` — signup attribution, funnel statuses
+- [x] Profile card: invite link, signup count, subscribed count (+5 bonus matches each)
+- [x] Reward trigger: referrer gets +5 bonus matches when referee completes **first paid subscription** (DPO/Lenco webhook)
+- [ ] Referral dashboard beyond profile card; WhatsApp share command
+- [ ] Tier-month grants (e.g. free month of Starter) — deferred
+- [x] Anti-abuse: paid conversion required (tier ≠ free); self-referral blocked; idempotent per referee
 
 **3E — Weekly Email Digest (Automated)**
 - [ ] n8n scheduled task: Every Monday 8am CAT

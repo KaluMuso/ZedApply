@@ -1,4 +1,4 @@
-"""Referral code generation and signup attribution."""
+"""Referral code generation, signup attribution, and paid-subscription rewards."""
 from __future__ import annotations
 
 import logging
@@ -16,6 +16,12 @@ _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
     re.I,
 )
+
+REFERRAL_REWARD_BONUS_MATCHES = 5
+UNLIMITED_MATCHES = 99_999
+
+# Legacy alias for tests and imports
+REFERRAL_QUALIFY_BONUS_MATCHES = REFERRAL_REWARD_BONUS_MATCHES
 
 
 def generate_referral_code(supabase: Any) -> str:
@@ -114,19 +120,14 @@ def count_referral_signups(referrer_user_id: str, supabase: Any) -> int:
     return len(result.data or [])
 
 
-REFERRAL_QUALIFY_BONUS_MATCHES = 5
-UNLIMITED_MATCHES = 99_999
-
-
 def qualify_referral_on_cv_upload(referred_user_id: str, supabase: Any) -> bool:
     """
-    When a referred user uploads their first CV, mark the event qualified and
-  grant the referrer bonus matches for the current billing period.
-    Returns True if a reward was applied.
+    Optional funnel step: mark referral qualified when referred user uploads CV.
+    Does not grant rewards — rewards fire on first paid subscription only.
     """
     event_res = (
         supabase.table("referral_events")
-        .select("id, referrer_user_id, status")
+        .select("id, status")
         .eq("referred_user_id", referred_user_id)
         .limit(1)
         .execute()
@@ -135,16 +136,63 @@ def qualify_referral_on_cv_upload(referred_user_id: str, supabase: Any) -> bool:
         return False
 
     row = event_res.data[0]
-    if row.get("status") not in ("signed_up",):
+    if row.get("status") != "signed_up":
         return False
 
-    referrer_id = row["referrer_user_id"]
     now_iso = datetime.now(timezone.utc).isoformat()
-
     supabase.table("referral_events").update({
         "status": "qualified",
         "qualified_at": now_iso,
     }).eq("id", row["id"]).execute()
+    return True
+
+
+def reward_referral_on_first_paid_subscription(
+    referred_user_id: str,
+    new_tier: str,
+    supabase: Any,
+) -> bool:
+    """
+    Grant referrer +5 bonus matches when referee completes first paid subscription.
+    Idempotent per referred_user_id (status rewarded). Returns True if reward applied.
+    """
+    tier = (new_tier or "free").lower()
+    if tier == "free":
+        return False
+
+    event_res = (
+        supabase.table("referral_events")
+        .select("id, referrer_user_id, referred_user_id, status")
+        .eq("referred_user_id", referred_user_id)
+        .limit(1)
+        .execute()
+    )
+    if not event_res.data:
+        return False
+
+    row = event_res.data[0]
+    if row.get("status") == "rewarded":
+        return False
+
+    referrer_id = row["referrer_user_id"]
+    if referrer_id == referred_user_id:
+        log.warning(
+            "referral reward blocked: self-referral user_id=%s",
+            referred_user_id,
+        )
+        return False
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    if row.get("status") in ("signed_up", "qualified"):
+        supabase.table("referral_events").update({
+            "status": "paid",
+            "paid_at": now_iso,
+        }).eq("id", row["id"]).execute()
+    elif row.get("status") == "paid":
+        pass
+    else:
+        return False
 
     rewarded = _grant_referrer_match_bonus(referrer_id, supabase)
     if rewarded:
@@ -156,7 +204,7 @@ def qualify_referral_on_cv_upload(referred_user_id: str, supabase: Any) -> bool:
 
 
 def _grant_referrer_match_bonus(referrer_user_id: str, supabase: Any) -> bool:
-    """Add REFERRAL_QUALIFY_BONUS_MATCHES to the referrer's effective match quota.
+    """Add REFERRAL_REWARD_BONUS_MATCHES to the referrer's effective match quota.
 
     Paid-tier quota comes from tier_config; subscription.matches_limit was
     dropped in migration 036. Free-tier welcome bonus uses users.welcome_match_bonus.
@@ -179,7 +227,7 @@ def _grant_referrer_match_bonus(referrer_user_id: str, supabase: Any) -> bool:
     tier = (user.get("subscription_tier") or "free").lower()
     referral_bonus = int(user.get("referral_match_bonus") or 0)
     new_referral_bonus = min(
-        referral_bonus + REFERRAL_QUALIFY_BONUS_MATCHES,
+        referral_bonus + REFERRAL_REWARD_BONUS_MATCHES,
         UNLIMITED_MATCHES,
     )
 
@@ -188,7 +236,7 @@ def _grant_referrer_match_bonus(referrer_user_id: str, supabase: Any) -> bool:
     if tier == "free":
         current_welcome = int(user.get("welcome_match_bonus") or 7)
         update_payload["welcome_match_bonus"] = min(
-            current_welcome + REFERRAL_QUALIFY_BONUS_MATCHES,
+            current_welcome + REFERRAL_REWARD_BONUS_MATCHES,
             UNLIMITED_MATCHES,
         )
         if not user.get("welcome_match_bonus_until"):
@@ -208,12 +256,12 @@ def _grant_referrer_match_bonus(referrer_user_id: str, supabase: Any) -> bool:
 
 
 def count_referral_qualified(referrer_user_id: str, supabase: Any) -> int:
-    """Referrals that uploaded a CV (qualified or rewarded)."""
+    """Referrals where the referee subscribed (reward granted)."""
     result = (
         supabase.table("referral_events")
         .select("id", count="exact")
         .eq("referrer_user_id", referrer_user_id)
-        .in_("status", ["qualified", "rewarded"])
+        .eq("status", "rewarded")
         .execute()
     )
     if result.count is not None:

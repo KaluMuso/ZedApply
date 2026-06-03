@@ -226,7 +226,7 @@ components:
         referral_qualified_count:
           type: integer
           minimum: 0
-          description: Referred users who uploaded a CV and triggered referral rewards.
+          description: Referred users who completed their first paid subscription (referral reward granted).
         education:
           type: array
           items: { type: object, additionalProperties: true }

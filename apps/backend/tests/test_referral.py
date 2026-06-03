@@ -1,15 +1,16 @@
-"""Referral code resolution, signup attribution, and CV qualify rewards."""
+"""Referral code resolution, signup attribution, CV qualify, and paid rewards."""
 from unittest.mock import MagicMock
 
 import pytest
 
 from app.services.referral import (
-    REFERRAL_QUALIFY_BONUS_MATCHES,
+    REFERRAL_REWARD_BONUS_MATCHES,
     attach_referral_on_signup,
     count_referral_qualified,
     generate_referral_code,
     qualify_referral_on_cv_upload,
     resolve_referrer_user_id,
+    reward_referral_on_first_paid_subscription,
 )
 
 
@@ -157,7 +158,7 @@ EVENT_ID = "e4444444-4444-4444-8444-444444444444"
 
 
 @pytest.fixture
-def qualify_tables(supabase_tables):
+def referral_event_tables(supabase_tables):
     supabase_tables["referral_events"] = [
         {
             "id": EVENT_ID,
@@ -178,15 +179,15 @@ def qualify_tables(supabase_tables):
     return supabase_tables
 
 
-def test_qualify_referral_on_cv_upload_grants_bonus(qualify_tables):
-    sb = TableQuery(qualify_tables)
+def test_qualify_referral_on_cv_upload_marks_qualified_only(referral_event_tables):
+    sb = TableQuery(referral_event_tables)
     assert qualify_referral_on_cv_upload(REFERRED_ID, sb) is True
-    event = qualify_tables["referral_events"][0]
-    assert event["status"] == "rewarded"
+    event = referral_event_tables["referral_events"][0]
+    assert event["status"] == "qualified"
     assert event.get("qualified_at")
-    assert event.get("rewarded_at")
-    referrer = qualify_tables["users"][0]
-    assert referrer["referral_match_bonus"] == REFERRAL_QUALIFY_BONUS_MATCHES
+    assert event.get("rewarded_at") is None
+    referrer = referral_event_tables["users"][0]
+    assert referrer["referral_match_bonus"] == 0
 
 
 def test_qualify_referral_no_event_returns_false(supabase_tables):
@@ -194,13 +195,55 @@ def test_qualify_referral_no_event_returns_false(supabase_tables):
     assert qualify_referral_on_cv_upload(REFERRED_ID, sb) is False
 
 
-def test_qualify_referral_already_rewarded_skipped(qualify_tables):
-    qualify_tables["referral_events"][0]["status"] = "rewarded"
-    sb = TableQuery(qualify_tables)
+def test_qualify_referral_already_rewarded_skipped(referral_event_tables):
+    referral_event_tables["referral_events"][0]["status"] = "rewarded"
+    sb = TableQuery(referral_event_tables)
     assert qualify_referral_on_cv_upload(REFERRED_ID, sb) is False
 
 
-def test_count_referral_qualified(qualify_tables):
-    qualify_tables["referral_events"][0]["status"] = "rewarded"
-    sb = TableQuery(qualify_tables)
+def test_reward_referral_on_paid_subscription(referral_event_tables):
+    sb = TableQuery(referral_event_tables)
+    assert reward_referral_on_first_paid_subscription(REFERRED_ID, "starter", sb) is True
+    event = referral_event_tables["referral_events"][0]
+    assert event["status"] == "rewarded"
+    assert event.get("paid_at")
+    assert event.get("rewarded_at")
+    referrer = referral_event_tables["users"][0]
+    assert referrer["referral_match_bonus"] == REFERRAL_REWARD_BONUS_MATCHES
+
+
+def test_reward_referral_from_qualified_status(referral_event_tables):
+    referral_event_tables["referral_events"][0]["status"] = "qualified"
+    sb = TableQuery(referral_event_tables)
+    assert reward_referral_on_first_paid_subscription(REFERRED_ID, "professional", sb) is True
+    assert referral_event_tables["referral_events"][0]["status"] == "rewarded"
+
+
+def test_reward_referral_webhook_twice_idempotent(referral_event_tables):
+    sb = TableQuery(referral_event_tables)
+    assert reward_referral_on_first_paid_subscription(REFERRED_ID, "starter", sb) is True
+    bonus_after_first = referral_event_tables["users"][0]["referral_match_bonus"]
+    assert reward_referral_on_first_paid_subscription(REFERRED_ID, "starter", sb) is False
+    assert referral_event_tables["users"][0]["referral_match_bonus"] == bonus_after_first
+
+
+def test_reward_referral_free_tier_no_reward(referral_event_tables):
+    sb = TableQuery(referral_event_tables)
+    assert reward_referral_on_first_paid_subscription(REFERRED_ID, "free", sb) is False
+    assert referral_event_tables["referral_events"][0]["status"] == "signed_up"
+    assert referral_event_tables["users"][0]["referral_match_bonus"] == 0
+
+
+def test_reward_referral_self_referral_blocked(referral_event_tables):
+    referral_event_tables["referral_events"][0]["referrer_user_id"] = REFERRED_ID
+    referral_event_tables["referral_events"][0]["referred_user_id"] = REFERRED_ID
+    sb = TableQuery(referral_event_tables)
+    assert reward_referral_on_first_paid_subscription(REFERRED_ID, "starter", sb) is False
+
+
+def test_count_referral_qualified_counts_rewarded_only(referral_event_tables):
+    referral_event_tables["referral_events"][0]["status"] = "qualified"
+    sb = TableQuery(referral_event_tables)
+    assert count_referral_qualified(REFERRER_ID, sb) == 0
+    referral_event_tables["referral_events"][0]["status"] = "rewarded"
     assert count_referral_qualified(REFERRER_ID, sb) == 1

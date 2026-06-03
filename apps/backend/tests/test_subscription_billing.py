@@ -1,7 +1,7 @@
 """Tests for subscription billing-period activation and match counting."""
 import asyncio
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from tests.conftest import FakeSupabaseQuery
 from app.services.matching import get_credited_match_count, _billing_period_start
@@ -73,6 +73,30 @@ class TestActivateSubscriptionAfterPayment:
         assert args["p_subscription_id"] == "sub-1"
         assert args["p_lenco_subscription_ref"] == "LEN-abc"
         assert result["end"] == "2026-06-19T12:00:00+00:00"
+
+    @patch("app.services.referral.reward_referral_on_first_paid_subscription")
+    def test_triggers_referral_reward_after_activation(
+        self, mock_reward, monkeypatch,
+    ):
+        monkeypatch.setenv("SUBSCRIPTION_PERIOD_DAYS", "30")
+        from app.core.config import get_settings
+        get_settings.cache_clear()
+
+        fake = RpcFakeSupabase(
+            {
+                "subscription_id": "sub-1",
+                "period_start": "2026-05-20T12:00:00+00:00",
+                "period_end": "2026-06-19T12:00:00+00:00",
+            }
+        )
+        activate_subscription_after_payment(
+            fake,  # type: ignore[arg-type]
+            user_id="user-1",
+            payment_id="pay-1",
+            new_tier="starter",
+            subscription_row={"id": "sub-1"},
+        )
+        mock_reward.assert_called_once_with("user-1", "starter", fake)
 
 
 class TestBillingPeriodMatchCount:

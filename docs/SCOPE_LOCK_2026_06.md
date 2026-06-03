@@ -42,14 +42,14 @@ Phase 0 means **minimum viable plumbing** without opening new product surfaces. 
 | Decision | Detail |
 | --- | --- |
 | **Qualify trigger** | Referrer reward fires when the **referred user completes their first paid subscription** (Starter, Professional, or Super Standard), not on CV upload. |
-| **Interim v1 behaviour** | Until the **payment-trigger PR** ships, keep the existing **CV-upload qualify path** (`qualify_referral_on_cv_upload` in `app/services/referral.py`) so referrers are not blocked — but treat it as **technical debt**, not the long-term rule. |
+| **CV upload (optional)** | `qualify_referral_on_cv_upload` may mark `qualified` for funnel analytics only — **no reward** on CV upload. |
 | **v1 reward amount** | **+5 matches** per qualified referral (`REFERRAL_QUALIFY_BONUS_MATCHES = 5` → `users.referral_match_bonus`, with free-tier welcome stacking as today). |
-| **Profile / API copy** | `referral_qualified_count` and UI strings must describe **paid conversion** once the payment trigger lands; until then, document “+5 matches (interim: first CV upload)” in release notes only — do not market CV upload as the permanent rule. |
+| **Profile / API copy** | `referral_qualified_count` and UI: “When your friend subscribes, you get 5 bonus matches.” |
 | **Anti-abuse** | Referred account must be a real paid conversion (webhook-confirmed tier ≠ `free`); self-referral and duplicate events remain blocked. |
 
 **Out of scope for v1:** tier-month grants (“1 free month of Starter”), WhatsApp share command, referral dashboard beyond profile card.
 
-**Implementation note:** Wire qualify/reward from `activate_subscription_after_payment` / Lenco+DPO webhook success paths after the interim PR; remove or gate `qualify_referral_on_cv_upload` from `/cv/upload` when payment trigger is live.
+**Implementation:** `reward_referral_on_first_paid_subscription` runs from `activate_subscription_after_payment` (DPO/Lenco webhooks + Lenco verify). Funnel: `signed_up` → `qualified` (optional CV) → `paid` → `rewarded`.
 
 ---
 
@@ -109,7 +109,7 @@ Use branch names as the source of truth for what is in flight. **Do not** re-ope
 | Train | Branch / PR hint | Scope lock section |
 | --- | --- | --- |
 | Notifications | `cursor/notifications-migration-train-9e6a` → [NOTIFICATIONS_MIGRATIONS.md](NOTIFICATIONS_MIGRATIONS.md) | §2 Notifications |
-| Referral payment trigger | TBD (`cursor/referral-paid-qualify-*`) | §1 Referrals |
+| Referral payment trigger | `cursor/referral-payment-trigger-9e6a` | §1 Referrals |
 | Tier / Bwana sync | `cursor/tier-config-faq-sync-9e6a`, #255 on `master` | §5 Tier config |
 | Admin review ops | `cursor/admin-review-queue-*`, [admin_job_review_cleanup.md](admin_job_review_cleanup.md) | §4 Review queue |
 | Scope lock (this doc) | `cursor/scope-lock-doc-9e6a` | — |
@@ -119,7 +119,7 @@ Use branch names as the source of truth for what is in flight. **Do not** re-ope
 ## Explicitly out of scope (June 2026)
 
 - Word (.docx) **export** for tailored CV / generator preview  
-- Referral rewards tied permanently to CV upload (interim only until payment PR)  
+- Referral rewards on CV upload (rewards are payment-triggered only)  
 - Auto-publishing jobs from bulk dismiss or scraper ingest  
 - New notification channels (SMS, email digests as inbox replacement) without scope-lock revision  
 - Changing `TIER_PRICES` in code instead of `tier_config` for live pricing  

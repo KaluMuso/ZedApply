@@ -33,7 +33,7 @@ class UserProfile(BaseModel):
     referral_qualified_count: int = Field(
         default=0,
         ge=0,
-        description="Referred users who uploaded a CV (qualified for reward).",
+        description="Referred users who completed first paid subscription (reward granted).",
     )
     education: list[dict[str, Any]] = Field(
         default_factory=list,

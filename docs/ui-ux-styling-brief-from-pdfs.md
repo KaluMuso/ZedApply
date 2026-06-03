@@ -47,7 +47,7 @@
 | **Contract** | `docs/openapi.yaml` — `OTPVerify.referral_ref`, `UserProfile.referral_*` |
 
 **Ops:** Apply migration `067` on Supabase before prod deploy.  
-**Future:** Mark `referral_events.status` → `qualified` when referred user uploads CV; reward credits on paid tiers.
+**Shipped:** `qualified` on CV upload (no reward); `rewarded` on referee’s first paid subscription (+5 bonus matches).
 
 ---
 
