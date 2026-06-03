@@ -175,6 +175,9 @@ export function AdminJobFormDialog({
     (Object.keys(payload) as (keyof typeof payload)[]).forEach((k) => {
       if (payload[k] === "") delete payload[k];
     });
+    if (mode === "create") {
+      delete payload.admin_published;
+    }
     return payload;
   };
 
@@ -185,6 +188,17 @@ export function AdminJobFormDialog({
     }
     if (!form.description || form.description.length < 20) {
       notify.error("Description must be at least 20 characters");
+      return false;
+    }
+    const url = form.apply_url?.trim();
+    const email = form.apply_email?.trim();
+    const phone = form.contact_phone?.trim();
+    if (!url && !email && !phone) {
+      notify.error("Provide apply URL, apply email, or contact phone");
+      return false;
+    }
+    if (url && email) {
+      notify.error("Provide apply URL or apply email, not both");
       return false;
     }
     return true;
