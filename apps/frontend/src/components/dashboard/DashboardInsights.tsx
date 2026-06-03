@@ -122,8 +122,12 @@ export function DashboardInsights({
                 ? `${quotaUsed}/${quota.limitLabel}`
                 : "—"
           }
-          hint={quota.unlimited ? "Unlimited plan" : `${quotaPct}% of monthly allowance`}
-          trend={!quota.unlimited && quotaPct > 80 ? "down" : "neutral"}
+          hint={
+            quota.unlimited
+              ? "Unlimited plan"
+              : `${quotaPct ?? 0}% of monthly allowance`
+          }
+          trend={!quota.unlimited && (quotaPct ?? 0) > 80 ? "down" : "neutral"}
         />
       </div>
 

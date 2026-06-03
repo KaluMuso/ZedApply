@@ -10,6 +10,7 @@ import {
   subscription as subscriptionApi,
   preferencesApi,
   type MatchData,
+  type MatchListResponse,
   type Subscription,
   type UserProfile,
   type JobPreferences,
@@ -61,7 +62,10 @@ function buildApplicationFunnel(
   return funnel;
 }
 
-const EMPTY_MATCH_LIST = { matches: [] as MatchData[] };
+const EMPTY_MATCH_LIST: MatchListResponse = {
+  matches: [],
+  remaining_quota: 0,
+};
 
 export function DashboardPageClient() {
   const router = useRouter();
