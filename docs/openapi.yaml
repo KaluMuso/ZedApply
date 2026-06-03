@@ -3818,6 +3818,32 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SuggestBulletsResponse' }
 
+  /cv/export/docx:
+    post:
+      operationId: exportCvDocx
+      summary: Render structured CV sections to a Word document download
+      description: |
+        Accepts the same structured CV payload as the manual wizard and tailored
+        builder export (`BuildFromScratchRequest`). Returns a `.docx` file with
+        section order matching server PDF export (Summary, Experience, Education,
+        Skills). Page breaks are inserted between those sections when present.
+      tags: [CV]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BuildFromScratchRequest' }
+      responses:
+        '200':
+          description: Word document bytes
+          content:
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema:
+                type: string
+                format: binary
+        '422': { description: Validation error }
+        '503': { description: DOCX rendering failed }
+
   /cv/build-from-scratch:
     post:
       operationId: buildCvFromScratch

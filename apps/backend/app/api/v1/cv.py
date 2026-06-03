@@ -6,6 +6,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, model_validator
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, UploadFile, File
+from fastapi.responses import Response
 
 from app.core.errors import ProblemHTTPException
 from app.core.deps import get_supabase, get_current_user, get_current_user_id, is_superadmin
@@ -25,6 +26,7 @@ from app.services.cv_vision_parser import (
 from app.services.cv_parse_context import CVParseDebugContext
 from app.services.cv_generator import analyze_cv, generate_cv_structured, _render_sections_to_text
 from app.services.cv_pdf_renderer import render_cv_pdf
+from app.services.cv_docx_renderer import render_cv_docx
 from app.services.cv_scratch import suggest_professional_summary, suggest_role_bullets
 from app.schemas.cv_scratch import (
     BuildFromScratchBody,
@@ -943,6 +945,46 @@ async def suggest_bullets(
     except ValueError as e:
         raise HTTPException(status_code=503, detail=str(e))
     return SuggestBulletsResponse(bullets=result["bullets"])
+
+
+def _cv_export_filename(full_name: str) -> str:
+    safe = re.sub(r"[^\w\s-]", "", full_name or "cv", flags=re.UNICODE).strip()
+    safe = re.sub(r"[-\s]+", "-", safe).strip("-") or "cv"
+    return f"{safe[:80]}.docx"
+
+
+@router.post("/export/docx")
+@limiter.limit("10/minute")
+async def export_cv_docx(
+    request: Request,
+    body: BuildFromScratchBody,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Render structured CV sections to a downloadable Word document."""
+    del request, user_id  # auth gate only
+    if not body.basics.full_name.strip():
+        raise HTTPException(status_code=422, detail="Full name is required")
+
+    try:
+        docx_bytes, _render_ms = render_cv_docx(body)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).exception("cv_docx_render_failed")
+        raise HTTPException(
+            status_code=503,
+            detail=f"DOCX rendering failed: {exc}",
+        ) from exc
+
+    filename = _cv_export_filename(body.basics.full_name)
+    return Response(
+        content=docx_bytes,
+        media_type=(
+            "application/vnd.openxmlformats-officedocument"
+            ".wordprocessingml.document"
+        ),
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/build-from-scratch", response_model=BuildFromScratchResponse)
