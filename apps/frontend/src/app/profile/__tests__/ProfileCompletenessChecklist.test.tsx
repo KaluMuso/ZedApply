@@ -208,4 +208,84 @@ describe("ProfileCompletenessChecklist", () => {
     });
     expect(onPreferencesSaved).toHaveBeenCalled();
   });
+
+  it("saves full name via profile API from the modal", async () => {
+    const user = userEvent.setup();
+    const onProfileSaved = vi.fn();
+    const updated = mockProfile({ full_name: "Jane Doe" });
+    profilePatch.mockResolvedValue(updated);
+
+    render(
+      <ProfileCompletenessChecklist
+        items={[
+          {
+            id: "full_name",
+            label: "Full name",
+            weight: 1,
+            complete: false,
+            hint: "Add in Account settings",
+            tab: "cv",
+          },
+        ]}
+        token="tok"
+        profile={mockProfile()}
+        preferences={mockPreferences()}
+        onProfileSaved={onProfileSaved}
+        onPreferencesSaved={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /add full name/i }));
+    const nameInput = screen.getByRole("textbox", { name: /full name/i });
+    await user.clear(nameInput);
+    await user.type(nameInput, "Jane Doe");
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(profilePatch).toHaveBeenCalledWith("tok", { full_name: "Jane Doe" });
+    });
+    expect(onProfileSaved).toHaveBeenCalledWith(updated);
+  });
+
+  it("saves education level from the modal", async () => {
+    const user = userEvent.setup();
+    const onPreferencesSaved = vi.fn();
+    const savedPrefs = mockPreferences();
+    savedPrefs.extras = { education_level: "Bachelor's degree" };
+    preferencesPatch.mockResolvedValue(savedPrefs);
+
+    render(
+      <ProfileCompletenessChecklist
+        items={[
+          {
+            id: "education_level",
+            label: "Education level",
+            weight: 1,
+            complete: false,
+            hint: "Select your highest qualification",
+            tab: "preferences",
+          },
+        ]}
+        token="tok"
+        profile={mockProfile()}
+        preferences={mockPreferences()}
+        onProfileSaved={vi.fn()}
+        onPreferencesSaved={onPreferencesSaved}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /add education level/i }));
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: /highest qualification/i }),
+      "Bachelor's degree",
+    );
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(preferencesPatch).toHaveBeenCalledWith("tok", {
+        extras: { education_level: "Bachelor's degree" },
+      });
+    });
+    expect(onPreferencesSaved).toHaveBeenCalled();
+  });
 });

@@ -86,14 +86,8 @@ export function ProfileCompletenessChecklist({
         token={token}
         profile={profile}
         preferences={preferences}
-        onProfileSaved={(next) => {
-          onProfileSaved(next);
-          setActiveFieldId(null);
-        }}
-        onPreferencesSaved={(next) => {
-          onPreferencesSaved(next);
-          setActiveFieldId(null);
-        }}
+        onProfileSaved={onProfileSaved}
+        onPreferencesSaved={onPreferencesSaved}
       />
     </>
   );
