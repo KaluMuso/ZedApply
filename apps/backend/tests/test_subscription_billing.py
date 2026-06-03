@@ -76,31 +76,55 @@ class TestActivateSubscriptionAfterPayment:
 
 
 class TestBillingPeriodMatchCount:
-    def test_uses_subscription_current_period_start(self, fake_supabase):
-        period_start = "2026-05-10T00:00:00+00:00"
-        matches_q = TrackingQuery(data=[{"id": "m1"}], count=3)
-        fake_supabase.set_table(
-            "subscriptions",
-            FakeSupabaseQuery(
-                data=[{"status": "active", "current_period_start": period_start}]
-            ),
+    def test_uses_lusaka_calendar_month_start(self, fake_supabase):
+        from datetime import datetime, timezone
+        from zoneinfo import ZoneInfo
+
+        from app.services.matching import _billing_period_start, get_credited_match_count
+
+        lusaka = ZoneInfo("Africa/Lusaka")
+        now = datetime(2026, 6, 3, 10, 0, tzinfo=timezone.utc)
+        expected_start = (
+            now.astimezone(lusaka)
+            .replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            .astimezone(timezone.utc)
         )
+        matches_q = TrackingQuery(data=[{"id": "m1"}], count=3)
         fake_supabase.set_table("matches", matches_q)
 
-        used = asyncio.run(get_credited_match_count("user-1", fake_supabase))
-        assert used == 3
-        assert ("credited_at", period_start) in matches_q.gte_filters
+        start = asyncio.run(_billing_period_start("user-1", fake_supabase, now=now))
+        assert start == expected_start
 
-    def test_billing_period_start_from_subscription(self, fake_supabase):
-        period_start = "2026-04-15T08:00:00+00:00"
+        used = asyncio.run(get_credited_match_count("user-1", fake_supabase, now=now))
+        assert used == 3
+        assert ("credited_at", expected_start.isoformat()) in matches_q.gte_filters
+
+    def test_billing_period_ignores_subscription_period_start(self, fake_supabase):
+        from datetime import datetime, timezone
+        from zoneinfo import ZoneInfo
+
+        from app.services.matching import _billing_period_start
+
+        now = datetime(2026, 6, 3, 10, 0, tzinfo=timezone.utc)
         fake_supabase.set_table(
             "subscriptions",
             FakeSupabaseQuery(
-                data=[{"status": "active", "current_period_start": period_start}]
+                data=[
+                    {
+                        "status": "active",
+                        "current_period_start": "2026-05-20T00:00:00+00:00",
+                    }
+                ]
             ),
         )
-        start = asyncio.run(_billing_period_start("user-1", fake_supabase))
-        assert start.isoformat().startswith("2026-04-15")
+        start = asyncio.run(_billing_period_start("user-1", fake_supabase, now=now))
+        lusaka = ZoneInfo("Africa/Lusaka")
+        expected = (
+            now.astimezone(lusaka)
+            .replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            .astimezone(timezone.utc)
+        )
+        assert start == expected
 
 
 class TestMigration035ActivateRpc:

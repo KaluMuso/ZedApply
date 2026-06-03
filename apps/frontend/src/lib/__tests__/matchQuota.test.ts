@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { resolveMatchQuotaDisplay } from "@/lib/matchQuota";
+import {
+  deriveUsedFromRemaining,
+  resolveMatchQuotaDisplay,
+} from "@/lib/matchQuota";
 import { UNLIMITED_MATCHES } from "@/lib/tier-config";
 
 describe("resolveMatchQuotaDisplay", () => {
@@ -37,5 +40,44 @@ describe("resolveMatchQuotaDisplay", () => {
       null,
     );
     expect(result.matchesUsed).toBe(5);
+  });
+
+  it("derives used from match-list quota when matches_used is missing", () => {
+    const result = resolveMatchQuotaDisplay(
+      {
+        remaining_quota: 36,
+        matches_limit: 50,
+        matches_unlimited: false,
+      },
+      null,
+    );
+    expect(result.matchesUsed).toBe(14);
+  });
+
+  it("derives super standard usage from remaining when subscription still shows 0", () => {
+    const result = resolveMatchQuotaDisplay(
+      {
+        remaining_quota: UNLIMITED_MATCHES - 10,
+        matches_limit: UNLIMITED_MATCHES,
+        matches_unlimited: true,
+      },
+      {
+        matches_used: 0,
+        matches_limit: UNLIMITED_MATCHES,
+        matches_unlimited: true,
+        remaining_quota: UNLIMITED_MATCHES,
+      },
+    );
+    expect(result.matchesUsed).toBe(10);
+    expect(result.unlimited).toBe(true);
+  });
+
+  it("uses data.matches_limit for derivation instead of default starter cap", () => {
+    expect(
+      deriveUsedFromRemaining(
+        { remaining_quota: UNLIMITED_MATCHES - 7, matches_limit: UNLIMITED_MATCHES },
+        50,
+      ),
+    ).toBe(7);
   });
 });

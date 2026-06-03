@@ -1690,7 +1690,7 @@ components:
       properties:
         matches: { type: array, items: { $ref: '#/components/schemas/MatchResult' } }
         remaining_quota: { type: integer, description: 'Deliveries left this billing period' }
-        matches_used: { type: integer, description: 'Unique jobs credited this billing period' }
+        matches_used: { type: integer, description: 'Unique jobs credited this calendar month (Africa/Lusaka)' }
         credited_count: { type: integer, description: 'Alias of matches_used' }
         matches_limit: { type: integer, description: 'Monthly cap; 99999 = unlimited' }
         matches_unlimited: { type: boolean, description: 'True when matches_limit is unlimited sentinel' }
