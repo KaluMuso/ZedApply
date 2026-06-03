@@ -105,7 +105,7 @@ export function LandingPage() {
           </div>
           <div className="flex justify-center md:justify-end">
             <div
-              className="animate-float w-full max-w-[340px] rounded-2xl border border-white/10 bg-[#0b141a] p-4 sm:p-5 shadow-2xl shadow-black/40 ring-1 ring-white/5"
+              className="animate-float motion-reduce:animate-none w-full max-w-[340px] rounded-2xl border border-white/10 bg-[#0b141a] p-4 sm:p-5 shadow-2xl shadow-black/40 ring-1 ring-white/5"
               role="img"
               aria-label="WhatsApp digest preview"
             >
