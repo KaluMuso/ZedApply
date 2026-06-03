@@ -19,7 +19,9 @@ import {
   cv as cvApi,
   jobs as jobsApi,
   type AdminJobCreate,
+  type EmploymentType,
   type ScrapingSourceEntry,
+  type WorkArrangement,
 } from "@/lib/api";
 import { notify } from "@/lib/toast";
 import { MarkdownDescriptionField } from "./MarkdownDescriptionField";
@@ -83,8 +85,8 @@ export function AdminJobFormDialog({
   onSaved,
 }: AdminJobFormDialogProps) {
   const [form, setForm] = useState<AdminJobFormState>(EMPTY_FORM);
-  const [employmentType, setEmploymentType] = useState("full_time");
-  const [workArrangement, setWorkArrangement] = useState("on_site");
+  const [employmentType, setEmploymentType] = useState<EmploymentType>("full_time");
+  const [workArrangement, setWorkArrangement] = useState<WorkArrangement>("on_site");
   const [sourceUrl, setSourceUrl] = useState("");
   const [requirements, setRequirements] = useState<string[]>([]);
   const [skillsRequired, setSkillsRequired] = useState<string[]>([]);
@@ -131,8 +133,8 @@ export function AdminJobFormDialog({
           closing_date: full.closing_date ? full.closing_date.slice(0, 10) : "",
           admin_published: full.admin_published ?? false,
         });
-        setEmploymentType(full.employment_type ?? "full_time");
-        setWorkArrangement(full.work_arrangement ?? "on_site");
+        setEmploymentType((full.employment_type as EmploymentType | undefined) ?? "full_time");
+        setWorkArrangement((full.work_arrangement as WorkArrangement | undefined) ?? "on_site");
         setSourceUrl(full.source_url ?? "");
         setRequirements(full.requirements ?? []);
         setSkillsRequired(full.skills_required ?? []);
@@ -162,16 +164,9 @@ export function AdminJobFormDialog({
     }
   };
 
-  const buildPayload = (): Partial<AdminJobCreate> & {
-    employment_type?: string;
-    work_arrangement?: string;
-    source_url?: string;
-    requirements?: string[];
-    skills_required?: string[];
-    admin_published?: boolean;
-  } => {
+  const buildPayload = (): Partial<AdminJobCreate> & { admin_published?: boolean } => {
     const { admin_published: _omit, ...formFields } = form;
-    const payload = {
+    const payload: Partial<AdminJobCreate> = {
       ...formFields,
       employment_type: employmentType,
       work_arrangement: workArrangement,
@@ -277,7 +272,7 @@ export function AdminJobFormDialog({
             <select
               className="h-9 rounded-md border border-input bg-background px-2 text-sm"
               value={employmentType}
-              onChange={(e) => setEmploymentType(e.target.value)}
+              onChange={(e) => setEmploymentType(e.target.value as EmploymentType)}
             >
               {EMPLOYMENT_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>
@@ -288,7 +283,7 @@ export function AdminJobFormDialog({
             <select
               className="h-9 rounded-md border border-input bg-background px-2 text-sm"
               value={workArrangement}
-              onChange={(e) => setWorkArrangement(e.target.value)}
+              onChange={(e) => setWorkArrangement(e.target.value as WorkArrangement)}
             >
               {WORK_ARRANGEMENTS.map((w) => (
                 <option key={w.value} value={w.value}>
