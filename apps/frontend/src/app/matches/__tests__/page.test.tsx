@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 
@@ -272,6 +272,30 @@ describe("Apply modal", () => {
     expect(dialog).toBeInTheDocument();
     expect(screen.getByText(/how to apply/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^copy$/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("Hide match", () => {
+  it("POSTs dismiss with match id and removes the card", async () => {
+    let dismissedPath: string | null = null;
+    withHandlers({ matches: [MATCH_OBJ] });
+    server.use(
+      http.post(`${API}/matches/:matchId/dismiss`, ({ params }) => {
+        dismissedPath = String(params.matchId);
+        return HttpResponse.json({ match_id: "m1", status: "dismissed" });
+      }),
+    );
+    renderWithProviders(<MatchesPageClient />);
+    await screen.findByText("Engineer", {}, { timeout: 5000 });
+    await userEvent.click(screen.getByTestId("match-dismiss"));
+    const dialog = await screen.findByRole("dialog", { name: /hide this match/i });
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: /^hide match$/i }),
+    );
+    await waitFor(() => {
+      expect(dismissedPath).toBe("m1");
+      expect(screen.queryByText("Engineer")).not.toBeInTheDocument();
+    });
   });
 });
 
