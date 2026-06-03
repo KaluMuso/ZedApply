@@ -230,23 +230,70 @@ def test_match_crediting_unique_pairs_and_new_only():
 
 
 def test_tier_quota_inserts_but_does_not_credit_after_cap():
-    from app.services.matching import credit_matches_for_cycle, store_matches
+    from app.services import tier_config as tier_config_svc
+    from app.services.matching import (
+        credit_matches_for_cycle,
+        get_credited_match_count,
+        get_user_tier_limit,
+        store_matches,
+    )
 
+    tier_config_svc.clear_tier_config_cache()
     now = datetime.now(timezone.utc).replace(day=2)
+    # Free tier quota is 3; rows need active status to count toward delivery usage.
     credited_rows = [
-        {"id": f"m{i}", "user_id": "u1", "job_id": f"old-{i}", "credited_at": now.isoformat()}
-        for i in range(10)
+        {
+            "id": f"m{i}",
+            "user_id": "u1",
+            "job_id": f"old-{i}",
+            "credited_at": now.isoformat(),
+            "status": "new",
+        }
+        for i in range(3)
     ]
     supabase = MemorySupabase(
         {
-            "matches": credited_rows,
+            "matches": list(credited_rows),
             "subscriptions": [{"user_id": "u1", "tier": "free", "status": "active"}],
+            "users": [
+                {
+                    "id": "u1",
+                    "subscription_tier": "free",
+                    "welcome_match_bonus": None,
+                    "welcome_match_bonus_until": None,
+                }
+            ],
         }
     )
-    asyncio.run(store_matches("u1", "cv1", [{"job_id": "new", "final_score": 90, "vector_score": 90, "skill_score": 90, "bonus_score": 0}], supabase))
+    _, quota, active = asyncio.run(get_user_tier_limit("u1", supabase))
+    assert active is True
+    assert quota == 3
+    assert asyncio.run(get_credited_match_count("u1", supabase, now=now)) == quota
+
+    asyncio.run(
+        store_matches(
+            "u1",
+            "cv1",
+            [
+                {
+                    "job_id": "new",
+                    "final_score": 90,
+                    "vector_score": 90,
+                    "skill_score": 90,
+                    "bonus_score": 0,
+                }
+            ],
+            supabase,
+        )
+    )
     assert any(row["job_id"] == "new" for row in supabase.rows("matches"))
     assert asyncio.run(credit_matches_for_cycle("u1", ["new"], supabase, now=now)) == []
-    assert next(row for row in supabase.rows("matches") if row["job_id"] == "new").get("credited_at") is None
+    assert (
+        next(row for row in supabase.rows("matches") if row["job_id"] == "new").get(
+            "credited_at"
+        )
+        is None
+    )
 
 
 def test_cron_tick_processes_eligible_users_idempotently():

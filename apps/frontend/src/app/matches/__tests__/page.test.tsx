@@ -169,6 +169,55 @@ describe("Quota card", () => {
     expect(await screen.findByText("5", {}, { timeout: 5000 })).toBeInTheDocument();
     expect(screen.getByText("/ 50")).toBeInTheDocument();
   });
+
+  it("shows unlimited headline without a leading zero when usage is unknown", async () => {
+    server.use(
+      http.get(`${API}/matches`, () =>
+        HttpResponse.json({
+          matches: [MATCH_OBJ],
+          remaining_quota: 99999,
+          matches_limit: 99999,
+          matches_unlimited: true,
+        }),
+      ),
+      http.get(`${API}/subscription`, () =>
+        HttpResponse.json({
+          tier: "super_standard",
+          matches_used: 0,
+          matches_limit: 99999,
+          matches_unlimited: true,
+          remaining_quota: 99999,
+        }),
+      ),
+    );
+    renderWithProviders(<MatchesPageClient />);
+    expect(await screen.findByText("Unlimited", {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.queryByText("0 · Unlimited")).not.toBeInTheDocument();
+  });
+
+  it("shows super standard delivered count from remaining quota on match list", async () => {
+    server.use(
+      http.get(`${API}/matches`, () =>
+        HttpResponse.json({
+          matches: Array.from({ length: 10 }, () => MATCH_OBJ),
+          remaining_quota: 99989,
+          matches_limit: 99999,
+          matches_unlimited: true,
+        }),
+      ),
+      http.get(`${API}/subscription`, () =>
+        HttpResponse.json({
+          tier: "super_standard",
+          matches_used: 0,
+          matches_limit: 99999,
+          matches_unlimited: true,
+        }),
+      ),
+    );
+    renderWithProviders(<MatchesPageClient />);
+    expect(await screen.findByText("10", {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.getByText("· Unlimited")).toBeInTheDocument();
+  });
 });
 
 describe("Refresh button", () => {
