@@ -112,6 +112,7 @@ def create_app() -> FastAPI:
     from app.api.v1 import (
         admin_companies_export,
         admin_ingest,
+        admin_notifications,
         admin_review_jobs,
         admin_skills,
     )
@@ -120,6 +121,7 @@ def create_app() -> FastAPI:
     application.include_router(admin_skills.router, prefix="/api/v1")
     application.include_router(admin_companies_export.router, prefix="/api/v1")
     application.include_router(admin_ingest.router, prefix="/api/v1")
+    application.include_router(admin_notifications.router, prefix="/api/v1")
     application.include_router(admin_review_jobs.router, prefix="/api/v1")
     application.include_router(interview_prep.router, prefix="/api/v1")
     application.include_router(bwana_interview_routes.router, prefix="/api/v1")
