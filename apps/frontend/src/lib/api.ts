@@ -2153,6 +2153,31 @@ export interface BwanaAnalyticsSummary {
   messages_by_source: Record<string, number>;
   escalations_by_reason: Record<string, number>;
   top_faq_intents: { intent_id: string; count: number }[];
+  unique_sessions: number;
+  faq_turns: number;
+  llm_turns: number;
+  escalated_turns: number;
+  bwana_llm_cost_usd: number;
+  bwana_llm_requests: number;
+  pipeline_mode: "in_process" | "n8n";
+  n8n_fallback_events: number | null;
+  analytics_source: "live" | "stub";
+}
+
+export interface BwanaConversationSummary {
+  user_id: string;
+  session_id: string;
+  message_count: number;
+  last_activity_at?: string | null;
+  preview: string;
+}
+
+export interface BwanaConversationList {
+  items: BwanaConversationSummary[];
+  total: number;
+  q?: string | null;
+  limit: number;
+  offset: number;
 }
 
 export type BwanaConfigPatch = Partial<
@@ -2162,6 +2187,7 @@ export type BwanaConfigPatch = Partial<
 export interface BwanaConfigPreview {
   system_prompt_preview: string;
   char_count: number;
+  system_prompt_version: string;
 }
 
 export type AdminNotificationTargetAudience = "all" | "tier";
@@ -2228,6 +2254,20 @@ export const adminBwana = {
       `/admin/bwana/analytics?days=${encodeURIComponent(String(days))}`,
       { token },
     ),
+  conversations: (
+    token: string,
+    opts?: { q?: string; limit?: number; offset?: number },
+  ) => {
+    const params = new URLSearchParams();
+    if (opts?.q) params.set("q", opts.q);
+    if (opts?.limit != null) params.set("limit", String(opts.limit));
+    if (opts?.offset != null) params.set("offset", String(opts.offset));
+    const qs = params.toString();
+    return apiFetch<BwanaConversationList>(
+      `/admin/bwana/conversations${qs ? `?${qs}` : ""}`,
+      { token },
+    );
+  },
 };
 
 // ── Contact form (task #65) ──

@@ -1,7 +1,8 @@
 """Admin API for Bwana platform config and escalation smoke tests."""
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 
 from app.core.deps import get_supabase, require_admin
 from app.schemas.bwana_config import (
@@ -9,15 +10,20 @@ from app.schemas.bwana_config import (
     BwanaConfig,
     BwanaConfigPatch,
     BwanaConfigPreview,
+    BwanaConversationList,
 )
 from app.services.bwana_analytics import fetch_bwana_analytics
+from app.services.bwana_chat import send_test_escalation_whatsapp
 from app.services.bwana_config import (
     clear_bwana_config_cache,
     config_row_for_db,
     get_bwana_config,
     preview_system_prompt,
 )
-from app.services.bwana_chat import send_test_escalation_whatsapp
+from app.services.bwana_conversations import (
+    export_bwana_conversations_csv,
+    list_bwana_conversations,
+)
 
 router = APIRouter(
     prefix="/admin/bwana",
@@ -68,9 +74,13 @@ async def patch_admin_bwana_config(
 async def get_bwana_prompt_preview(
     supabase=Depends(get_supabase),
 ) -> BwanaConfigPreview:
-    prompt, count = await preview_system_prompt(supabase)
+    prompt, count, version = await preview_system_prompt(supabase)
     truncated = prompt[:8000] + ("…" if len(prompt) > 8000 else "")
-    return BwanaConfigPreview(system_prompt_preview=truncated, char_count=count)
+    return BwanaConfigPreview(
+        system_prompt_preview=truncated,
+        char_count=count,
+        system_prompt_version=version,
+    )
 
 
 @router.get("/analytics", response_model=BwanaAnalyticsSummary)
@@ -81,6 +91,33 @@ async def get_bwana_analytics(
     if days < 1 or days > 90:
         raise HTTPException(status_code=422, detail="days must be 1–90")
     return fetch_bwana_analytics(supabase, days=days)
+
+
+@router.get("/conversations", response_model=BwanaConversationList)
+async def list_bwana_conversations_admin(
+    q: str | None = Query(None, max_length=200),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0, le=5000),
+    supabase=Depends(get_supabase),
+) -> BwanaConversationList:
+    """Search Bwana transcripts stored in ai_cache (admin JWT only)."""
+    return list_bwana_conversations(supabase, q=q, limit=limit, offset=offset)
+
+
+@router.get("/conversations/export")
+async def export_bwana_conversations_admin(
+    q: str | None = Query(None, max_length=200),
+    supabase=Depends(get_supabase),
+) -> Response:
+    """Download conversation turns as CSV (PII — admin only)."""
+    body = export_bwana_conversations_csv(supabase, q=q)
+    return Response(
+        content=body,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="bwana-conversations.csv"',
+        },
+    )
 
 
 @router.post("/test-escalation")

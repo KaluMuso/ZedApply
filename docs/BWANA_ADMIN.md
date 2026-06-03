@@ -1,65 +1,75 @@
 # Bwana admin configuration
 
-Admin UI: **https://www.zedapply.com/admin/bwana** (requires admin or superadmin JWT).
+Admin UI: **https://www.zedapply.com/admin/bwana** (requires **admin or superadmin** JWT — not available to regular users).
 
-## What you can edit
+## Current capabilities (shipped)
 
-| Field | Purpose |
+| Area | What works today |
 | --- | --- |
-| `support_email` | Shown to users + receives escalation emails (Resend) |
-| `support_phone` | Public +260 E.164 line in contact replies |
-| `escalation_whatsapp_phone` | WAHA destination for human / unsatisfied escalations |
-| `escalation_sla_hours` | Substituted as `{sla}` in reply templates |
-| Reply templates | `{email}`, `{phone}`, `{sla}`, `{operator}`, `{chatbot_name}`, `{ticket_id}` |
-| `faq_intents_json` | Admin-editable FAQ array (see below) |
-| `public_knowledge_extra` | Max 2000 chars appended to Bwana system prompt (no secrets) |
-| `enable_email_escalation` | When true, escalations also email `support_email` |
-| `enable_user_escalation_ack` | When true and the user has an email on file, send acknowledgement via Resend |
-| `user_escalation_ack_template` | Email body for user ack; supports `{ticket_id}`, `{operator}`, `{sla}`, `{email}`, `{phone}` |
+| **Contact & identity** | Chatbot name, operator name, support email/phone, escalation WhatsApp, SLA hours |
+| **Reply templates** | Human escalation, unsatisfied, contact-admin, user ack email — variables `{email}`, `{phone}`, `{sla}`, `{operator}`, `{chatbot_name}`, `{ticket_id}` |
+| **Custom FAQ** | `faq_intents_json` — admin JSON or form rows; matched after built-in FAQs |
+| **Public knowledge** | Up to 2000 chars appended to system prompt (no secrets) |
+| **System prompt** | Read-only preview + **version tag** (`bwana-YYYY-MM-DD-<hash>`) from boundaries file + config `updated_at` |
+| **Escalation smoke** | `POST /admin/bwana/test-escalation` — one WAHA ping |
+| **Analytics** | `bwana_event_log` + `bwana_escalation_log` + `llm_usage_log` (feature `bwana`) — messages, sessions, FAQ/LLM/escalation split, cost |
+| **Conversations** | Search + CSV export from `ai_cache` (`cache_type=bwana_chat`, last ~20 turns per session) |
 
-Do **not** store API keys, ingest secrets, or scraper credentials in this table.
+## Missing / planned admin tools
 
-## API
+| Gap | Notes |
+| --- | --- |
+| **n8n fallback counter** | When `BWANA_N8N_WEBHOOK_URL` is set and the webhook fails, the backend falls back in-process — not logged yet (`n8n_fallback_events` is `null` in analytics). |
+| **Per-user conversation viewer** | List/search exists; inline transcript drawer for a single session is a small follow-up. |
+| **FAQ A/B or intent editor** | Form editor exists in phase 3 branch; master may use raw JSON only. |
+| **Escalation inbox** | `bwana_escalation_log` is queryable in SQL only — no admin table UI. |
+| **Rate limits / abuse** | No per-user Bwana turn caps in admin UI (tier limits apply elsewhere). |
+| **Prompt rollback** | Version tag is read-only; no versioned prompt history table. |
+
+## Suggested analytics (implemented vs stub)
+
+| Metric | Source | Status |
+| --- | --- | --- |
+| Messages (turns) | `bwana_event_log` | Live |
+| Unique sessions | `bwana_event_log.session_id` | Live |
+| FAQ / LLM / escalated split | `bwana_event_log.source` | Live |
+| Escalation rate & reasons | `bwana_escalation_log` | Live |
+| Top FAQ intents | `bwana_event_log.intent_id` | Live |
+| Bwana LLM cost (USD) | `llm_usage_log` where `feature=bwana` | Live |
+| Pipeline mode | Env `BWANA_N8N_WEBHOOK_URL` | Live (`in_process` vs `n8n`) |
+| n8n → local fallbacks | — | **Stub** (`null` until logged) |
+| Tables missing | API returns `analytics_source: stub` with zeros | Graceful degrade |
+
+## API (admin JWT)
 
 - `GET /api/v1/admin/bwana/config`
 - `PATCH /api/v1/admin/bwana/config`
-- `GET /api/v1/admin/bwana/config/preview` — truncated assembled system prompt
-- `GET /api/v1/admin/bwana/analytics?days=7` — message counts, escalation rate, top FAQ intents
-- `POST /api/v1/admin/bwana/test-escalation` — one WAHA ping to escalation phone
+- `GET /api/v1/admin/bwana/config/preview` — truncated prompt + `system_prompt_version`
+- `GET /api/v1/admin/bwana/analytics?days=7`
+- `GET /api/v1/admin/bwana/conversations?q=&limit=50&offset=0`
+- `GET /api/v1/admin/bwana/conversations/export?q=` — CSV download
+- `POST /api/v1/admin/bwana/test-escalation`
 
-Public (no auth): `GET /api/v1/bwana/public-config` — email, phone, SLA (no escalation WhatsApp).
+Public (authenticated user): `GET /api/v1/bwana/public-config`, `POST /api/v1/bwana/chat`.
 
-## Apply migration
+## Apply migrations
 
 ```bash
-# Supabase SQL editor or CLI
 psql "$DATABASE_URL" -f infra/supabase/migrations/092_bwana_platform_config.sql
 psql "$DATABASE_URL" -f infra/supabase/migrations/093_bwana_phase2_faq_analytics_tickets.sql
+psql "$DATABASE_URL" -f infra/supabase/migrations/094_bwana_user_escalation_email.sql
 ```
-
-### Custom FAQ JSON example
-
-```json
-[
-  {
-    "intent_id": "refund_policy",
-    "enabled": true,
-    "triggers": ["refund policy", "money back"],
-    "response": "See /legal/refund for our 7-day refund rules."
-  }
-]
-```
-
-Default seed: `convergeozambia@gmail.com`, `+260761359005` (matches `admin_alert_phone`).
 
 ## n8n pipeline
 
-`infra/n8n/bwana_chat_pipeline.json` is optional. On OCI, leave `BWANA_N8N_WEBHOOK_URL` empty to run FAQ + escalation + LLM **in-process** on the backend (recommended). If you re-enable the n8n webhook, the exported workflow mirrors backend FAQ routing (50/20/15/10/5 matching, Starter without tailored CV, unsatisfied/contact-admin paths, chatbot identity in the LLM node). Escalation WAHA still uses `escalation_whatsapp_phone` from DB (falls back to env `ADMIN_ALERT_PHONE` only when the table is missing).
+Leave `BWANA_N8N_WEBHOOK_URL` empty on OCI for in-process FAQ + escalation (recommended). See `infra/n8n/bwana_chat_pipeline.json` if re-enabling n8n.
 
 ## Smoke checklist
 
-1. "What's your support email?" → configured email in reply
-2. "I'm not satisfied" → apology template + WAHA + log row
+1. "What's your support email?" → configured email; no WAHA
+2. "I'm not satisfied" → apology template + WAHA + log row + ticket id
 3. "Talk to human" → human template + WAHA
-4. "What is your ingest API key?" → refusal (boundaries)
-5. Widget badge shows **Bwana**, not "AI"
+4. "What is your ingest API key?" → refusal per boundaries
+5. Admin → Analytics shows message counts after a few widget chats
+6. Admin → Conversations search finds your `session_id`
+7. Export CSV downloads and includes your test messages

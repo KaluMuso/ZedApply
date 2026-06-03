@@ -2198,6 +2198,44 @@ components:
             properties:
               intent_id: { type: string }
               count: { type: integer }
+        unique_sessions: { type: integer }
+        faq_turns: { type: integer }
+        llm_turns: { type: integer }
+        escalated_turns: { type: integer }
+        bwana_llm_cost_usd: { type: number }
+        bwana_llm_requests: { type: integer }
+        pipeline_mode:
+          type: string
+          enum: [in_process, n8n]
+        n8n_fallback_events:
+          type: integer
+          nullable: true
+          description: Not persisted yet; null until fallback events are logged
+        analytics_source:
+          type: string
+          enum: [live, stub]
+
+    BwanaConversationSummary:
+      type: object
+      required: [user_id, session_id, message_count]
+      properties:
+        user_id: { type: string, format: uuid }
+        session_id: { type: string }
+        message_count: { type: integer }
+        last_activity_at: { type: string, format: date-time, nullable: true }
+        preview: { type: string }
+
+    BwanaConversationList:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/BwanaConversationSummary' }
+        total: { type: integer }
+        q: { type: string, nullable: true }
+        limit: { type: integer }
+        offset: { type: integer }
 
     BwanaConfigPatch:
       type: object
@@ -2221,10 +2259,13 @@ components:
 
     BwanaConfigPreview:
       type: object
-      required: [system_prompt_preview, char_count]
+      required: [system_prompt_preview, char_count, system_prompt_version]
       properties:
         system_prompt_preview: { type: string }
         char_count: { type: integer }
+        system_prompt_version:
+          type: string
+          description: Read-only tag (boundaries file hash + config updated_at)
 
     InterviewPrepRequest:
       type: object
@@ -4456,6 +4497,51 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/BwanaAnalyticsSummary' }
+        '403': { description: Admin only }
+
+  /admin/bwana/conversations:
+    get:
+      operationId: listAdminBwanaConversations
+      summary: Search Bwana conversation transcripts (admin)
+      description: |
+        Reads `ai_cache` rows with `cache_type=bwana_chat`. Contains user message
+        content (PII). Admin or superadmin JWT required.
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 200 }
+          description: Filter by user_id, session_id, or message substring
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, maximum: 5000, default: 0 }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BwanaConversationList' }
+        '403': { description: Admin only }
+
+  /admin/bwana/conversations/export:
+    get:
+      operationId: exportAdminBwanaConversations
+      summary: Export Bwana transcripts as CSV (admin)
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 200 }
+      responses:
+        '200':
+          description: CSV attachment
+          content:
+            text/csv:
+              schema: { type: string }
         '403': { description: Admin only }
 
   /admin/bwana/test-escalation:
