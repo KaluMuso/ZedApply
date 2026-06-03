@@ -1,0 +1,55 @@
+{
+  "name": "ZedApply - User Notifications Dedup Prune (90d)",
+  "meta": {
+    "description": "Fallback when pg_cron is unavailable: weekly prune of user_notifications digest dedup rows older than 90 days. Primary path is migration 104 pg_cron job zedcv-prune-user-notifications. Does NOT prune notifications inbox (migration 100).",
+    "requiredEnv": ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 3 * * 0" }]
+        }
+      },
+      "name": "Weekly Sunday 03:00 UTC",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/prune_user_notifications",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY || $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY || $env.SUPABASE_SERVICE_KEY }}"
+            },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}"
+      },
+      "name": "Prune User Notifications",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, 300]
+    }
+  ],
+  "connections": {
+    "Weekly Sunday 03:00 UTC": {
+      "main": [[{ "node": "Prune User Notifications", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

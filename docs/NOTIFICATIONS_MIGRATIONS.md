@@ -13,7 +13,7 @@ document alone** — run each file in order via your normal migration process
 | #249 | `cursor/admin-notifications-push-9e6a` | Superseded by migration train PR |
 | #256 | `cursor/admin-review-queue-overview-9e6a` | Stats portion superseded (`102_*`); other UI changes land separately |
 
-## Apply order (master baseline through 103)
+## Apply order (master baseline through 104)
 
 | # | File | Purpose |
 | --- | --- | --- |
@@ -22,6 +22,7 @@ document alone** — run each file in order via your normal migration process
 | 101 | `101_admin_broadcast_notifications.sql` | `admin_notification_campaigns` + `admin_notification_recipients` |
 | 102 | `102_admin_stats_jobs_active_public.sql` | `admin_stats()` with review counters + `jobs_active_public` |
 | 103 | `103_zambia_skill_aliases_fix.sql` | Idempotent repair for `098_zambia_skill_aliases` |
+| 104 | `104_user_notifications_retention.sql` | 90-day prune for `user_notifications` dedup ledger + weekly pg_cron |
 
 ### Removed duplicate (do not apply)
 
@@ -51,6 +52,15 @@ Single table for navbar dropdown / `GET /api/v1/notifications`:
 Distinct from **`user_notifications`** (migration 050): digest dedup only
 (`job_id` + `channel`), not the in-app inbox.
 
+### Retention policies (Phase 0)
+
+| Table | Migration | Role | Retention | Prune mechanism |
+| --- | --- | --- | --- | --- |
+| `user_notifications` | 050 | Digest dedup ledger | **90 days** (`sent_at`) | Migration **104**: `prune_user_notifications()` + pg_cron `zedcv-prune-user-notifications` (weekly, Sunday 03:00 UTC). Fallback: `infra/n8n/user_notifications_prune_weekly.json` if pg_cron unavailable. |
+| `notifications` | 100 | In-app inbox | **Not pruned by 104** | Product target (if implemented later): **30 days** visible in dropdown; **90 days** archive before hard delete. No migration in this train — backend query filters or a future migration when product confirms. |
+
+**Do not** merge dedup pruning into the inbox model. `DELETE` on `user_notifications` only removes stale dedup keys so the same job can surface again after 90 days.
+
 ### Admin campaigns (migration 101)
 
 - `admin_notification_campaigns` — compose + schedule metadata
@@ -63,13 +73,14 @@ On successful push delivery, the backend inserts an `admin_broadcast` row into
 
 1. Confirm current ledger: highest applied migration before this train.
 2. If `099_match_dismiss_note` not applied, apply `099` first.
-3. Apply `100` → `101` → `102` → `103` in order.
+3. Apply `100` → `101` → `102` → `103` → `104` in order.
 4. If `099_admin_stats_job_review_counts` was partially applied in a broken
    deploy, **skip** it; `102` replaces that function definition entirely.
 5. Smoke:
    - `GET /api/v1/notifications` (authenticated user)
    - `POST /api/v1/admin/notifications` (admin + ingest key)
    - Admin overview stats include `jobs_need_review` and `jobs_active_public`
+   - Optional: `SELECT public.prune_user_notifications();` returns integer (0 on fresh DB)
 
 ## Backend references
 
