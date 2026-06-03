@@ -233,9 +233,16 @@ def test_tier_quota_inserts_but_does_not_credit_after_cap():
     from app.services.matching import credit_matches_for_cycle, store_matches
 
     now = datetime.now(timezone.utc).replace(day=2)
+    # Free tier quota is 3; rows need active status to count toward delivery usage.
     credited_rows = [
-        {"id": f"m{i}", "user_id": "u1", "job_id": f"old-{i}", "credited_at": now.isoformat()}
-        for i in range(10)
+        {
+            "id": f"m{i}",
+            "user_id": "u1",
+            "job_id": f"old-{i}",
+            "credited_at": now.isoformat(),
+            "status": "new",
+        }
+        for i in range(3)
     ]
     supabase = MemorySupabase(
         {
