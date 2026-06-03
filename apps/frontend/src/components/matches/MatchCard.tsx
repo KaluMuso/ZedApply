@@ -12,6 +12,12 @@ import {
 import type { MatchData } from "@/lib/api";
 import { isGreyedClosedListing, isRecentlyClosedJob } from "@/lib/jobVisibility";
 import { SkillBadge } from "@/components/SkillBadge";
+import {
+  MATCH_CARD_MAX_MATCHED_SKILLS,
+  MATCH_CARD_MAX_MISSING_SKILLS,
+  formatSkillOverflowSuffix,
+  truncateSkillList,
+} from "@/lib/matchSkillsDisplay";
 import { Icon } from "@/components/ui/Icon";
 import { SaveJobButton } from "@/components/SaveJobButton";
 import { JobShareButtons } from "@/components/share/JobShareButtons";
@@ -53,6 +59,16 @@ export function MatchCard({
   const recentlyClosed = isRecentlyClosedJob(match.job);
   const greyed = expired || isGreyedClosedListing(match.job);
   const closed = expired || recentlyClosed || greyed;
+  const matchedPreview = truncateSkillList(
+    match.matched_skills,
+    MATCH_CARD_MAX_MATCHED_SKILLS,
+  );
+  const missingPreview = truncateSkillList(
+    match.missing_skills,
+    MATCH_CARD_MAX_MISSING_SKILLS,
+  );
+  const matchedOverflow = formatSkillOverflowSuffix(matchedPreview.overflowCount);
+  const missingOverflow = formatSkillOverflowSuffix(missingPreview.overflowCount);
 
   return (
     <article
@@ -109,16 +125,26 @@ export function MatchCard({
               {formatMatchedRelative(match.created_at)}
             </p>
           ) : null}
-          {(match.matched_skills.length > 0 || match.missing_skills.length > 0) && (
-            <div className="flex flex-wrap gap-1.5 mt-3">
-              {match.matched_skills.slice(0, 6).map((s) => (
+          {(matchedPreview.visible.length > 0 || missingPreview.visible.length > 0) && (
+            <div className="flex flex-wrap gap-1.5 mt-3 items-center" data-testid="match-card-skills">
+              {matchedPreview.visible.map((s) => (
                 <SkillBadge key={s} skill={s} matched />
               ))}
-              {match.missing_skills.slice(0, 4).map((s) => (
+              {matchedOverflow ? (
+                <span className="text-xs font-mono" style={{ color: "var(--muted)" }}>
+                  {matchedOverflow}
+                </span>
+              ) : null}
+              {missingPreview.visible.map((s) => (
                 <span key={s} className="tag tag-mono opacity-75">
                   {s}
                 </span>
               ))}
+              {missingOverflow ? (
+                <span className="text-xs font-mono" style={{ color: "var(--muted)" }}>
+                  {missingOverflow}
+                </span>
+              ) : null}
             </div>
           )}
         </div>
