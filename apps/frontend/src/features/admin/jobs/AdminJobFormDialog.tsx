@@ -24,8 +24,15 @@ import {
 import { notify } from "@/lib/toast";
 import { MarkdownDescriptionField } from "./MarkdownDescriptionField";
 import { EMPLOYMENT_TYPES, WORK_ARRANGEMENTS } from "./job-enums";
+import {
+  finalizeAdminJobPayload,
+  validateAdminJobApplyContact,
+} from "./adminJobValidation";
 
-const EMPTY_FORM: AdminJobCreate = {
+/** Local form state; admin_published is edit-only and must not be sent on POST. */
+type AdminJobFormState = AdminJobCreate & { admin_published?: boolean };
+
+const EMPTY_FORM: AdminJobFormState = {
   title: "",
   company: "",
   location: "",
@@ -75,7 +82,7 @@ export function AdminJobFormDialog({
   jobId,
   onSaved,
 }: AdminJobFormDialogProps) {
-  const [form, setForm] = useState<AdminJobCreate>(EMPTY_FORM);
+  const [form, setForm] = useState<AdminJobFormState>(EMPTY_FORM);
   const [employmentType, setEmploymentType] = useState("full_time");
   const [workArrangement, setWorkArrangement] = useState("on_site");
   const [sourceUrl, setSourceUrl] = useState("");
@@ -156,26 +163,26 @@ export function AdminJobFormDialog({
   };
 
   const buildPayload = (): Partial<AdminJobCreate> & {
-    admin_published?: boolean;
     employment_type?: string;
     work_arrangement?: string;
     source_url?: string;
     requirements?: string[];
     skills_required?: string[];
+    admin_published?: boolean;
   } => {
+    const { admin_published: _omit, ...formFields } = form;
     const payload = {
-      ...form,
+      ...formFields,
       employment_type: employmentType,
       work_arrangement: workArrangement,
       source_url: sourceUrl.trim() || undefined,
       requirements: requirements.length ? requirements : undefined,
       skills_required: skillsRequired.length ? skillsRequired : undefined,
-      admin_published: mode === "edit" ? forcePublish : form.admin_published,
     };
     (Object.keys(payload) as (keyof typeof payload)[]).forEach((k) => {
       if (payload[k] === "") delete payload[k];
     });
-    return payload;
+    return finalizeAdminJobPayload(mode, payload, forcePublish);
   };
 
   const validate = (): boolean => {
@@ -185,6 +192,15 @@ export function AdminJobFormDialog({
     }
     if (!form.description || form.description.length < 20) {
       notify.error("Description must be at least 20 characters");
+      return false;
+    }
+    const contactError = validateAdminJobApplyContact(
+      form.apply_url,
+      form.apply_email,
+      form.contact_phone,
+    );
+    if (contactError) {
+      notify.error(contactError);
       return false;
     }
     return true;
