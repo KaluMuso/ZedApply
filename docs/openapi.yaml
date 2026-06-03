@@ -3102,6 +3102,11 @@ paths:
       operationId: adminBulkDeactivateJobs
       tags: [Admin]
       security: [{ bearerAuth: [] }]
+      description: |
+        Deactivate jobs by explicit `job_ids`, or when `expired_only=true` set
+        `is_active=false` only on rows that are currently active with a
+        `closing_date` strictly before today (same rule as pg_cron
+        `deactivate_expired_jobs()`).
       requestBody:
         content:
           application/json:
