@@ -82,6 +82,10 @@ Does **not** auto-dismiss `no_deadline` rows that are still `is_active=true` (ma
 
 Sample ingest issues: scraper batches (e.g. Mulungushi University) with `review_reason=both`, `quality_score=35`, no apply channels — hidden from users but still counted in admin “need review”.
 
+## Prod runbook
+
+Human operator steps (dry-run → apply, expected ~446 → ~71 backlog): **[RUNBOOK_REVIEW_QUEUE_CLEAR.md](RUNBOOK_REVIEW_QUEUE_CLEAR.md)** and `scripts/admin_review_queue_dry_run.sh`.
+
 ## Related endpoints
 
 | Endpoint | Purpose |
