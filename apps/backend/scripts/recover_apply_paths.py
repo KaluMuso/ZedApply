@@ -281,15 +281,25 @@ async def process_job(
         )
         return "dry_run"
 
-    parser_patch = await _try_parser_recovery(row)
-    if parser_patch:
-        return _apply_recovery_patch(
+    try:
+        enrich_outcome = await enrich_job_deep(supabase, row, dry_run=False)
+    except Exception as exc:
+        log.exception("deep_enrich crashed for %s: %s", job_id, exc)
+        _log_outcome(
             supabase,
             job_id=job_id,
-            before=before,
-            patch=parser_patch,
-            detail="parser",
+            outcome="deactivated_fetch_failed",
+            detail=str(exc)[:500],
         )
+        supabase.table("jobs").update(
+            {
+                "is_active": False,
+                "deactivation_reason": "no_valid_apply_path_after_enrich",
+            }
+        ).eq("id", job_id).execute()
+        return "fetch_failed"
+
+    after = _refetch_job(supabase, job_id) or before
 
     try:
         enrich_outcome = await enrich_job_deep(supabase, row, dry_run=False)
