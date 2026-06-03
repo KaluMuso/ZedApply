@@ -331,6 +331,26 @@ class MatchTailorCvResponse(BaseModel):
     completion_tokens: Optional[int] = None
 
 
+def _resolve_owned_match_row(
+    user_id: str,
+    match_or_job_id: str,
+    supabase,
+) -> dict:
+    """Resolve a matches row by primary key or job_id (live RPC feeds may expose job_id as id)."""
+    for column in ("id", "job_id"):
+        res = (
+            supabase.table("matches")
+            .select("id, status, job_id")
+            .eq(column, match_or_job_id)
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        if res.data:
+            return res.data[0]
+    raise HTTPException(status_code=404, detail="Match not found")
+
+
 @router.post("/{match_id}/dismiss", response_model=MatchDismissResponse)
 async def dismiss_match(
     match_id: str,
@@ -343,19 +363,12 @@ async def dismiss_match(
     if reason is not None and reason not in VALID_DISMISS_REASONS:
         raise HTTPException(status_code=422, detail="Invalid dismiss reason")
 
-    existing = (
-        supabase.table("matches")
-        .select("id, status, job_id")
-        .eq("id", match_id)
-        .eq("user_id", user_id)
-        .limit(1)
-        .execute()
-    )
-    if not existing.data:
-        raise HTTPException(status_code=404, detail="Match not found")
-    row = existing.data[0]
+    row = _resolve_owned_match_row(user_id, match_id, supabase)
+    resolved_match_id = str(row["id"])
     if row.get("status") == "dismissed":
-        return MatchDismissResponse(match_id=match_id, status="dismissed", reason=reason)
+        return MatchDismissResponse(
+            match_id=resolved_match_id, status="dismissed", reason=reason
+        )
     now_iso = datetime.now(timezone.utc).isoformat()
     patch: dict[str, str] = {
         "status": "dismissed",
@@ -366,7 +379,7 @@ async def dismiss_match(
     updated = (
         supabase.table("matches")
         .update(patch)
-        .eq("id", match_id)
+        .eq("id", resolved_match_id)
         .eq("user_id", user_id)
         .execute()
     )
@@ -378,7 +391,7 @@ async def dismiss_match(
                 "event": "match_dismissed",
                 "user_id": user_id,
                 "properties": {
-                    "match_id": match_id,
+                    "match_id": resolved_match_id,
                     "job_id": row.get("job_id"),
                     "reason": reason,
                 },
@@ -386,7 +399,9 @@ async def dismiss_match(
         ).execute()
     except Exception:
         logger.debug("match_dismissed analytics insert failed", exc_info=True)
-    return MatchDismissResponse(match_id=match_id, status="dismissed", reason=reason)
+    return MatchDismissResponse(
+        match_id=resolved_match_id, status="dismissed", reason=reason
+    )
 
 
 @router.post("/{match_id}/tailor-cv", response_model=MatchTailorCvResponse)

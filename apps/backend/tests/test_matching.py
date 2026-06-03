@@ -109,6 +109,9 @@ class TestGetMatches:
         assert body["remaining_quota"] == 3
         assert body["matches"][0]["semantic_score"] == 40.0
         assert body["matches"][0]["skills_score"] == 16.0
+        assert body["matches"][0]["id"] == "match-1"
+        assert body["matches"][0]["job"]["id"] == "job-1"
+        assert body["matches"][0]["id"] != body["matches"][0]["job"]["id"]
 
 
 class TestGetMatchesForUser:

@@ -3805,7 +3805,13 @@ paths:
       tags: [Matching]
       security: [{ bearerAuth: [] }]
       parameters:
-        - { name: match_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: match_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+          description: >
+            Match row UUID from GET /matches `id`, or job UUID when the feed
+            exposed `job_id` as `id` (live RPC path).
       requestBody:
         required: false
         content:
