@@ -33,4 +33,10 @@
   .tailored-cv-print-root .cv-preview-section {
     break-inside: avoid;
   }
+  .tailored-cv-print-root .cv-skills-tags {
+    display: none !important;
+  }
+  .tailored-cv-print-root .cv-skills-line {
+    display: block !important;
+  }
 }

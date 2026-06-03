@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { cv as cvApi } from "@/lib/api";
+import { cv as cvApi, profile as profileApi } from "@/lib/api";
 import { parseGeneratedCv } from "@/app/profile/_tabs/generator/parseCv";
 import { mapParsedCvToDraft } from "./mapParsedCvToDraft";
 import { useTailoredCvBuilderStore } from "./store";
@@ -35,14 +35,19 @@ export function useHydrateBuilderFromGeneration(
     ranRef.current = true;
 
     let cancelled = false;
-    cvApi
-      .getGeneration(token, generationId)
-      .then((gen) => {
+    Promise.all([
+      cvApi.getGeneration(token, generationId),
+      profileApi.get(token).catch(() => null),
+    ])
+      .then(([gen, prof]) => {
         if (cancelled) return;
         const text = normalizeMarkdownForParse(gen.content || "");
         if (!text) return;
         const parsed = parseGeneratedCv(text);
         const mapped = mapParsedCvToDraft(parsed);
+        if (mapped.skills.length === 0 && prof?.skills?.length) {
+          mapped.skills = [...prof.skills];
+        }
         if (gen.job_title) {
           mapped.basics.headline = gen.job_title;
         }

@@ -2,6 +2,33 @@ import type { ParsedCV } from "@/app/profile/_tabs/generator/parseCv";
 import { splitBullets } from "@/app/profile/_tabs/generator/parseCv";
 import type { TailoredCvDraft, EducationEntry, ExperienceEntry } from "./types";
 import { DEFAULT_STYLE } from "./store";
+import { normalizeSkillList } from "./skillsDisplay";
+
+const SKILL_SECTION_TITLES = new Set([
+  "SKILLS",
+  "TECHNICAL SKILLS",
+  "CORE SKILLS",
+  "KEY SKILLS",
+  "RELEVANT SKILLS",
+  "COMPETENCIES",
+]);
+
+const MAJOR_SECTION_TITLES = new Set([
+  "SUMMARY",
+  "PROFILE",
+  "OBJECTIVE",
+  "BODY",
+  "EXPERIENCE",
+  "WORK EXPERIENCE",
+  "PROFESSIONAL EXPERIENCE",
+  "EDUCATION",
+  "CERTIFICATIONS",
+  "CERTIFICATES",
+  "PROJECTS",
+  "ACHIEVEMENTS",
+  "LANGUAGES",
+  "REFERENCES",
+]);
 
 function sectionBody(parsed: ParsedCV, ...titles: string[]): string {
   const upper = new Set(titles.map((t) => t.toUpperCase()));
@@ -9,14 +36,56 @@ function sectionBody(parsed: ParsedCV, ...titles: string[]): string {
   return hit?.body.trim() ?? "";
 }
 
+/**
+ * parseGeneratedCv treats short ALL-CAPS tokens (e.g. "IFRS", "SAP") as headings.
+ * When that happens under SKILLS, recover tokens from pseudo-sections before Experience.
+ */
+function extractSkillsBody(parsed: ParsedCV): string {
+  const direct = sectionBody(parsed, ...SKILL_SECTION_TITLES);
+  if (direct) return direct;
+
+  const experienceIdx = parsed.sections.findIndex((s) =>
+    ["EXPERIENCE", "WORK EXPERIENCE", "PROFESSIONAL EXPERIENCE"].includes(s.title),
+  );
+  if (experienceIdx <= 0) return "";
+
+  const beforeExperience = parsed.sections.slice(0, experienceIdx);
+  const skillZone = beforeExperience.filter((s) => !MAJOR_SECTION_TITLES.has(s.title));
+  if (skillZone.length === 0) return "";
+
+  const parts: string[] = [];
+  for (const section of skillZone) {
+    if (SKILL_SECTION_TITLES.has(section.title)) {
+      if (section.body.trim()) parts.push(section.body.trim());
+      continue;
+    }
+    parts.push(section.title);
+    if (section.body.trim()) parts.push(section.body.trim());
+  }
+  return parts.join("\n");
+}
+
 function parseSkills(body: string): string[] {
   if (!body) return [];
-  const { bullets } = splitBullets(body);
-  if (bullets.length > 0) return bullets;
-  return body
+  const { bullets, paragraphs } = splitBullets(body);
+  if (bullets.length > 0) return normalizeSkillList(bullets);
+
+  const commaSplit = body
     .split(/[,;|]/)
     .map((s) => s.trim())
     .filter(Boolean);
+  if (commaSplit.length > 1) return normalizeSkillList(commaSplit);
+
+  const lineSplit =
+    paragraphs.length > 1
+      ? paragraphs
+      : body
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean);
+  if (lineSplit.length > 1) return normalizeSkillList(lineSplit);
+
+  return normalizeSkillList(commaSplit.length > 0 ? commaSplit : lineSplit);
 }
 
 function parseExperience(body: string): ExperienceEntry[] {
@@ -79,12 +148,7 @@ export function mapParsedCvToDraft(parsed: ParsedCV): TailoredCvDraft {
   const summary =
     sectionBody(parsed, "SUMMARY", "PROFILE", "OBJECTIVE") ||
     sectionBody(parsed, "BODY");
-  const skillsBody = sectionBody(
-    parsed,
-    "SKILLS",
-    "TECHNICAL SKILLS",
-    "CORE SKILLS",
-  );
+  const skillsBody = extractSkillsBody(parsed);
   const experience = parseExperience(
     sectionBody(
       parsed,
