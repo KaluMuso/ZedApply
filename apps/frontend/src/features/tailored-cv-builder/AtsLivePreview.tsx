@@ -2,6 +2,11 @@
 
 import { cn } from "@/lib/utils";
 import type { TailoredCvDraft } from "./types";
+import {
+  formatSkillsLine,
+  getDraftSkillsForPreview,
+  PREVIEW_MAX_VISIBLE_SKILLS,
+} from "./skillsDisplay";
 
 function PreviewSection({
   title,
@@ -20,8 +25,36 @@ function PreviewSection({
   );
 }
 
+function SkillsPreviewBlock({ skills }: { skills: string[] }) {
+  const { visible, overflowCount } = formatSkillsLine(skills, {
+    maxVisible: PREVIEW_MAX_VISIBLE_SKILLS,
+  });
+  const printLine = formatSkillsLine(skills).line;
+
+  if (visible.length === 0) return null;
+
+  return (
+    <div className="cv-skills-block">
+      <p className="cv-skills-line">{printLine}</p>
+      <div className="cv-skills-tags">
+        {visible.map((skill) => (
+          <span key={skill} className="cv-skill-tag">
+            {skill}
+          </span>
+        ))}
+        {overflowCount > 0 ? (
+          <span className="cv-skill-tag cv-skill-tag--more">
+            +{overflowCount} more
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function AtsLivePreview({ draft }: { draft: TailoredCvDraft }) {
-  const { basics, experience, education, skills, style } = draft;
+  const { basics, experience, education, style } = draft;
+  const skills = getDraftSkillsForPreview(draft.skills);
   const contactBits = [basics.phone, basics.email, basics.location].filter(Boolean);
   const densityClass = style.density === "compact" ? "tailored-cv-paper--compact" : "";
 
@@ -89,11 +122,11 @@ export function AtsLivePreview({ draft }: { draft: TailoredCvDraft }) {
         </PreviewSection>
       )}
 
-      {skills.length > 0 && (
-        <PreviewSection title="Skills" defaultOpen={false}>
-          <p className="cv-skills">{skills.join(" · ")}</p>
+      {skills.length > 0 ? (
+        <PreviewSection title="Skills">
+          <SkillsPreviewBlock skills={skills} />
         </PreviewSection>
-      )}
+      ) : null}
     </article>
   );
 }

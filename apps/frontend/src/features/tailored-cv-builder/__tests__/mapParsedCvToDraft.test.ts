@@ -33,4 +33,28 @@ BSc Accounting — UNZA
     expect(draft.experience.length).toBeGreaterThan(0);
     expect(draft.education.length).toBeGreaterThan(0);
   });
+
+  it("parses newline-separated skills into draft.skills", () => {
+    const content = `Patricia Mwale
++260971234567 · patricia@example.com · Lusaka
+
+SKILLS
+IFRS
+Excel
+SAP
+Stakeholder Management
+
+EXPERIENCE
+Accountant at ACME
+• Closed monthly books
+`;
+    const parsed = parseGeneratedCv(content);
+    const draft = mapParsedCvToDraft(parsed);
+    expect(draft.skills).toEqual([
+      "IFRS",
+      "Excel",
+      "SAP",
+      "Stakeholder Management",
+    ]);
+  });
 });
