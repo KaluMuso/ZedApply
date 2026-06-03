@@ -67,7 +67,7 @@ export const ADMIN_NAV: {
   {
     slug: "bwana",
     label: "Bwana",
-    description: "Chatbot contact, escalation templates, and knowledge",
+    description: "Chatbot analytics, transcripts, config, and knowledge",
     href: "/admin/bwana",
   },
   {

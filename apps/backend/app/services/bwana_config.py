@@ -1,6 +1,7 @@
 """Load Bwana platform config, render templates, and build the LLM system prompt."""
 from __future__ import annotations
 
+import hashlib
 import logging
 import time
 from pathlib import Path
@@ -205,10 +206,24 @@ Suggest paid features only when relevant and accurate for the user's tier.
     return augment_system_prompt(base)
 
 
-async def preview_system_prompt(supabase: Client) -> tuple[str, int]:
+def compute_system_prompt_version(config: BwanaConfig) -> str:
+    """Stable read-only tag for admin UI (boundaries file + config revision)."""
+    path = _resolve_boundaries_path()
+    if path and path.is_file():
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()[:8]
+    else:
+        digest = hashlib.sha256(_BOUNDARIES_FALLBACK.encode()).hexdigest()[:8]
+    updated = (config.updated_at or "default")[:10]
+    return f"bwana-{updated}-{digest}"
+
+
+async def preview_system_prompt(
+    supabase: Client,
+) -> tuple[str, int, str]:
     config = get_bwana_config(supabase)
     prompt = await build_bwana_system_prompt(config, supabase)
-    return prompt, len(prompt)
+    version = compute_system_prompt_version(config)
+    return prompt, len(prompt), version
 
 
 def build_bwana_interview_system_prompt(config: BwanaConfig, role: str) -> str:

@@ -67,7 +67,7 @@ DPO Pay: [DEPLOY.md §1.4](../DEPLOY.md), webhooks in [openapi.yaml](openapi.yam
 
 | Doc | When to use |
 |-----|-------------|
-| [BWANA_ADMIN.md](BWANA_ADMIN.md) | Admin contact/escalation config, test WAHA, migration **092** |
+| [BWANA_ADMIN.md](BWANA_ADMIN.md) | Admin config, analytics, conversation export, migrations **092–094** |
 | [BWANA_KNOWLEDGE_BOUNDARIES.md](BWANA_KNOWLEDGE_BOUNDARIES.md) | What Bwana must never disclose |
 | [bwana_faq.md](bwana_faq.md) | FAQ intent table + escalation reasons |
 

@@ -7,7 +7,6 @@ import {
   type BwanaConfigPatch,
   type FaqIntentItem,
 } from "@/lib/api";
-import { BwanaAnalyticsPanel } from "./BwanaAnalyticsPanel";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +26,7 @@ export function BwanaConfigTab({ token }: { token: string }) {
   const [faqIntents, setFaqIntents] = useState<FaqIntentItem[]>([]);
   const [preview, setPreview] = useState<string>("");
   const [previewChars, setPreviewChars] = useState(0);
+  const [promptVersion, setPromptVersion] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -43,6 +43,7 @@ export function BwanaConfigTab({ token }: { token: string }) {
       const prev = await adminBwana.preview(token);
       setPreview(prev.system_prompt_preview);
       setPreviewChars(prev.char_count);
+      setPromptVersion(prev.system_prompt_version);
     } catch (e) {
       notify.error(e instanceof Error ? e.message : "Failed to load Bwana config");
     } finally {
@@ -101,6 +102,7 @@ export function BwanaConfigTab({ token }: { token: string }) {
       const prev = await adminBwana.preview(token);
       setPreview(prev.system_prompt_preview);
       setPreviewChars(prev.char_count);
+      setPromptVersion(prev.system_prompt_version);
       notify.custom.success("Bwana config saved");
     } catch (e) {
       notify.error(e instanceof Error ? e.message : "Save failed");
@@ -127,14 +129,6 @@ export function BwanaConfigTab({ token }: { token: string }) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Bwana</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Chatbot contact details, escalation templates, and public knowledge for
-          the in-app assistant.
-        </p>
-      </div>
-
       <Card>
         <CardContent className="p-4 space-y-4">
           <h2 className="text-lg font-semibold">Identity & contact</h2>
@@ -240,8 +234,6 @@ export function BwanaConfigTab({ token }: { token: string }) {
         </CardContent>
       </Card>
 
-      <BwanaAnalyticsPanel token={token} />
-
       <Card>
         <CardContent className="p-4 space-y-3">
           <h2 className="text-lg font-semibold">Custom FAQ intents (JSON)</h2>
@@ -281,6 +273,10 @@ export function BwanaConfigTab({ token }: { token: string }) {
       <Card>
         <CardContent className="p-4 space-y-3">
           <h2 className="text-lg font-semibold">System prompt preview</h2>
+          <p className="text-xs text-muted-foreground">
+            Version (read-only):{" "}
+            <code className="font-mono">{promptVersion || "—"}</code>
+          </p>
           <p className="text-xs text-muted-foreground">
             Full prompt length: {previewChars.toLocaleString()} chars (truncated below)
           </p>

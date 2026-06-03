@@ -115,6 +115,25 @@ class BwanaPublicConfig(BaseModel):
 class BwanaConfigPreview(BaseModel):
     system_prompt_preview: str
     char_count: int
+    system_prompt_version: str = Field(
+        description="Read-only tag: boundaries hash + config updated_at"
+    )
+
+
+class BwanaConversationSummary(BaseModel):
+    user_id: str
+    session_id: str
+    message_count: int
+    last_activity_at: str | None = None
+    preview: str = ""
+
+
+class BwanaConversationList(BaseModel):
+    items: list[BwanaConversationSummary]
+    total: int
+    q: str | None = None
+    limit: int = 50
+    offset: int = 0
 
 
 class BwanaFaqIntentCount(BaseModel):
@@ -130,6 +149,18 @@ class BwanaAnalyticsSummary(BaseModel):
     messages_by_source: dict[str, int]
     escalations_by_reason: dict[str, int]
     top_faq_intents: list[BwanaFaqIntentCount]
+    unique_sessions: int = 0
+    faq_turns: int = 0
+    llm_turns: int = 0
+    escalated_turns: int = 0
+    bwana_llm_cost_usd: float = 0.0
+    bwana_llm_requests: int = 0
+    pipeline_mode: Literal["in_process", "n8n"] = "in_process"
+    n8n_fallback_events: int | None = Field(
+        default=None,
+        description="Not persisted yet; null until bwana_event_log tracks fallbacks",
+    )
+    analytics_source: Literal["live", "stub"] = "live"
 
     @field_validator("top_faq_intents", mode="before")
     @classmethod

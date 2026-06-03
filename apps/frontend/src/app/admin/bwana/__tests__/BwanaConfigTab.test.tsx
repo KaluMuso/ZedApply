@@ -41,6 +41,7 @@ describe("BwanaConfigTab", () => {
     vi.mocked(adminBwana.preview).mockResolvedValue({
       system_prompt_preview: "You are Bwana, ZedApply's chatbot",
       char_count: 1200,
+      system_prompt_version: "bwana-2026-06-03-deadbeef",
     });
     vi.mocked(adminBwana.patchConfig).mockResolvedValue(mockConfig);
     vi.mocked(adminBwana.testEscalation).mockResolvedValue({
