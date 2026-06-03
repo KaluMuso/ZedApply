@@ -66,8 +66,8 @@ export function ProfileReferralCard({
     <div className="card p-6">
       <div className="eyebrow mb-2">Invite friends</div>
       <p className="text-sm mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
-        Share ZedApply with people job hunting in Zambia. When they sign up with your link,
-        we track the referral on your account.
+        Share ZedApply with people job hunting in Zambia. When your friend subscribes to a
+        paid plan with your link, you get 5 bonus matches.
       </p>
 
       <div
@@ -98,7 +98,8 @@ export function ProfileReferralCard({
               <span className="font-semibold" style={{ color: "var(--ink-2)" }}>
                 {referralQualifiedCount}
               </span>{" "}
-              uploaded a CV (you earned +5 bonus matches each)
+              {referralQualifiedCount === 1 ? "has" : "have"} subscribed (you earned +5 bonus
+              matches each)
             </>
           ) : null}
         </p>
@@ -125,8 +126,8 @@ export function ProfileReferralCard({
       </div>
 
       <p className="text-xs mt-3 leading-relaxed" style={{ color: "var(--muted)" }}>
-        Referral rewards (bonus matches or credits) will apply automatically once you qualify
-        paid tiers. Link also accepts your user id for older invites.
+        Bonus matches apply when a referred friend completes their first paid subscription.
+        Link also accepts your user id for older invites.
       </p>
     </div>
   );
