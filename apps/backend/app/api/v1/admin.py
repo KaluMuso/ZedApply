@@ -1188,15 +1188,24 @@ async def dismiss_review_job(
 
 @router.post("/jobs/bulk-deactivate", response_model=BulkDeactivateResponse)
 async def bulk_deactivate(body: BulkDeactivateRequest, supabase=Depends(get_supabase)):
-    """Deactivate jobs by ID, or all expired jobs if expired_only=true.
+    """Deactivate jobs by ID, or expired active jobs if expired_only=true.
 
-    Uses the existing `deactivate_expired_jobs()` RPC for the expired_only path
-    so the row count stays consistent with the WhatsApp/n8n cleanup workflow.
+    Expired means closing_date is set and strictly before today (same rules as
+    the `deactivate_expired_jobs()` RPC used by pg_cron and n8n).
     """
     if body.expired_only:
-        rpc_res = supabase.rpc("deactivate_expired_jobs").execute()
-        count = rpc_res.data if isinstance(rpc_res.data, int) else (rpc_res.data or 0)
-        return BulkDeactivateResponse(deactivated=int(count))
+        from datetime import date
+
+        today = date.today().isoformat()
+        res = (
+            supabase.table("jobs")
+            .update({"is_active": False})
+            .eq("is_active", True)
+            .not_.is_("closing_date", "null")
+            .lt("closing_date", today)
+            .execute()
+        )
+        return BulkDeactivateResponse(deactivated=len(res.data or []))
 
     if not body.job_ids:
         raise HTTPException(status_code=422, detail="Provide job_ids or set expired_only=true")

@@ -56,6 +56,10 @@ class _Query:
         self._op = "select"
         self._payload: Any = None
         self._filters: dict[str, Any] = {}
+        self._lt: dict[str, Any] = {}
+        self._gte: dict[str, Any] = {}
+        self._not_null: set[str] = set()
+        self._negate_is = False
         self._limit: int | None = None
 
     # ── operation setters ──
@@ -91,24 +95,33 @@ class _Query:
         self._filters[col + "__in"] = vals
         return self
 
-    def is_(self, col: str, val: Any):
-        self._filters[col] = None if str(val).lower() == "null" else val
-        return self
-
     @property
     def not_(self):
+        self._negate_is = True
+        return self
+
+    def is_(self, col: str, val: Any):
+        if self._negate_is and str(val).lower() == "null":
+            self._not_null.add(col)
+            self._negate_is = False
+        elif str(val).lower() == "null":
+            self._filters[col] = None
+        else:
+            self._filters[col] = val
         return self
 
     def neq(self, *a, **kw):
         return self
 
-    def gte(self, *a, **kw):
+    def gte(self, col: str, val: Any):
+        self._gte[col] = val
         return self
 
     def lte(self, *a, **kw):
         return self
 
-    def lt(self, *a, **kw):
+    def lt(self, col: str, val: Any):
+        self._lt[col] = val
         return self
 
     def ilike(self, *a, **kw):
@@ -134,15 +147,30 @@ class _Query:
         return self
 
     # ── apply ──
-    def _matches(self) -> list[dict]:
-        rows = list(self._parent.tables.get(self._table, []))
+    def _row_matches(self, row: dict) -> bool:
         for k, v in self._filters.items():
             if k.endswith("__in"):
                 col = k[: -len("__in")]
-                rows = [r for r in rows if r.get(col) in v]
-            else:
-                rows = [r for r in rows if r.get(k) == v]
-        return rows
+                if row.get(col) not in v:
+                    return False
+            elif row.get(k) != v:
+                return False
+        for col in self._not_null:
+            if row.get(col) is None:
+                return False
+        for col, bound in self._lt.items():
+            val = row.get(col)
+            if val is None or val >= bound:
+                return False
+        for col, bound in self._gte.items():
+            val = row.get(col)
+            if val is None or val < bound:
+                return False
+        return True
+
+    def _matches(self) -> list[dict]:
+        rows = list(self._parent.tables.get(self._table, []))
+        return [r for r in rows if self._row_matches(r)]
 
     def execute(self):
         if self._op == "select":
@@ -786,3 +814,63 @@ class TestDelete:
         assert len(deact) == 1
         assert deact[0]["properties"]["job_id"] == job_id
         assert deact[0]["properties"]["admin_user_id"] == "test-user-id"
+
+
+# ── bulk-deactivate (expired_only) ───────────────────────────────────
+
+
+class TestBulkDeactivateExpired:
+    def test_expired_only_deactivates_past_closing_date_active_jobs(
+        self, admin_client, auth_headers, jobs_fake
+    ):
+        from datetime import date, timedelta
+
+        today = date.today()
+        expired_id = _seed_job(
+            jobs_fake,
+            title="Expired active",
+            closing_date=(today - timedelta(days=1)).isoformat(),
+            is_active=True,
+        )
+        future_id = _seed_job(
+            jobs_fake,
+            title="Future deadline",
+            closing_date=(today + timedelta(days=7)).isoformat(),
+            is_active=True,
+        )
+        no_deadline_id = _seed_job(
+            jobs_fake,
+            title="No closing date",
+            closing_date=None,
+            is_active=True,
+        )
+        already_inactive_id = _seed_job(
+            jobs_fake,
+            title="Already inactive expired",
+            closing_date=(today - timedelta(days=3)).isoformat(),
+            is_active=False,
+        )
+
+        r = admin_client.post(
+            "/api/v1/admin/jobs/bulk-deactivate",
+            json={"expired_only": True},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["deactivated"] == 1
+
+        by_id = {row["id"]: row for row in jobs_fake.tables["jobs"]}
+        assert by_id[expired_id]["is_active"] is False
+        assert by_id[future_id]["is_active"] is True
+        assert by_id[no_deadline_id]["is_active"] is True
+        assert by_id[already_inactive_id]["is_active"] is False
+
+    def test_expired_only_without_flag_requires_job_ids(
+        self, admin_client, auth_headers, jobs_fake
+    ):
+        r = admin_client.post(
+            "/api/v1/admin/jobs/bulk-deactivate",
+            json={},
+            headers=auth_headers,
+        )
+        assert r.status_code == 422

@@ -1391,6 +1391,8 @@ export interface Job {
   posted_at?: string | null;
   quality_score: number;
   skills: string[];
+  requirements?: string[] | null;
+  skills_required?: string[] | null;
   description: string | null;
   salary_min?: number | null;
   salary_max?: number | null;
