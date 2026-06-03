@@ -79,13 +79,40 @@ Required so Supabase free tier does not pause after 7 days idle (`AGENTS.md` inv
 **Import / activate**
 
 1. n8n → **Workflows** → **Import from File** → `heartbeat_workflow.json`
-2. Set env: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_SERVICE_KEY`), `FASTAPI_URL`
+2. Set env: `SUPABASE_URL`, `FASTAPI_URL`, and **one** service-role secret (see below)
 3. **Activate** workflow (toggle on)
 4. Smoke: run once manually; expect HTTP 200 from `POST …/rest/v1/rpc/heartbeat` and `GET …/api/v1/health`
 
 Prod instance already has workflow `qA4Zi46MAWx3gTTL` active as of 2026-05-30.
 
+### Republish live heartbeat (`qA4Zi46MAWx3gTTL`)
+
+Use when repo `heartbeat_workflow.json` changes (env fallback, nodes) or live still uses only `SUPABASE_ZEDCV_SERVICE_KEY` while docs say `SUPABASE_SERVICE_ROLE_KEY`.
+
+1. Sign in to `https://automation.vergeo.company`.
+2. **Workflows** → open **ZedApply - Supabase Heartbeat** (ID `qA4Zi46MAWx3gTTL`).
+3. Open **Supabase Heartbeat** (HTTP Request) → **Headers**:
+   - **apikey** and **Authorization** → set both values to:
+     `={{ $env.SUPABASE_SERVICE_ROLE_KEY || $env.SUPABASE_SERVICE_KEY || $env.SUPABASE_ZEDCV_SERVICE_KEY }}`
+   - **Authorization** prefix stays `Bearer ` (expression mode: `=Bearer {{ … }}` per repo export).
+4. Confirm **Every 6 Hours** still triggers both **Supabase Heartbeat** and **API Health Check** in parallel.
+5. **Settings → Variables** (or container env): ensure `SUPABASE_URL` and at least one key name above is set. Live OCI historically used `SUPABASE_ZEDCV_SERVICE_KEY`; either keep that name or alias the same secret to `SUPABASE_SERVICE_ROLE_KEY` — the expression accepts all three.
+6. **Save** → **Publish** (workflow must stay **Active**).
+7. **Execute workflow** once → execution log: **Supabase Heartbeat** HTTP 200; **API Health Check** HTTP 200 with `"status": "healthy"` (or documented degraded flags).
+
+Or re-import `infra/n8n/heartbeat_workflow.json` into a draft, diff the **Supabase Heartbeat** node headers, merge into `qA4Zi46MAWx3gTTL`, then publish — do not deactivate the canonical ID during cutover.
+
 **Duplicate:** `Zed CV - Supabase Heartbeat` (`Gun5al1RkCKPSlfW`) is also active and runs the same 6h schedule. Keep one (prefer `qA4Zi46MAWx3gTTL` + service role key) and **deactivate** the other to avoid redundant RPC calls.
+
+### Supabase service-role env names (drift)
+
+| Name | Typical use |
+| --- | --- |
+| `SUPABASE_SERVICE_ROLE_KEY` | Documented canonical name (README, new exports) |
+| `SUPABASE_SERVICE_KEY` | Backend scripts / CI |
+| `SUPABASE_ZEDCV_SERVICE_KEY` | Legacy n8n OCI compose |
+
+HTTP nodes in repo exports resolve: `SUPABASE_SERVICE_ROLE_KEY` → `SUPABASE_SERVICE_KEY` → `SUPABASE_ZEDCV_SERVICE_KEY`. No workflow change required if only the legacy name is set.
 
 ## Admin broadcast: scheduled dispatch
 
@@ -321,13 +348,28 @@ Two heartbeats were active on 2026-05-30. Keep **`qA4Zi46MAWx3gTTL`** (repo: `he
 
 No API access from this repo — ops performs the toggle in the n8n UI.
 
+## Subscription renewal reminder (cron vs label)
+
+Repo: `subscription_renewal_reminder_daily.json` (alias `subscription_renewal_reminder.json`).
+
+| Item | Value |
+| --- | --- |
+| Cron | `0 8 * * *` |
+| n8n server TZ | **UTC** on OCI (default; confirm **Settings → Timezone** in n8n UI) |
+| Fires at | **08:00 UTC** = **10:00 CAT** (Zambia, UTC+2) |
+| Endpoint | `POST /api/v1/admin/trigger-renewal-reminders` with `INGEST_API_KEY` |
+
+**Common mistake:** a trigger node labeled “Every Day at 9AM” while cron is `0 8 * * *` — that is **not** 09:00 CAT (would need `0 7 * * *` for 07:00 UTC). Rename the node to **Daily 08:00 UTC (10:00 CAT)** after republish.
+
+To target **09:00 CAT** instead, set cron to `0 7 * * *` and rename the trigger accordingly.
+
 ## Required n8n environment variables
 
 ```
 FASTAPI_URL=https://api.zedapply.com   # or internal docker URL
 INGEST_API_KEY=...
 SUPABASE_URL=...
-SUPABASE_SERVICE_ROLE_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...   # or SUPABASE_SERVICE_KEY / SUPABASE_ZEDCV_SERVICE_KEY (see heartbeat section)
 WAHA_API_URL=...
 WAHA_API_KEY=...
 OPENROUTER_API_KEY=...
