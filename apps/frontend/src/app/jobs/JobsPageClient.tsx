@@ -698,24 +698,6 @@ export default function JobsPageClient() {
             Sign in
           </a>
         </div>
-      ) : jobsList.length === 0 ? (
-        <EmptyState
-          title={
-            hasFilterConstraints
-              ? "No jobs match your filters"
-              : "No jobs are open right now"
-          }
-          description={
-            hasFilterConstraints
-              ? "Try a broader search or remove a filter. New listings arrive throughout the week."
-              : "Check back soon — new roles are scraped daily across Zambia."
-          }
-          ctaText="Get matches on WhatsApp"
-          ctaHref={authPath("/matches")}
-          secondaryCtaText={hasFilterConstraints ? "Reset filters" : undefined}
-          onSecondaryCtaClick={hasFilterConstraints ? resetFilters : undefined}
-          className="my-8"
-        />
       ) : (
         <>
           <MobileFilterShell
@@ -734,6 +716,25 @@ export default function JobsPageClient() {
               layout="stack"
             />
           </MobileFilterShell>
+          {jobsList.length === 0 ? (
+            <EmptyState
+              title={
+                hasFilterConstraints
+                  ? "No jobs match your filters"
+                  : "No jobs are open right now"
+              }
+              description={
+                hasFilterConstraints
+                  ? "Try a broader search or remove a filter. New listings arrive throughout the week."
+                  : "Check back soon — new roles are scraped daily across Zambia."
+              }
+              ctaText="Get matches on WhatsApp"
+              ctaHref={authPath("/matches")}
+              secondaryCtaText={hasFilterConstraints ? "Reset filters" : undefined}
+              onSecondaryCtaClick={hasFilterConstraints ? resetFilters : undefined}
+              className="my-8"
+            />
+          ) : (
           <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)] gap-6 lg:gap-8">
             <JobsSidebar
               active={listPreset}
@@ -772,15 +773,16 @@ export default function JobsPageClient() {
             ))}
             </div>
           </div>
+          )}
 
           {/* Pagination */}
-          {totalPages > 1 && (
+          {jobsList.length > 0 && totalPages > 1 ? (
             <Pagination
               page={page}
               totalPages={totalPages}
               onChange={setPage}
             />
-          )}
+          ) : null}
         </>
       )}
 
