@@ -2,7 +2,7 @@
   "_comment": "Live n8n workflow ID rsgZLi6UAcC3lXvu on https://automation.vergeo.company — re-import this file to publish repo changes.",
   "name": "ZedApply Job Scraper",
   "meta": {
-    "description": "Scrapes 4 Zambian job sites every 12h. LLM via OpenRouter (default google/gemini-2.0-flash, max_tokens 8192). Ingest auth via Normalize passthrough (fastapiUrl/ingestKey from $env in Code node). Normalize drops title < 3 and description < 20 (JobCreateIngest).",
+    "description": "Scrapes 4 Zambian job sites every 12h. LLM via OpenRouter (default google/gemini-2.0-flash, max_tokens 8192). Ingest auth via Normalize passthrough (fastapiUrl/ingestKey from $env in Code node). Normalize drops title < 3 and description < 20 (JobCreateIngest). Deep Enrich After Ingest is disabled by default — backend post-ingest tick is the primary enrich path.",
     "n8nWorkflowId": "rsgZLi6UAcC3lXvu",
     "publishTarget": "https://automation.vergeo.company",
     "exportNote": "Import into n8n workflow rsgZLi6UAcC3lXvu; set OPENROUTER_API_KEY (+ optional OPENROUTER_MODEL) in n8n env; set INGEST_API_KEY and FASTAPI_URL."
@@ -445,12 +445,16 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ ($('Normalize and Deduplicate').item.json.fastapiUrl || 'https://api.zedapply.com') + '/api/v1/jobs/deep-enrich-tick?limit=10&include_review_queue=true&api_key=' + encodeURIComponent($('Normalize and Deduplicate').item.json.ingestKey || '') }}",
+        "url": "={{ ($('Normalize and Deduplicate').item.json.fastapiUrl || 'http://zedcv-backend:8000') + '/api/v1/jobs/deep-enrich-tick?limit=15&include_review_queue=true&api_key=' + encodeURIComponent($('Normalize and Deduplicate').item.json.ingestKey || '') }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "X-INGEST-API-KEY",
+              "value": "={{ $('Normalize and Deduplicate').item.json.ingestKey }}"
+            },
+            {
+              "name": "INGEST_API_KEY",
               "value": "={{ $('Normalize and Deduplicate').item.json.ingestKey }}"
             }
           ]
@@ -461,7 +465,7 @@
               "neverError": true
             }
           },
-          "timeout": 180000
+          "timeout": 300000
         }
       },
       "name": "Deep Enrich After Ingest",
@@ -470,7 +474,8 @@
       "position": [
         2000,
         400
-      ]
+      ],
+      "disabled": true
     }
   ],
   "connections": {
@@ -700,13 +705,7 @@
     },
     "Send to ZedApply": {
       "main": [
-        [
-          {
-            "node": "Deep Enrich After Ingest",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Deep Enrich After Ingest": {

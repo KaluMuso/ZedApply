@@ -1,5 +1,11 @@
 {
   "name": "Zed CV - Deep Enrich Cron Every 6h",
+  "meta": {
+    "description": "Optional backlog deep-enrich tick. Disable when POST_INGEST_DEEP_ENRICH_ENABLED=true (backend post-ingest is the primary path).",
+    "n8nWorkflowId": "9szi5Hx0EGCrDo8P",
+    "recommendedActive": false,
+    "requiredEnv": ["INGEST_API_KEY"]
+  },
   "nodes": [
     {
       "parameters": { "rule": { "interval": [{ "field": "hours", "hoursInterval": 6 }] } },
@@ -11,10 +17,22 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.FASTAPI_URL }}/api/v1/jobs/deep-enrich-tick?limit=15&include_review_queue=true&api_key={{ encodeURIComponent($env.INGEST_API_KEY || '') }}",
+        "url": "={{ 'http://zedcv-backend:8000/api/v1/jobs/deep-enrich-tick?limit=15&include_review_queue=true&api_key=' + encodeURIComponent($env.INGEST_API_KEY || '') }}",
         "sendHeaders": true,
         "headerParameters": {
-          "parameters": [{ "name": "INGEST_API_KEY", "value": "={{ $env.INGEST_API_KEY }}" }]
+          "parameters": [
+            {
+              "name": "X-INGEST-API-KEY",
+              "value": "={{ $env.INGEST_API_KEY }}"
+            },
+            {
+              "name": "INGEST_API_KEY",
+              "value": "={{ $env.INGEST_API_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000
         }
       },
       "name": "Run Deep Enrich Tick",
