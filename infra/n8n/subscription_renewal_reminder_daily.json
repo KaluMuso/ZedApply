@@ -2,7 +2,9 @@
   "name": "ZedApply - Subscription Renewal Reminder",
   "meta": {
     "requiredEnv": ["FASTAPI_URL", "INGEST_API_KEY"],
-    "optionalEnv": ["ADMIN_API_KEY"]
+    "optionalEnv": ["ADMIN_API_KEY"],
+    "description": "Same as subscription_renewal_reminder.json (canonical export). Schedule: 0 8 * * * in n8n server TZ (UTC on OCI) = 10:00 CAT.",
+    "scheduleNote": "Do not label the trigger 9AM unless cron is 0 7 * * * (07:00 UTC = 09:00 CAT)."
   },
   "nodes": [
     {
@@ -11,7 +13,7 @@
           "interval": [{ "field": "cronExpression", "expression": "0 8 * * *" }]
         }
       },
-      "name": "Daily 08:00 UTC",
+      "name": "Daily 08:00 UTC (10:00 CAT)",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [250, 300]
@@ -49,7 +51,7 @@
     }
   ],
   "connections": {
-    "Daily 08:00 UTC": {
+    "Daily 08:00 UTC (10:00 CAT)": {
       "main": [[{ "node": "Load cron env", "type": "main", "index": 0 }]]
     },
     "Load cron env": {

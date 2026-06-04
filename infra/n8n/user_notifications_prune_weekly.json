@@ -2,7 +2,12 @@
   "name": "ZedApply - User Notifications Dedup Prune (90d)",
   "meta": {
     "description": "Fallback when pg_cron is unavailable: weekly prune of user_notifications digest dedup rows older than 90 days. Primary path is migration 104 pg_cron job zedcv-prune-user-notifications. Does NOT prune notifications inbox (migration 100).",
-    "requiredEnv": ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]
+    "requiredEnv": [
+      "SUPABASE_URL",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "SUPABASE_SERVICE_KEY",
+      "SUPABASE_ZEDCV_SERVICE_KEY"
+    ]
   },
   "nodes": [
     {
@@ -25,11 +30,11 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY || $env.SUPABASE_SERVICE_KEY }}"
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY || $env.SUPABASE_SERVICE_KEY || $env.SUPABASE_ZEDCV_SERVICE_KEY }}"
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY || $env.SUPABASE_SERVICE_KEY }}"
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY || $env.SUPABASE_SERVICE_KEY || $env.SUPABASE_ZEDCV_SERVICE_KEY }}"
             },
             { "name": "Content-Type", "value": "application/json" }
           ]

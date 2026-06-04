@@ -14,7 +14,7 @@ Sanitized JSON snapshots of production workflows on `https://automation.vergeo.c
 | Bwana Chat Pipeline | `TPDJ5S1HaRKZTdb1` | Yes | Yes | `bwana_chat_pipeline.json` |
 | Job Scraper | `rsgZLi6UAcC3lXvu` | Yes | Yes | `job_scraper.json` |
 | Deep Enrich Cron Every 6h | `9szi5Hx0EGCrDo8P` | **Yes (dup)** | **No** | `deep_enrich_cron_6h.json` |
-| Admin notification dispatch | _(import from repo)_ | No | Yes | `admin_notification_dispatch_every_15m.json` |
+| Admin notifications dispatch (hourly) | _(import from repo)_ | No | Yes | `admin_notifications_dispatch.json` |
 | Sentry → WhatsApp Alert | _(import from repo)_ | No | Yes | `sentry_whatsapp_alert.json` |
 
 **Digest dedup (human checklist):** [docs/RUNBOOK_N8N_DIGEST_DEDUP.md](../../docs/RUNBOOK_N8N_DIGEST_DEDUP.md) — deactivate `MW5KETbBdrAOk04y` + `XAmpEqMqahFa6uOI`; keep `j6U2CDRZi0FI5G32` + `bqBV6XNPu3z3Ikx5`. Agents: **do not** n8n-publish without maintainer approval.
@@ -82,23 +82,53 @@ Required so Supabase free tier does not pause after 7 days idle (`AGENTS.md` inv
 **Import / activate**
 
 1. n8n → **Workflows** → **Import from File** → `heartbeat_workflow.json`
-2. Set env: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_SERVICE_KEY`), `FASTAPI_URL`
+2. Set env: `SUPABASE_URL`, `FASTAPI_URL`, and **one** service-role secret (see below)
 3. **Activate** workflow (toggle on)
 4. Smoke: run once manually; expect HTTP 200 from `POST …/rest/v1/rpc/heartbeat` and `GET …/api/v1/health`
 
 Prod instance already has workflow `qA4Zi46MAWx3gTTL` active as of 2026-05-30.
 
+### Republish live heartbeat (`qA4Zi46MAWx3gTTL`)
+
+Use when repo `heartbeat_workflow.json` changes (env fallback, nodes) or live still uses only `SUPABASE_ZEDCV_SERVICE_KEY` while docs say `SUPABASE_SERVICE_ROLE_KEY`.
+
+1. Sign in to `https://automation.vergeo.company`.
+2. **Workflows** → open **ZedApply - Supabase Heartbeat** (ID `qA4Zi46MAWx3gTTL`).
+3. Open **Supabase Heartbeat** (HTTP Request) → **Headers**:
+   - **apikey** and **Authorization** → set both values to:
+     `={{ $env.SUPABASE_SERVICE_ROLE_KEY || $env.SUPABASE_SERVICE_KEY || $env.SUPABASE_ZEDCV_SERVICE_KEY }}`
+   - **Authorization** prefix stays `Bearer ` (expression mode: `=Bearer {{ … }}` per repo export).
+4. Confirm **Every 6 Hours** still triggers both **Supabase Heartbeat** and **API Health Check** in parallel.
+5. **Settings → Variables** (or container env): ensure `SUPABASE_URL` and at least one key name above is set. Live OCI historically used `SUPABASE_ZEDCV_SERVICE_KEY`; either keep that name or alias the same secret to `SUPABASE_SERVICE_ROLE_KEY` — the expression accepts all three.
+6. **Save** → **Publish** (workflow must stay **Active**).
+7. **Execute workflow** once → execution log: **Supabase Heartbeat** HTTP 200; **API Health Check** HTTP 200 with `"status": "healthy"` (or documented degraded flags).
+
+Or re-import `infra/n8n/heartbeat_workflow.json` into a draft, diff the **Supabase Heartbeat** node headers, merge into `qA4Zi46MAWx3gTTL`, then publish — do not deactivate the canonical ID during cutover.
+
 **Duplicate:** `Zed CV - Supabase Heartbeat` (`Gun5al1RkCKPSlfW`) is also active and runs the same 6h schedule. Keep one (prefer `qA4Zi46MAWx3gTTL` + service role key) and **deactivate** the other to avoid redundant RPC calls.
+
+### Supabase service-role env names (drift)
+
+| Name | Typical use |
+| --- | --- |
+| `SUPABASE_SERVICE_ROLE_KEY` | Documented canonical name (README, new exports) |
+| `SUPABASE_SERVICE_KEY` | Backend scripts / CI |
+| `SUPABASE_ZEDCV_SERVICE_KEY` | Legacy n8n OCI compose |
+
+HTTP nodes in repo exports resolve: `SUPABASE_SERVICE_ROLE_KEY` → `SUPABASE_SERVICE_KEY` → `SUPABASE_ZEDCV_SERVICE_KEY`. No workflow change required if only the legacy name is set.
 
 ## Admin broadcast: scheduled dispatch
 
 Delivers `admin_notification_campaigns` whose `scheduled_at` is due (see `docs/NOTIFICATIONS_MIGRATIONS.md`).
 
+**Prerequisite:** Supabase migrations **100** (`100_in_app_notifications.sql`) and **101** (`101_admin_broadcast_notifications.sql`) must be applied on the target project before this workflow is useful. Until then, the dispatch endpoint may return empty results or schema errors.
+
 **Import / activate**
 
-1. n8n → **Import from File** → `admin_notification_dispatch_every_15m.json`
-2. Env: `FASTAPI_URL`, `INGEST_API_KEY` (same as `review_queue_alert_hourly.json`)
-3. **Activate**; smoke `POST …/api/v1/admin/notifications/dispatch` with ingest header
+1. n8n → **Import from File** → `admin_notifications_dispatch.json`
+2. Env: `FASTAPI_URL`, `INGEST_API_KEY` (same `INGEST_API_KEY` header pattern as `daily_digest_dual_channel.json`)
+3. **Activate**; smoke `POST …/api/v1/admin/notifications/dispatch` with `INGEST_API_KEY` header
+4. Optional: schedule a test campaign with `scheduled_at` in the past and confirm the next hourly run sets status to `completed`
 
 ## Bwana chat: backend vs n8n
 
@@ -393,6 +423,21 @@ Two heartbeats were active on 2026-05-30. Keep **`qA4Zi46MAWx3gTTL`** (repo: `he
 
 No API access from this repo — ops performs the toggle in the n8n UI.
 
+## Subscription renewal reminder (cron vs label)
+
+Repo: `subscription_renewal_reminder_daily.json` (alias `subscription_renewal_reminder.json`).
+
+| Item | Value |
+| --- | --- |
+| Cron | `0 8 * * *` |
+| n8n server TZ | **UTC** on OCI (default; confirm **Settings → Timezone** in n8n UI) |
+| Fires at | **08:00 UTC** = **10:00 CAT** (Zambia, UTC+2) |
+| Endpoint | `POST /api/v1/admin/trigger-renewal-reminders` via **Load cron env** → `$json.ingestKey` / `$json.adminKey` |
+
+**Common mistake:** a trigger node labeled “Every Day at 9AM” while cron is `0 8 * * *` — that is **not** 09:00 CAT (would need `0 7 * * *` for 07:00 UTC). Rename the node to **Daily 08:00 UTC (10:00 CAT)** after republish.
+
+To target **09:00 CAT** instead, set cron to `0 7 * * *` and rename the trigger accordingly.
+
 ## Admin cron auth (`ADMIN_API_KEY` vs `INGEST_API_KEY`)
 
 When `ADMIN_API_KEY` is set on the backend and **differs** from `INGEST_API_KEY`, workflows that only send `INGEST_API_KEY` get **401** on `POST /api/v1/admin/*` (batch-match, digests, review-queue alert, renewal reminders).
@@ -411,7 +456,7 @@ FASTAPI_URL=https://api.zedapply.com   # or internal docker URL
 INGEST_API_KEY=...
 ADMIN_API_KEY=...   # optional; must match backend resolve_admin_api_key (see runbook)
 SUPABASE_URL=...
-SUPABASE_SERVICE_ROLE_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...   # or SUPABASE_SERVICE_KEY / SUPABASE_ZEDCV_SERVICE_KEY (see heartbeat section)
 WAHA_API_URL=...
 WAHA_API_KEY=...
 OPENROUTER_API_KEY=...

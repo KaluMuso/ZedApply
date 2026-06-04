@@ -111,7 +111,7 @@ Import `infra/n8n/subscription_renewal_reminder_daily.json` and set `FASTAPI_URL
 **In n8n UI:**
 
 1. Import/update from `infra/n8n/subscription_expiry_daily.json` if missing.
-2. Set credentials: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
+2. Set credentials: `SUPABASE_URL`, and a service-role key (`SUPABASE_SERVICE_ROLE_KEY`, or `SUPABASE_SERVICE_KEY`, or legacy `SUPABASE_ZEDCV_SERVICE_KEY` — see `infra/n8n/README.md`).
 3. Activate the workflow; run once manually and confirm HTTP 200.
 
 **Optional follow-ups:**
