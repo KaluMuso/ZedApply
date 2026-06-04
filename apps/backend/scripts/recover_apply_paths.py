@@ -320,7 +320,7 @@ async def process_job(
         )
 
     parser_patch = await _try_parser_recovery(row)
-    if parser_patch:
+    if parser_patch is not None:
         return _apply_recovery_patch(
             supabase,
             job_id=job_id,

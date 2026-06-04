@@ -1,4 +1,5 @@
--- 104: Referral funnel — signed_up → qualified (optional CV) → paid → rewarded.
+-- 105: Referral funnel — signed_up → qualified (optional CV) → paid → rewarded.
+-- Renumbered from 104_referral_paid_status (collision with 104_user_notifications_retention).
 
 ALTER TABLE public.referral_events
   DROP CONSTRAINT IF EXISTS referral_events_status_check;

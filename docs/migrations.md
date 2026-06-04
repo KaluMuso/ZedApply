@@ -132,9 +132,9 @@ SELECT name FROM supabase_migrations.schema_migrations
 --         066_hnsw_and_pruning, 067_job_expiration_cron
 ```
 
-## Notifications train (099–104)
+## Notifications train (099–106)
 
-See [NOTIFICATIONS_MIGRATIONS.md](NOTIFICATIONS_MIGRATIONS.md) for full apply order and retention policy.
+See [NOTIFICATIONS_MIGRATIONS.md](NOTIFICATIONS_MIGRATIONS.md) and [MIGRATION_RENUMBER_2026_06.md](MIGRATION_RENUMBER_2026_06.md) for apply order, prod ledger drift, and retention policy.
 
 | File | Purpose |
 |------|---------|
@@ -143,5 +143,8 @@ See [NOTIFICATIONS_MIGRATIONS.md](NOTIFICATIONS_MIGRATIONS.md) for full apply or
 | `102_admin_stats_jobs_active_public.sql` | Admin stats RPC |
 | `103_zambia_skill_aliases_fix.sql` | Skill alias repair |
 | `104_user_notifications_retention.sql` | 90-day prune for digest dedup ledger (`user_notifications`); weekly pg_cron |
+| `105_referral_paid_status.sql` | Referral `paid` / `paid_at` |
+| `106_notifications_train_schema_guard.sql` | Idempotent schema guard (prod drift) |
+| `scripts/notifications_train_ledger_backfill.sql` | Manual `schema_migrations` backfill (SQL Editor only) |
 
 **Retention:** `104` prunes **`user_notifications` only** (dedup ledger). The **`notifications`** inbox (100) is not pruned — target 30d visible / 90d archive is documented for a future product migration.
