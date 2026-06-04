@@ -4239,7 +4239,7 @@ paths:
   /matches/{user_id}:
     get:
       operationId: getMatchesForUser
-      summary: Live hybrid match scores (60/30/10 RPC breakdown)
+      summary: Live hybrid match scores (50/20/15/10/5 RPC breakdown)
       tags: [Matching]
       security: [{ bearerAuth: [] }]
       parameters:

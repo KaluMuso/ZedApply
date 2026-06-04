@@ -10,7 +10,7 @@ Budget: $30/month max. Free tiers everywhere.
 Currency: ZMW (Zambian Kwacha). Phones: +260XXXXXXXXX format.
 Supabase Project ID: chnesgmcuxyhwhzomdov
 
-Matching algorithm: 60% vector similarity + 30% skill overlap + 10% bonus signals
+Matching algorithm: 50% semantic + 20% skills + 15% experience + 10% location + 5% recency (migration 060)
 Pricing: Free (K0/10 matches), Starter (K125/50), Professional (K250/125), Super Standard (K500/unlimited)
 
 Rules:
