@@ -8,7 +8,7 @@ Zed CV helps Zambian job seekers find the perfect roles using advanced AI matchi
 
 ## Features
 
-- **AI Job Matching**: Hybrid scoring based on vector similarity and skill overlap.
+- **AI Job Matching**: Hybrid scoring — 50% semantic, 20% skills, 15% experience, 10% location, 5% recency (migration 060).
 - **WhatsApp Integration**: Receive job alerts and interact with the platform via WhatsApp.
 - **CV & Cover Letter Generation**: Professionally tailored documents using AI.
 - **Mobile Money Support**: Seamless payments via MTN and Airtel (DPO Pay).

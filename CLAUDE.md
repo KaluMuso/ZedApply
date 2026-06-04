@@ -5,7 +5,7 @@
 - **Budget**: $30/mo max. Free tiers everywhere possible.
 - **Currency**: ZMW (Zambian Kwacha). All amounts stored as ngwee (like cents).
 - **Phones**: Always +260XXXXXXXXX format.
-- **Matching**: 60% vector similarity + 30% skill overlap + 10% bonus signals.
+- **Matching**: 50% semantic + 20% skills + 15% experience + 10% location + 5% recency (migration 060).
 
 ## Before You Code
 1. Read `AI_CONTEXT.md` for full architecture details
