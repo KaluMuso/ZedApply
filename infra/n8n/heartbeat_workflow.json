@@ -3,7 +3,13 @@
   "meta": {
     "description": "Pings Supabase RPC heartbeat + FastAPI health every 6h to prevent free-tier pause.",
     "n8nWorkflowId": "qA4Zi46MAWx3gTTL",
-    "requiredEnv": ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "FASTAPI_URL"]
+    "requiredEnv": [
+      "SUPABASE_URL",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "SUPABASE_SERVICE_KEY",
+      "SUPABASE_ZEDCV_SERVICE_KEY",
+      "FASTAPI_URL"
+    ]
   },
   "nodes": [
     {
@@ -22,11 +28,11 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY || $env.SUPABASE_SERVICE_KEY }}"
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY || $env.SUPABASE_SERVICE_KEY || $env.SUPABASE_ZEDCV_SERVICE_KEY }}"
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY || $env.SUPABASE_SERVICE_KEY }}"
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY || $env.SUPABASE_SERVICE_KEY || $env.SUPABASE_ZEDCV_SERVICE_KEY }}"
             },
             { "name": "Content-Type", "value": "application/json" }
           ]
