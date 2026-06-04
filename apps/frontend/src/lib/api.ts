@@ -534,6 +534,10 @@ export const profile = {
       token,
       body: JSON.stringify(data),
     }),
+  /**
+   * @deprecated Use `me.deleteAccount` (DELETE /me with `confirm_phone`).
+   * Legacy DELETE /profile skips phone confirmation and storage purge.
+   */
   remove: (token: string) =>
     apiFetch<{ deleted: boolean; user_id: string }>("/profile", {
       method: "DELETE",
@@ -1236,8 +1240,7 @@ export const adminTiers = {
 };
 
 // ── CV ──
-// Matches docs/openapi.yaml:265 (CVUploadResponse).
-// 200 path returns the parsed-sync fields; 202 path returns the queue fields.
+// @openapi CVUploadResult
 export interface CVUploadResult {
   // Sync path (200 OK) — present when LLM parse succeeds inline:
   cv_id?: string;
@@ -1692,6 +1695,10 @@ export const matches = {
       `/matches/refresh${minScore ? `?min_score=${minScore}` : ""}`,
       { method: "POST", token }
     ),
+  /**
+   * @deprecated Prefer `matches.refresh` (POST /matches/refresh).
+   * Legacy on-demand match queue; OpenAPI marks /matches/trigger as legacy.
+   */
   trigger: (token: string) =>
     apiFetch<{ message: string; estimated_seconds?: number }>("/matches/trigger", {
       method: "POST",
@@ -1831,44 +1838,6 @@ export const subscription = {
       method: "POST",
       token,
     }),
-};
-
-// @openapi InAppNotificationType
-export type InAppNotificationType =
-  | "web_push"
-  | "tier_expiry"
-  | "invoice"
-  | "admin_broadcast";
-
-// @openapi InAppNotification
-export interface InAppNotification {
-  id: string;
-  type: InAppNotificationType;
-  payload: {
-    title?: string;
-    body?: string;
-    url?: string;
-    [key: string]: unknown;
-  };
-  read_at: string | null;
-  created_at: string;
-}
-
-// @openapi InAppNotificationList
-export interface InAppNotificationList {
-  items: InAppNotification[];
-  unread_count: number;
-}
-
-export const inAppNotifications = {
-  list: (token: string, limit = 50) =>
-    apiFetch<InAppNotificationList>(`/notifications?limit=${limit}`, { token }),
-
-  markRead: (token: string, notificationId: string) =>
-    apiFetch<{ notification: InAppNotification }>(
-      `/notifications/${notificationId}/read`,
-      { method: "PATCH", token },
-    ),
 };
 
 // ── Health ──
@@ -2098,6 +2067,7 @@ export const bwanaInterview = {
 };
 
 // ── Data-subject rights (task #63) ──
+// @openapi AccountDeletionResult
 export interface AccountDeletionResult {
   deleted: boolean;
   already_deleted: boolean;
@@ -2345,6 +2315,7 @@ export const contact = {
 };
 
 // ── Public stats (home-page social proof) ──
+// @openapi PublicStats
 export interface PublicStats {
   jobs_active: number;
   avg_skills_matched: number;

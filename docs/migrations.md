@@ -13,7 +13,7 @@ Several features landed with conflicting `043_*` / `046_*` / `047_*` filenames. 
 | `045_ai_cache_classifier_metadata.sql` | `ai_cache.metadata` + classifier index |
 | `046_jobs_deep_scrape_enrichment.sql` | Deep-scrape columns on `jobs` |
 | `047_create_skills_dictionary.sql` | `canonical_skills`, `raw_skill_mappings` |
-| `048_match_jobs_60_30_10_scoring.sql` | `match_jobs_for_user` 60/30/10 RPC |
+| `048_match_jobs_60_30_10_scoring.sql` | `match_jobs_for_user` legacy 60/30/10 (superseded by 060) |
 | `049_user_dashboard_preferences.sql` | User prefs: WhatsApp number, currency, alerts |
 | `050_user_notifications.sql` | Digest dedup tracking |
 | `051_generated_documents_dashboard_index.sql` | Index on `generated_documents` |

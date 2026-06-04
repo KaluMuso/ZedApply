@@ -8,7 +8,7 @@
 
 ## 1. What Is Zed CV?
 
-Zed CV is an AI-powered job matching SaaS for Zambian professionals. Users upload their CV, the system parses it with AI, generates vector embeddings, and matches them against scraped/posted jobs using cosine similarity + skill overlap + location bonuses. Notifications go out via WhatsApp (primary) and email (secondary). Payment is via MTN MoMo / Airtel Money through DPO Pay (Lenco initiation live, webhook handler still missing).
+Zed CV is an AI-powered job matching SaaS for Zambian professionals. Users upload their CV, the system parses it with AI, generates vector embeddings, and matches them against scraped/posted jobs using a weighted hybrid score (50% semantic, 20% skills, 15% experience, 10% location, 5% recency — migration 060). Notifications go out via WhatsApp (primary) and email (secondary). Payment is via MTN MoMo / Airtel Money through DPO Pay (Lenco initiation live, webhook handler still missing).
 
 **Live URLs:**
 - Frontend: https://www.zedapply.com (Vercel, project: prj_Hp6wJwdSO7XVGjy5n1UGJBnrsAmr) - Domain recently changed from zedcv.vergeo.company
@@ -96,7 +96,7 @@ The platform is **deployed but not yet in active use**. Verified via Supabase: *
 - `cv_generations` — tracks CV generation usage per user
 
 **Key RPC functions:**
-- `match_jobs_for_user(user_id, limit, min_score)` — pgvector cosine similarity + skill overlap + bonus scoring
+- `match_jobs_for_user(user_id, limit, min_score)` — weighted hybrid: 50% semantic, 20% skills, 15% experience, 10% location, 5% recency (floor 35)
 - `calculate_job_quality(job_id)` — auto-scores job listing quality (0-100)
 - `deactivate_expired_jobs()` — cron-callable cleanup
 
@@ -203,7 +203,7 @@ The platform is **deployed but not yet in active use**. Verified via Supabase: *
 - [x] Phone + WhatsApp OTP authentication
 - [x] CV upload (PDF, DOCX, JPG, PNG) with AI parsing
 - [x] Vector embedding generation (Gemini text-embedding-004, 768d)
-- [x] AI job matching (pgvector cosine similarity + skill overlap + bonuses) — RPC return-type bug fixed in migration 009 (slice 2D-1f); matching now executes end-to-end
+- [x] AI job matching (50/20/15/10/5 weighted hybrid via migration 060) — RPC return-type bug fixed in migration 009 (slice 2D-1f); matching now executes end-to-end
 - [x] Match scoring with explanations
 - [x] Job browsing with filters (location, search, pagination)
 - [x] 4-tier subscription system (free/starter/professional/super_standard)
@@ -391,7 +391,7 @@ The platform is **deployed but not yet in active use**. Verified via Supabase: *
 - [ ] Multi-language CV support: Bemba, Nyanja, Tonga (at minimum detect and handle gracefully)
 - [ ] Better skill extraction: Industry-specific skill taxonomies (mining, agriculture, banking)
 - [ ] Matching algorithm v2: Incorporate application outcomes as training signal (did matched users actually get hired?)
-- [ ] A/B test matching weights: Is 60/30/10 (vector/skill/bonus) optimal?
+- [ ] A/B test matching weights: Is 50/20/15/10/5 (semantic/skills/experience/location/recency) optimal?
 
 **Phase 4 Revenue Impact:**
 - Mobile app → larger addressable market (most Zambians won't use a desktop site daily)
