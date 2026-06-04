@@ -183,6 +183,43 @@ async def get_credited_match_count(
     return len(fallback.data or [])
 
 
+def _normalize_listing_token(value: str | None) -> str:
+    if not value:
+        return ""
+    return " ".join(str(value).lower().split())
+
+
+def listing_dedupe_key(job: dict[str, Any]) -> str:
+    """Collapse duplicate ingest rows that represent the same real-world listing."""
+    for field in ("apply_url", "source_url"):
+        raw = str(job.get(field) or "").strip()
+        if not raw.lower().startswith("http"):
+            continue
+        url = raw.split("?", 1)[0].rstrip("/").lower()
+        if url:
+            return f"url:{url}"
+    title = _normalize_listing_token(job.get("title"))
+    company = _normalize_listing_token(job.get("company"))
+    if title:
+        return f"tc:{title}|{company}"
+    return f"job:{job.get('id', '')}"
+
+
+def dedupe_match_rows_by_listing(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep the highest-score row per listing when duplicate jobs were ingested."""
+    best_by_key: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        job = row.get("jobs") if isinstance(row.get("jobs"), dict) else {}
+        key = listing_dedupe_key(job)
+        score = float(row.get("score") or 0)
+        prev = best_by_key.get(key)
+        if prev is None or score > float(prev.get("score") or 0):
+            best_by_key[key] = row
+    deduped = list(best_by_key.values())
+    deduped.sort(key=lambda r: float(r.get("score") or 0), reverse=True)
+    return deduped
+
+
 def normalize_rpc_match_row(row: dict[str, Any]) -> dict[str, Any]:
     """Map match_jobs_for_user RPC output to persisted match row shape."""
     semantic = float(row.get("semantic_score") or row.get("vector_score") or 0)
