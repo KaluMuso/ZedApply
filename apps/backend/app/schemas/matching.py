@@ -4,14 +4,45 @@ from typing import Any, Optional
 from app.schemas.jobs import Job
 
 
-# Stored component scores are raw 0–100. v2 weights (50/20/15/10/5) apply at
-# presentation via weighted_*_contribution, not as Field upper bounds.
+# Field validation allows legacy raw 0–100 rows; RPC 060+ returns pre-weighted buckets.
 COMPONENT_SCORE_MAX = 100.0
 SEMANTIC_WEIGHT = 0.50
 SKILLS_WEIGHT = 0.20
 EXPERIENCE_WEIGHT = 0.15
 LOCATION_WEIGHT = 0.10
 RECENCY_WEIGHT = 0.05
+
+# match_jobs_for_user (migration 060) additive caps — sum to 100.
+V2_SEMANTIC_CAP = 50.0
+V2_SKILLS_CAP = 20.0
+V2_EXPERIENCE_CAP = 15.0
+V2_LOCATION_CAP = 10.0
+V2_RECENCY_CAP = 5.0
+V2_BUCKET_CAPS = (
+    V2_SEMANTIC_CAP,
+    V2_SKILLS_CAP,
+    V2_EXPERIENCE_CAP,
+    V2_LOCATION_CAP,
+    V2_RECENCY_CAP,
+)
+
+
+def row_uses_v2_weighted_buckets(
+    *,
+    semantic: float,
+    skills: float,
+    experience: float,
+    location: float,
+    recency: float,
+    total_score: float,
+) -> bool:
+    """True when component scores are RPC 060 pre-weighted buckets, not raw 0–100."""
+    components = (semantic, skills, experience, location, recency)
+    if any(value > cap + 1e-6 for value, cap in zip(components, V2_BUCKET_CAPS)):
+        return False
+    if sum(components) < 1e-6:
+        return False
+    return abs(sum(components) - total_score) <= 5.0
 
 
 class MatchResult(BaseModel):
@@ -22,31 +53,42 @@ class MatchResult(BaseModel):
         0,
         ge=0,
         le=COMPONENT_SCORE_MAX,
-        description="Raw semantic similarity (0–100)",
+        description=(
+            "Semantic points: pre-weighted 0–50 bucket from match_jobs_for_user (060+), "
+            "or raw 0–100 similarity for legacy rows."
+        ),
     )
     skills_score: float = Field(
         0,
         ge=0,
         le=COMPONENT_SCORE_MAX,
-        description="Raw required-skills overlap (0–100)",
+        description="Skills points: 0–20 v2 bucket or raw 0–100 overlap for legacy rows.",
     )
     experience_score: float = Field(
         0,
         ge=0,
         le=COMPONENT_SCORE_MAX,
-        description="Raw experience fit (0–100)",
+        description="Experience points: 0–15 v2 bucket or raw 0–100 for legacy rows.",
     )
     location_score: float = Field(
         0,
         ge=0,
         le=COMPONENT_SCORE_MAX,
-        description="Raw location / remote fit (0–100)",
+        description="Location points: 0–10 v2 bucket or raw 0–100 for legacy rows.",
     )
     recency_score: float = Field(
         0,
         ge=0,
         le=COMPONENT_SCORE_MAX,
-        description="Raw job posting recency (0–100)",
+        description="Recency points: 0–5 v2 bucket or raw 0–100 for legacy rows.",
+    )
+    scores_are_weighted_buckets: bool = Field(
+        default=False,
+        exclude=True,
+        description=(
+            "When True, semantic_score…recency_score are RPC 060 additive buckets; "
+            "weighted_*_contribution mirrors them. When False, legacy raw 0–100 scores."
+        ),
     )
     bonus_score: float = Field(
         0,
@@ -64,30 +106,35 @@ class MatchResult(BaseModel):
     explanation: Optional[str] = None
     created_at: datetime
 
+    def _weighted_contribution(self, component: float, weight: float) -> float:
+        if self.scores_are_weighted_buckets:
+            return round(component, 2)
+        return round(component * weight, 2)
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def weighted_semantic_contribution(self) -> float:
-        return round(self.semantic_score * SEMANTIC_WEIGHT, 2)
+        return self._weighted_contribution(self.semantic_score, SEMANTIC_WEIGHT)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def weighted_skills_contribution(self) -> float:
-        return round(self.skills_score * SKILLS_WEIGHT, 2)
+        return self._weighted_contribution(self.skills_score, SKILLS_WEIGHT)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def weighted_experience_contribution(self) -> float:
-        return round(self.experience_score * EXPERIENCE_WEIGHT, 2)
+        return self._weighted_contribution(self.experience_score, EXPERIENCE_WEIGHT)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def weighted_location_contribution(self) -> float:
-        return round(self.location_score * LOCATION_WEIGHT, 2)
+        return self._weighted_contribution(self.location_score, LOCATION_WEIGHT)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def weighted_recency_contribution(self) -> float:
-        return round(self.recency_score * RECENCY_WEIGHT, 2)
+        return self._weighted_contribution(self.recency_score, RECENCY_WEIGHT)
 
     @model_validator(mode="after")
     def _sync_score_aliases(self) -> "MatchResult":
@@ -126,6 +173,14 @@ class MatchResult(BaseModel):
             location = legacy_bonus
         total = adjusted_score if adjusted_score is not None else float(row.get("score") or 0)
         bonus = adjusted_bonus if adjusted_bonus is not None else location + recency
+        v2_buckets = row_uses_v2_weighted_buckets(
+            semantic=semantic,
+            skills=skills,
+            experience=experience,
+            location=location,
+            recency=recency,
+            total_score=total,
+        )
         return cls(
             id=str(row["id"]),
             job=job,
@@ -142,6 +197,7 @@ class MatchResult(BaseModel):
             missing_skills=list(row.get("missing_skills") or []),
             explanation=explanation or row.get("explanation"),
             created_at=row["created_at"],
+            scores_are_weighted_buckets=v2_buckets,
         )
 
     @classmethod
@@ -184,6 +240,7 @@ class MatchResult(BaseModel):
             missing_skills=list(row.get("missing_skills") or []),
             explanation=explanation or row.get("explanation"),
             created_at=created_at or datetime.now(timezone.utc),
+            scores_are_weighted_buckets=True,
         )
 
 
