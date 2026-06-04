@@ -1764,42 +1764,46 @@ components:
           type: number
           minimum: 0
           maximum: 100
-          description: Raw semantic similarity (0–100). v2 weight 50% via weighted_semantic_contribution.
+          description: >
+            Match component points. For match_jobs_for_user (migration 060+) this is the
+            pre-weighted semantic bucket (0–50). Legacy stored rows may use raw 0–100 similarity.
         skills_score:
           type: number
           minimum: 0
           maximum: 100
-          description: Raw required-skills overlap (0–100). v2 weight 20% via weighted_skills_contribution.
+          description: Skills bucket 0–20 (RPC 060+) or raw overlap 0–100 (legacy).
         experience_score:
           type: number
           minimum: 0
           maximum: 100
-          description: Raw experience fit (0–100). v2 weight 15% via weighted_experience_contribution.
+          description: Experience bucket 0–15 (RPC 060+) or raw fit 0–100 (legacy).
         location_score:
           type: number
           minimum: 0
           maximum: 100
-          description: Raw location or remote/hybrid fit (0–100). v2 weight 10% via weighted_location_contribution.
+          description: Location bucket 0–10 (RPC 060+) or raw fit 0–100 (legacy).
         recency_score:
           type: number
           minimum: 0
           maximum: 100
-          description: Raw posting recency (0–100). v2 weight 5% via weighted_recency_contribution.
+          description: Recency bucket 0–5 (RPC 060+) or raw score 0–100 (legacy).
         weighted_semantic_contribution:
           type: number
-          description: Presentation-only v2 weighted semantic points (semantic_score × 0.5)
+          description: >
+            Presentation alias for semantic contribution. Equals semantic_score for RPC 060
+            buckets; legacy raw rows use semantic_score × 0.5.
         weighted_skills_contribution:
           type: number
-          description: Presentation-only v2 weighted skills points (skills_score × 0.2)
+          description: Equals skills_score for RPC 060 buckets; legacy uses skills_score × 0.2.
         weighted_experience_contribution:
           type: number
-          description: Presentation-only v2 weighted experience points (experience_score × 0.15)
+          description: Equals experience_score for RPC 060 buckets; legacy uses experience_score × 0.15.
         weighted_location_contribution:
           type: number
-          description: Presentation-only v2 weighted location points (location_score × 0.1)
+          description: Equals location_score for RPC 060 buckets; legacy uses location_score × 0.1.
         weighted_recency_contribution:
           type: number
-          description: Presentation-only v2 weighted recency points (recency_score × 0.05)
+          description: Equals recency_score for RPC 060 buckets; legacy uses recency_score × 0.05.
         vector_score:
           type: number
           minimum: 0
