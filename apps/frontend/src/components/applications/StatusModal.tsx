@@ -12,10 +12,10 @@ import {
   Sheet,
   SheetContent,
   SheetDescription,
+  SheetHandle,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { SheetHandle } from "@/components/ui/SheetHandle";
 import { Button } from "@/components/ui/button";
 import type { ApplicationStatus, SavedJobApplication } from "@/lib/api";
 import {

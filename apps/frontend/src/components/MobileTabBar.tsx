@@ -9,6 +9,7 @@ import { profile as profileApi, subscription as subscriptionApi } from "@/lib/ap
 import {
   Sheet,
   SheetContent,
+  SheetHandle,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
@@ -16,6 +17,7 @@ import { settingsPath } from "@/app/settings/settings-nav";
 import { useTheme } from "@/components/ThemeProvider";
 import { formatTierNavSubtitle } from "@/lib/tier-display";
 import { showMobileAppShell } from "@/lib/mobile-nav";
+import { hapticTap } from "@/lib/haptics";
 
 const MAIN_TABS = [
   { id: "jobs", label: "Jobs", shortLabel: "Jobs", icon: "briefcase", href: "/jobs" },
