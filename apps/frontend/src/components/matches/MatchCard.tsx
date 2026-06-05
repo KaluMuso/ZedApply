@@ -23,6 +23,7 @@ import { SaveJobButton } from "@/components/SaveJobButton";
 import { JobShareButtons } from "@/components/share/JobShareButtons";
 import { MatchPremiumActions } from "@/components/matches/MatchPremiumActions";
 import { btnClass } from "@/lib/cn-ui";
+import { stashMatchHandoff } from "@/lib/matchHandoff";
 import { cn } from "@/lib/utils";
 
 export interface MatchCardProps {
@@ -114,6 +115,7 @@ export function MatchCard({
           </div>
           <Link
             href={`/jobs/${match.job.id}`}
+            onClick={() => stashMatchHandoff(match)}
             className={cn(
               "font-display text-xl sm:text-2xl md:text-3xl block hover:underline break-words",
               recentlyClosed && "line-through opacity-80",

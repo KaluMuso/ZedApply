@@ -17,6 +17,7 @@ import {
   type KanbanColumnId,
 } from "@/lib/application-status";
 import { KanbanColumn } from "@/components/applications/KanbanColumn";
+import { MobileKanbanMoveBar } from "@/components/applications/MobileKanbanMoveBar";
 import { StatusModal } from "@/components/applications/StatusModal";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { DashboardSkeleton } from "@/components/shared/skeletons/PageSkeletons";
@@ -239,7 +240,8 @@ export function ApplicationsPageClient() {
           Your job applications
         </h1>
         <p className="max-w-2xl text-sm" style={{ color: "var(--muted)" }}>
-          Drag saved jobs across stages, add interview dates, and keep notes. Upcoming interviews
+          Drag saved jobs across stages, add interview dates, and keep notes. On mobile, drag a card
+          then pick a stage from the move bar, or tap a card to update status. Upcoming interviews
           appear in your daily digest.
         </p>
         <Link href="/jobs" className="text-sm font-medium hover:underline" style={{ color: "var(--green-700)" }}>
@@ -256,6 +258,20 @@ export function ApplicationsPageClient() {
         />
       ) : isMobile ? (
         <div className="space-y-3">
+          {draggingJobId ? (
+            <MobileKanbanMoveBar
+              columns={KANBAN_COLUMNS}
+              onSelect={(columnId) => {
+                void handleDrop(columnId, draggingJobId);
+                setDraggingJobId(null);
+                setDropHighlight(null);
+              }}
+              onCancel={() => {
+                setDraggingJobId(null);
+                setDropHighlight(null);
+              }}
+            />
+          ) : null}
           {KANBAN_COLUMNS.map((column) => (
             <KanbanColumn
               key={column.id}

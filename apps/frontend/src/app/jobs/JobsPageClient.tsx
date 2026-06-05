@@ -161,6 +161,7 @@ export default function JobsPageClient() {
   const [employmentType, setEmploymentType] = useState<"" | EmploymentType>("");
   const [workArrangement, setWorkArrangement] = useState<"" | WorkArrangement>("");
   const [showClosed, setShowClosed] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -467,10 +468,37 @@ export default function JobsPageClient() {
         </div>
       </div>
 
-      {/* Filter bar */}
+      <div className="lg:hidden mb-3">
+        <button
+          type="button"
+          className="flex w-full min-h-11 items-center gap-2 rounded-lg border px-3 text-sm font-medium"
+          style={{ borderColor: "var(--line)", background: "var(--surface)", color: "var(--ink)" }}
+          onClick={() => setMobileSearchOpen((open) => !open)}
+          aria-expanded={mobileSearchOpen}
+        >
+          <Icon name="search" size={16} className="shrink-0 opacity-70" />
+          <span className="flex-1 text-left">
+            {mobileSearchOpen
+              ? "Hide search & filters"
+              : activeFilterCount > 0
+                ? `Search & filters · ${activeFilterCount} active`
+                : "Search & filters"}
+          </span>
+          <Icon
+            name="chevronDown"
+            size={16}
+            className={cn("shrink-0 transition-transform", mobileSearchOpen && "rotate-180")}
+            aria-hidden
+          />
+        </button>
+      </div>
+
       {/* Filter bar — search is debounced (300ms); no submit button. */}
       <div
-        className="sticky top-[65px] z-30 -mx-5 sm:-mx-6 px-5 sm:px-6 py-4 mb-6 flex flex-col md:flex-row gap-3 items-stretch md:items-center border-b border-border"
+        className={cn(
+          "sticky top-12 md:top-[65px] z-30 -mx-5 sm:-mx-6 px-5 sm:px-6 py-4 mb-6 flex-col md:flex-row gap-3 items-stretch md:items-center border-b border-border",
+          mobileSearchOpen ? "flex" : "hidden lg:flex",
+        )}
         style={{
           background: "color-mix(in srgb, var(--bg) 92%, transparent)",
           backdropFilter: "blur(12px)",
@@ -645,7 +673,10 @@ export default function JobsPageClient() {
           A horizontal scroll on mobile keeps the row inline rather
           than wrapping into a wall of chips on narrow viewports. */}
       <div
-        className="mb-6 flex gap-1.5 overflow-x-auto scroll-thin pb-1 overscroll-x-contain snap-x snap-mandatory"
+        className={cn(
+          "mb-6 gap-1.5 overflow-x-auto scroll-thin pb-1 overscroll-x-contain snap-x snap-mandatory",
+          mobileSearchOpen ? "flex" : "hidden lg:flex",
+        )}
         style={{ scrollbarWidth: "thin" }}
         role="group"
         aria-label="Filter by skill"

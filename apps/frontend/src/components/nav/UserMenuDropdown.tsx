@@ -137,12 +137,7 @@ export function UserMenuDropdown({
       </div>
 
       <MenuSection title="Engagement" items={engagementLinks} onClose={onClose} />
-      <MenuSection
-        title="Notifications"
-        items={notifications}
-        onClose={onClose}
-        footnote="Web push is a browser permission, not an in-app notification feed."
-      />
+      <MenuSection title="Notifications" items={notifications} onClose={onClose} />
       <MenuSection title="Career data" items={careerData} onClose={onClose} />
       <MenuSection title="Account" items={account} onClose={onClose} />
 

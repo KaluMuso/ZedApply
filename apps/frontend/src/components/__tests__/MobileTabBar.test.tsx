@@ -5,6 +5,7 @@ import { MobileTabBar } from "../MobileTabBar";
 
 const mockPush = vi.fn();
 const mockLogout = vi.fn();
+const mockToggle = vi.fn();
 
 vi.mock("next/navigation", () => ({
   usePathname: vi.fn(() => "/jobs"),
@@ -31,13 +32,35 @@ vi.mock("@/lib/auth", () => ({
   useAuth: () => ({
     isAuthenticated: true,
     logout: mockLogout,
+    token: "tok",
   }),
+}));
+
+vi.mock("@/components/ThemeProvider", () => ({
+  useTheme: () => ({ dark: true, toggle: mockToggle }),
+}));
+
+vi.mock("@/lib/api", () => ({
+  profile: {
+    get: vi.fn().mockResolvedValue({
+      full_name: "Jane Banda",
+      subscription_tier: "professional",
+      role: "user",
+    }),
+  },
+  subscription: {
+    get: vi.fn().mockResolvedValue({
+      matches_used: 5,
+      matches_limit: 125,
+    }),
+  },
 }));
 
 describe("MobileTabBar", () => {
   beforeEach(() => {
     mockPush.mockClear();
     mockLogout.mockClear();
+    mockToggle.mockClear();
   });
 
   it("renders five bottom tabs on authenticated job pages", () => {
@@ -48,9 +71,10 @@ describe("MobileTabBar", () => {
     expect(screen.getByRole("button", { name: "Applications", hidden: true })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Profile", hidden: true })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "More", hidden: true })).toBeInTheDocument();
+    expect(screen.getByText("Apps")).toBeInTheDocument();
   });
 
-  it("opens More sheet with dashboard, settings, pricing, interview prep, and sign out", async () => {
+  it("opens More sheet with essentials, theme toggle, and sign out", async () => {
     const user = userEvent.setup();
     render(<MobileTabBar />);
     await user.click(screen.getByRole("button", { name: "More", hidden: true }));
@@ -69,10 +93,8 @@ describe("MobileTabBar", () => {
       "href",
       "/pricing",
     );
-    expect(screen.getByRole("link", { name: /interview prep/i })).toHaveAttribute(
-      "href",
-      "/interview-prep",
-    );
+    expect(screen.queryByRole("link", { name: /interview prep/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /light mode/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /sign out/i })).toBeInTheDocument();
   });
 });

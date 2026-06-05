@@ -103,7 +103,11 @@ export function KanbanColumn({
         <button
           type="button"
           id={`kanban-heading-${id}`}
-          className="flex min-h-11 w-full items-center justify-between px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 rounded-xl"
+          data-kanban-column={id}
+          className={cn(
+            "flex min-h-11 w-full items-center justify-between px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 rounded-xl transition-colors",
+            highlighted && !expanded && "ring-2 ring-accent",
+          )}
           onClick={onToggle}
           aria-expanded={expanded}
           aria-controls={`kanban-panel-${id}`}

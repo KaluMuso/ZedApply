@@ -12,8 +12,10 @@ vi.mock("next/link", () => ({
   }) => <a href={href}>{children}</a>,
 }));
 
+let mockPathname = "/";
+
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/jobs",
+  usePathname: () => mockPathname,
 }));
 
 vi.mock("@/components/ThemeProvider", () => ({
@@ -62,6 +64,7 @@ function desktopPrimaryNav() {
 describe("Navbar primary navigation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPathname = "/";
   });
 
   it("shows five task-focused links when signed in", () => {
@@ -87,7 +90,25 @@ describe("Navbar primary navigation", () => {
     ]);
   });
 
+  it("shows centered logo only on mobile app shell routes", () => {
+    mockPathname = "/jobs";
+    mockedUseAuth.mockReturnValue({
+      isAuthenticated: true,
+      token: "tok",
+      logout: vi.fn(),
+      isLoading: false,
+      user: { id: "1", phone: "+260971234567" },
+      login: vi.fn(),
+    });
+
+    render(<Navbar />);
+    expect(screen.getByTestId("logo")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Toggle menu")).not.toBeInTheDocument();
+    expect(document.querySelector(".hidden.md\\:flex.items-center.gap-8")).toBeNull();
+  });
+
   it("shows five links when signed out", () => {
+    mockPathname = "/jobs";
     mockedUseAuth.mockReturnValue({
       isAuthenticated: false,
       token: null,
