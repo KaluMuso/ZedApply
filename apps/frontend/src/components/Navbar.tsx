@@ -50,14 +50,30 @@ export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const { isAuthenticated, logout, token } = useAuth();
   const [navProfile, setNavProfile] = useState<NavProfile | null>(null);
   const [subscriptionTier, setSubscriptionTier] = useState<string | null>(null);
   const { dark, toggle } = useTheme();
   const pathname = usePathname();
-  const mobileAppShell = showMobileAppShell(pathname, isAuthenticated);
+  
+  // Only show mobile app shell on actual mobile devices, not desktop
+  const mobileAppShell = isMobile && showMobileAppShell(pathname, isAuthenticated);
 
   const showInterviewPrep = isAuthenticated;
+
+  useEffect(() => {
+    // Check if we're on mobile on initial load
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    checkMobile();
+    
+    // Listen for resize changes
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 10);
