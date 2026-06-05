@@ -62,17 +62,39 @@ function SkillsOverlapBar({ matched, total }: { matched: number; total: number }
   );
 }
 
+function MatchPanelLoading() {
+  return (
+    <div
+      className="rounded-2xl border p-6 animate-pulse"
+      style={{ borderColor: "var(--line)", background: "var(--bg-2)" }}
+      aria-busy="true"
+      aria-label="Loading match score"
+    >
+      <div className="h-3 w-32 rounded bg-muted mb-6" />
+      <div className="mx-auto h-32 w-32 rounded-full bg-muted mb-4" />
+      <div className="h-3 w-48 mx-auto rounded bg-muted mb-2" />
+      <div className="h-3 w-40 mx-auto rounded bg-muted" />
+    </div>
+  );
+}
+
 export function JobDetailMatchPanel({
   match,
+  matchLoading = false,
   signedIn,
   viewerName,
   subscriptionTier,
 }: {
   match: MatchData | null | undefined;
+  matchLoading?: boolean;
   signedIn: boolean;
   viewerName?: string | null;
   subscriptionTier?: string | null;
 }) {
+  if (matchLoading) {
+    return <MatchPanelLoading />;
+  }
+
   if (!match) {
     return <MatchPanelPlaceholder signedIn={signedIn} />;
   }

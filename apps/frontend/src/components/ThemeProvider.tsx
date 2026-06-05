@@ -14,35 +14,42 @@ interface ThemeState {
   toggle: () => void;
 }
 
-const ThemeContext = createContext<ThemeState>({ dark: false, toggle: () => {} });
+const ThemeContext = createContext<ThemeState>({ dark: true, toggle: () => {} });
+
+function applyThemeClass(dark: boolean) {
+  if (dark) {
+    document.documentElement.classList.add("dark");
+  } else {
+    document.documentElement.classList.remove("dark");
+  }
+}
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [dark, setDark] = useState(false);
+  const [dark, setDark] = useState(true);
 
   useEffect(() => {
     const stored = localStorage.getItem("zed_cv_theme");
     if (stored === "dark") {
       setDark(true);
-      document.documentElement.classList.add("dark");
-    } else if (stored === "light") {
-      setDark(false);
-      document.documentElement.classList.remove("dark");
-    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      setDark(true);
-      document.documentElement.classList.add("dark");
+      applyThemeClass(true);
+      return;
     }
+    if (stored === "light") {
+      setDark(false);
+      applyThemeClass(false);
+      return;
+    }
+    // First visit: default to dark mode.
+    setDark(true);
+    applyThemeClass(true);
+    localStorage.setItem("zed_cv_theme", "dark");
   }, []);
 
   const toggle = useCallback(() => {
     setDark((prev) => {
       const next = !prev;
-      if (next) {
-        document.documentElement.classList.add("dark");
-        localStorage.setItem("zed_cv_theme", "dark");
-      } else {
-        document.documentElement.classList.remove("dark");
-        localStorage.setItem("zed_cv_theme", "light");
-      }
+      applyThemeClass(next);
+      localStorage.setItem("zed_cv_theme", next ? "dark" : "light");
       return next;
     });
   }, []);

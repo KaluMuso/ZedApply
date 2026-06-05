@@ -55,10 +55,15 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${crimsonPro.variable} ${jetbrainsMono.variable}`}
+      className={`dark ${inter.variable} ${crimsonPro.variable} ${jetbrainsMono.variable}`}
       suppressHydrationWarning
     >
       <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('zed_cv_theme');if(t==='light'){document.documentElement.classList.remove('dark');}else{document.documentElement.classList.add('dark');}}catch(e){document.documentElement.classList.add('dark');}})();`,
+          }}
+        />
         <link rel="preconnect" href="https://api.zedapply.com" crossOrigin="anonymous" />
         <link
           rel="preconnect"

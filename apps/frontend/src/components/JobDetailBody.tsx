@@ -44,6 +44,7 @@ interface JobDetailBodyProps {
   onSavedChange?: (nextSaved: boolean) => void;
   /** Personalised match for this job (signed-in users with CV). */
   match?: MatchData | null;
+  matchLoading?: boolean;
   /** Top matches used for the "Similar matches" grid at page bottom. */
   similarMatches?: MatchData[];
   viewerName?: string | null;
@@ -89,6 +90,7 @@ export function JobDetailBody({
   jobSaved = false,
   onSavedChange,
   match,
+  matchLoading = false,
   similarMatches = [],
   viewerName,
   subscriptionTier,
@@ -230,6 +232,7 @@ export function JobDetailBody({
         <aside className="order-1 lg:order-2 lg:sticky lg:top-6 lg:self-start">
           <JobDetailMatchPanel
             match={match}
+            matchLoading={matchLoading}
             signedIn={Boolean(authToken)}
             viewerName={viewerName}
             subscriptionTier={subscriptionTier}

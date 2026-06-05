@@ -13,6 +13,7 @@ import { UserMenuDropdown, UserMenuTrigger } from "@/components/nav/UserMenuDrop
 import { formatTierNavSubtitle } from "@/lib/tier-display";
 import { AUTH_GET_STARTED } from "@/lib/auth-paths";
 import { InterviewPrepNav } from "@/components/nav/InterviewPrepNav";
+import { showMobileAppShell } from "@/lib/mobile-nav";
 import { settingsPath } from "@/app/settings/settings-nav";
 import { cn } from "@/lib/utils";
 
@@ -54,6 +55,7 @@ export function Navbar() {
   const [subscriptionTier, setSubscriptionTier] = useState<string | null>(null);
   const { dark, toggle } = useTheme();
   const pathname = usePathname();
+  const mobileAppShell = showMobileAppShell(pathname, isAuthenticated);
 
   const showInterviewPrep = isAuthenticated;
 
@@ -114,15 +116,41 @@ export function Navbar() {
   const linkActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
 
+  const navSurface = scrolled
+    ? "color-mix(in srgb, var(--surface) 85%, transparent)"
+    : "var(--surface)";
+
+  if (mobileAppShell) {
+    return (
+      <>
+        <div className="chevron-strip hidden md:block" />
+        <nav
+          className="sticky top-0 z-50 md:hidden transition-all duration-200"
+          style={{
+            background: navSurface,
+            backdropFilter: scrolled ? "blur(16px) saturate(180%)" : "none",
+            borderBottom: "1px solid var(--line)",
+          }}
+          aria-label="Site header"
+        >
+          <div className="mx-auto flex h-12 max-w-[1280px] items-center justify-center px-4">
+            <Link href="/matches" className="shrink-0" aria-label="ZedApply home">
+              <Logo size={26} />
+            </Link>
+          </div>
+        </nav>
+        <div className="chevron-strip md:hidden" />
+      </>
+    );
+  }
+
   return (
     <>
       <div className="chevron-strip" />
       <nav
         className="sticky top-0 z-50 transition-all duration-200"
         style={{
-          background: scrolled
-            ? "color-mix(in srgb, var(--surface) 85%, transparent)"
-            : "var(--surface)",
+          background: navSurface,
           backdropFilter: scrolled ? "blur(16px) saturate(180%)" : "none",
           borderBottom: "1px solid var(--line)",
         }}
@@ -266,9 +294,6 @@ export function Navbar() {
                       >
                         Notifications
                       </div>
-                      <p className="text-[11px] mb-2" style={{ color: "var(--muted)" }}>
-                        Web push is a browser permission, not an in-app notification feed.
-                      </p>
                       <div className="flex flex-col gap-1">
                         <Link
                           href="/matches"

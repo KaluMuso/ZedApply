@@ -41,6 +41,7 @@ import { ApplyModal } from "@/components/jobs/ApplyModal";
 import { PushPermissionPrompt } from "@/components/notifications/PushPermissionPrompt";
 import { btnClass, surfaceCardClass, tagClass } from "@/lib/cn-ui";
 import { cn } from "@/lib/utils";
+import { MATCHES_FETCH_LIMIT } from "@/lib/matchConstants";
 
 // Human-friendly tier label. Free → "Free", super_standard → "Super",
 // etc. Falls back to the raw key if we don't recognize it so we don't
@@ -58,9 +59,6 @@ function formatLastBatchRun(iso: string | null | undefined): string | null {
   const days = Math.floor(hours / 24);
   return days === 1 ? "1 day ago" : `${days} days ago`;
 }
-
-/** API default is 10; load enough rows to sort/filter the full delivered set. */
-const MATCHES_PAGE_FETCH_LIMIT = 50;
 
 const TIER_LABELS: Record<string, string> = {
   free: "Free",
@@ -100,7 +98,7 @@ export default function MatchesPageClient() {
   const loadMatches = useCallback(async (authToken: string, includeClosed = false) => {
     const [matchesRes, subRes, prefsRes, autoPrefsRes] = await Promise.allSettled([
       matchesApi.get(authToken, {
-        limit: MATCHES_PAGE_FETCH_LIMIT,
+        limit: MATCHES_FETCH_LIMIT,
         includeArchived: includeClosed,
       }),
       subscriptionApi.get(authToken),
