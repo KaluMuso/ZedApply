@@ -47,21 +47,22 @@ from app.services.batch_matching import (
 )
 from app.schemas.jobs import Job
 from app.services.matching import (
-    run_matching_for_user,
-    store_matches,
+    apply_preferences_to_match,
+    backfill_match_credits,
     check_match_quota,
     credit_matches_for_cycle,
+    dedupe_match_rows_by_listing,
+    fetch_delivered_match_rows,
+    fetch_jobs_by_ids,
     get_credited_match_count,
     get_user_tier_limit,
-    fetch_jobs_by_ids,
-    backfill_match_credits,
-    fetch_delivered_match_rows,
+    run_matching_for_user,
+    store_matches,
 )
 from app.services.match_quota import (
     assert_match_delivery_quota,
     build_match_quota_snapshot,
 )
-from app.services.matching import apply_preferences_to_match
 from app.services.email import send_match_digest_email
 from app.services.notification_channels import wants_email_digest, wants_whatsapp_digest
 from app.services.quiet_hours import user_in_quiet_hours
@@ -157,6 +158,7 @@ def _rows_to_match_results(
     rows: list[dict],
     preferences: dict | None,
 ) -> list[MatchResult]:
+    rows = dedupe_match_rows_by_listing(rows)
     matches: list[MatchResult] = []
     for raw in rows:
         m = dict(raw)
