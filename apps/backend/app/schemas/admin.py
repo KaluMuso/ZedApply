@@ -131,6 +131,8 @@ class AdminJobRow(BaseModel):
     company: Optional[str] = None
     location: Optional[str] = None
     source: str
+    source_url: Optional[str] = None
+    apply_url: Optional[str] = None
     quality_score: int = 0
     is_active: bool = True
     closing_date: Optional[str] = None

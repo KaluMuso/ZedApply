@@ -930,7 +930,7 @@ async def list_jobs(
     supabase=Depends(get_supabase),
 ):
     query = supabase.table("jobs").select(
-        "id, title, company, location, source, quality_score, is_active, closing_date, posted_at",
+        "id, title, company, location, source, source_url, apply_url, quality_score, is_active, closing_date, posted_at",
         count="exact",
     ).order("posted_at", desc=True)
     if is_active is not None:
@@ -955,6 +955,8 @@ async def list_jobs(
             company=j.get("company"),
             location=j.get("location"),
             source=j["source"],
+            source_url=j.get("source_url"),
+            apply_url=j.get("apply_url"),
             quality_score=j.get("quality_score") or 0,
             is_active=j.get("is_active", True),
             closing_date=j.get("closing_date"),
@@ -1217,25 +1219,20 @@ async def dismiss_review_job(
 
 
 @router.post("/jobs/bulk-deactivate", response_model=BulkDeactivateResponse)
-async def bulk_deactivate(body: BulkDeactivateRequest, supabase=Depends(get_supabase)):
+async def bulk_deactivate(
+    body: BulkDeactivateRequest,
+    current_user: dict = Depends(require_admin),
+    supabase=Depends(get_supabase),
+):
     """Deactivate jobs by ID, or expired active jobs if expired_only=true.
 
     Expired means closing_date is set and strictly before today (same rules as
     the `deactivate_expired_jobs()` RPC used by pg_cron and n8n).
     """
     if body.expired_only:
-        from datetime import date
-
-        today = date.today().isoformat()
-        res = (
-            supabase.table("jobs")
-            .update({"is_active": False})
-            .eq("is_active", True)
-            .not_.is_("closing_date", "null")
-            .lt("closing_date", today)
-            .execute()
-        )
-        return BulkDeactivateResponse(deactivated=len(res.data or []))
+        res = supabase.rpc("deactivate_expired_jobs").execute()
+        count = res.data if isinstance(res.data, int) else 0
+        return BulkDeactivateResponse(deactivated=count)
 
     if not body.job_ids:
         raise HTTPException(status_code=422, detail="Provide job_ids or set expired_only=true")
@@ -1716,50 +1713,37 @@ async def update_admin_job(
     return Job(**job)
 
 
-@router.delete("/jobs/{job_id}", response_model=Job)
-async def deactivate_admin_job(
+@router.delete("/jobs/{job_id}")
+async def delete_admin_job(
     job_id: str,
     current_user: dict = Depends(require_admin),
     supabase=Depends(get_supabase),
 ):
-    """Soft-delete a job (is_active = false).
+    """Hard-delete a job row from the database.
 
-    Hard-delete is intentionally NOT supported here — matches, analytics,
-    and audit history all reference the row. Returns the row in its
-    deactivated state so the caller can refresh the UI without a
-    follow-up GET.
+    All dependent tables (job_skills, job_fingerprints, saved_jobs, matches,
+    notifications, etc.) are defined with ON DELETE CASCADE or ON DELETE SET NULL
+    so the database handles cleanup automatically.
+
+    An analytics event is emitted before deletion so the audit trail is
+    preserved in analytics_events even after the jobs row is gone.
     """
     existing_res = (
-        supabase.table("jobs").select("*").eq("id", job_id).limit(1).execute()
+        supabase.table("jobs").select("id").eq("id", job_id).limit(1).execute()
     )
     if not existing_res.data:
         raise HTTPException(status_code=404, detail="Job not found")
-    if existing_res.data[0].get("is_active") is False:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Job is already inactive",
-        )
-
-    update_payload = {
-        "is_active": False,
-        "updated_by_user_id": current_user["id"],
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }
-    result = (
-        supabase.table("jobs").update(update_payload).eq("id", job_id).execute()
-    )
-    if not result.data:
-        raise HTTPException(status_code=500, detail="Failed to deactivate job")
-    job = result.data[0]
 
     _emit_analytics_event(
         supabase,
-        "admin_job_deactivated",
+        "admin_job_deleted",
         {"job_id": job_id, "admin_user_id": current_user["id"]},
         current_user["id"],
     )
 
-    return Job(**job)
+    supabase.table("jobs").delete().eq("id", job_id).execute()
+
+    return {"deleted": True, "id": job_id}
 
 
 @router.get("/matches", response_model=AdminMatchList)

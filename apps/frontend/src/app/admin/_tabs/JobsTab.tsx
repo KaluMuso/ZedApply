@@ -106,7 +106,7 @@ export function JobsTab({ token }: { token: string }) {
 
   const onDelete = async (job: AdminJobRow) => {
     const confirmed = window.confirm(
-      `Delete "${job.title}"? This hides the job from public feeds (soft delete).`,
+      `Delete "${job.title}"? This permanently deletes the job from the database.`,
     );
     if (!confirmed) return;
     setBusyId(job.id);
@@ -180,11 +180,12 @@ export function JobsTab({ token }: { token: string }) {
             </Button>
             <AdminExportButton
               filename={`zedapply-jobs-p${page}-${filter}.csv`}
-              headers={["title", "company", "source", "quality", "active", "closes"]}
+              headers={["title", "company", "source_url", "apply_url", "quality", "active", "closes"]}
               rows={sorted.map((j) => [
                 j.title,
                 j.company ?? "",
-                j.source,
+                j.source_url ?? "",
+                j.apply_url ?? "",
                 String(j.quality_score ?? ""),
                 j.is_active ? "yes" : "no",
                 formatDate(j.closing_date),
@@ -200,28 +201,33 @@ export function JobsTab({ token }: { token: string }) {
                   <AdminSortableTableHead
                     label="Title"
                     sortProps={sortProps("title")}
-                    className="w-[28%]"
+                    className="w-[22%]"
                   />
                   <AdminSortableTableHead
                     label="Company"
                     sortProps={sortProps("company")}
-                    className="w-[18%]"
+                    className="w-[14%]"
                   />
                   <AdminSortableTableHead
-                    label="Source"
-                    sortProps={sortProps("source")}
-                    className="w-[12%]"
+                    label="Source URL"
+                    sortProps={sortProps("source_url")}
+                    className="w-[15%]"
+                  />
+                  <AdminSortableTableHead
+                    label="Apply URL"
+                    sortProps={sortProps("apply_url")}
+                    className="w-[15%]"
                   />
                   <TableHead className="w-[8%]">Quality</TableHead>
                   <AdminSortableTableHead
                     label="Active"
                     sortProps={sortProps("is_active")}
-                    className="w-[10%]"
+                    className="w-[8%]"
                   />
                   <AdminSortableTableHead
                     label="Closes"
                     sortProps={sortProps("closing_date")}
-                    className="w-[12%]"
+                    className="w-[10%]"
                   />
                   <TableHead className="w-[12%] text-right">Actions</TableHead>
                 </TableRow>
@@ -230,12 +236,12 @@ export function JobsTab({ token }: { token: string }) {
                 {loading && (
                   <SkeletonTableRows
                     rows={5}
-                    widths={["w-full", "w-full", "w-full", "w-8", "w-16", "w-20", "w-24"]}
+                    widths={["w-full", "w-full", "w-full", "w-full", "w-8", "w-16", "w-20", "w-24"]}
                   />
                 )}
                 {!loading && sorted.length === 0 && (
                   <AdminTableEmptyRow
-                    colSpan={7}
+                    colSpan={8}
                     title={searchQuery ? "No jobs match your search" : "No jobs match this filter"}
                     description={
                       searchQuery
@@ -253,8 +259,33 @@ export function JobsTab({ token }: { token: string }) {
                       <TableCell className="truncate max-w-0" title={j.company ?? undefined}>
                         {j.company || <span className="text-muted-foreground">—</span>}
                       </TableCell>
-                      <TableCell className="truncate max-w-0 text-xs" title={j.source}>
-                        {j.source}
+                      <TableCell className="truncate max-w-0 text-xs" title={j.source_url ?? undefined}>
+                        {j.source_url ? (
+                          <a
+                            href={j.source_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline"
+                          >
+                            {j.source_url}
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="truncate max-w-0 text-xs" title={j.apply_url ?? undefined}>
+                        {j.apply_url ? (
+                          <a
+                            href={j.apply_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline"
+                          >
+                            {j.apply_url}
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="tabular-nums">{j.quality_score}</TableCell>
                       <TableCell>

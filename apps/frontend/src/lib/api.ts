@@ -678,6 +678,8 @@ export interface AdminJobRow {
   company: string | null;
   location: string | null;
   source: string;
+  source_url?: string | null;
+  apply_url?: string | null;
   quality_score: number;
   is_active: boolean;
   closing_date: string | null;

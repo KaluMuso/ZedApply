@@ -784,6 +784,8 @@ components:
         company: { type: string }
         location: { type: string }
         source: { type: string, enum: [manual, scraper, ocr, partner] }
+        source_url: { type: string, nullable: true }
+        apply_url: { type: string, nullable: true }
         quality_score: { type: integer }
         is_active: { type: boolean }
         closing_date: { type: string, format: date }

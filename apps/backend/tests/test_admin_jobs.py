@@ -243,13 +243,24 @@ class _Query:
 
 
 class _Rpc:
-    """Trgm and vector RPCs always return empty so the resolver falls
-    through to Pass 4 only when Pass 1 missed."""
+    """Fake RPC that handles known functions; falls back to returning empty."""
 
-    def __init__(self):
-        pass
+    def __init__(self, parent: "JobsFakeSupabase", fn_name: str):
+        self._parent = parent
+        self._fn_name = fn_name
 
     def execute(self):
+        if self._fn_name == "deactivate_expired_jobs":
+            from datetime import date
+            today = date.today().isoformat()
+            jobs = self._parent.tables.get("jobs", [])
+            count = 0
+            for row in jobs:
+                closing = row.get("closing_date")
+                if closing and closing < today and row.get("is_active") is True:
+                    row["is_active"] = False
+                    count += 1
+            return _Result(data=count)
         return _Result(data=[])
 
 
@@ -271,8 +282,8 @@ class JobsFakeSupabase:
     def table(self, name: str) -> _Query:
         return _Query(self, name)
 
-    def rpc(self, *a, **kw) -> _Rpc:
-        return _Rpc()
+    def rpc(self, fn_name: str, *a, **kw) -> _Rpc:
+        return _Rpc(self, fn_name)
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────
@@ -778,28 +789,25 @@ class TestPatch:
 
 
 class TestDelete:
-    def test_soft_deletes(self, admin_client, auth_headers, jobs_fake):
+    def test_hard_deletes_row(self, admin_client, auth_headers, jobs_fake):
         job_id = _seed_job(jobs_fake)
+        assert len(jobs_fake.tables["jobs"]) == 1
+
         r = admin_client.delete(
             f"/api/v1/admin/jobs/{job_id}", headers=auth_headers
         )
         assert r.status_code == 200, r.text
+        body = r.json()
+        assert body == {"deleted": True, "id": job_id}
 
-        # Row still exists; is_active flipped.
-        row = jobs_fake.tables["jobs"][0]
-        assert row["is_active"] is False
-        assert row["updated_by_user_id"] == "test-user-id"
-        # Response carries deactivated row.
-        assert r.json()["is_active"] is False
+        # Row has been physically removed from the table.
+        assert jobs_fake.tables["jobs"] == []
 
-    def test_idempotent_returns_409_on_already_inactive(
-        self, admin_client, auth_headers, jobs_fake
-    ):
-        job_id = _seed_job(jobs_fake, is_active=False)
+    def test_missing_job_returns_404(self, admin_client, auth_headers, jobs_fake):
         r = admin_client.delete(
-            f"/api/v1/admin/jobs/{job_id}", headers=auth_headers
+            "/api/v1/admin/jobs/does-not-exist", headers=auth_headers
         )
-        assert r.status_code == 409
+        assert r.status_code == 404
 
     def test_emits_analytics_event(
         self, admin_client, auth_headers, jobs_fake
@@ -810,10 +818,10 @@ class TestDelete:
         )
         assert r.status_code == 200, r.text
         events = jobs_fake.tables["analytics_events"]
-        deact = [e for e in events if e["event"] == "admin_job_deactivated"]
-        assert len(deact) == 1
-        assert deact[0]["properties"]["job_id"] == job_id
-        assert deact[0]["properties"]["admin_user_id"] == "test-user-id"
+        deleted_events = [e for e in events if e["event"] == "admin_job_deleted"]
+        assert len(deleted_events) == 1
+        assert deleted_events[0]["properties"]["job_id"] == job_id
+        assert deleted_events[0]["properties"]["admin_user_id"] == "test-user-id"
 
 
 # ── bulk-deactivate (expired_only) ───────────────────────────────────
