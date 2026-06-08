@@ -632,7 +632,7 @@ async def backfill_jobs_html_strip(
 @router.post("/jobs/bulk-deactivate-expired")
 async def bulk_deactivate_expired(
     supabase=Depends(get_supabase),
-    user_id: str = Depends(get_current_admin_user_id),
+    current_user: dict = Depends(require_admin),
 ):
     """Run the existing deactivate_expired_jobs RPC and return count affected."""
     result = supabase.rpc("deactivate_expired_jobs", {}).execute()
@@ -644,7 +644,7 @@ async def bulk_deactivate_expired(
 async def hard_delete_job(
     job_id: str,
     supabase=Depends(get_supabase),
-    user_id: str = Depends(get_current_admin_user_id),
+    current_user: dict = Depends(require_admin),
 ):
     """Permanently delete a job and ALL referencing rows (matches, saved_jobs, etc).
     Destructive — admin only. Use sparingly; prefer soft-deactivate via is_active=false.
@@ -656,7 +656,7 @@ async def hard_delete_job(
         raise HTTPException(status_code=404, detail="Job not found")
     title = existing.data[0].get("title")
     supabase.table("jobs").delete().eq("id", job_id).execute()
-    logger.warning("admin_hard_delete_job: user=%s job_id=%s title=%r", user_id, job_id, title)
+    logger.warning("admin_hard_delete_job: user=%s job_id=%s title=%r", current_user["id"], job_id, title)
     return {"deleted": True, "id": job_id, "title": title}
 
 @router.post("/re-embed")
