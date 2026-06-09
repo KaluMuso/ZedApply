@@ -93,6 +93,7 @@ export function BulkFixWizard({ token }: { token: string }) {
     try {
       await admin.patchJobContact(token, job.id, payload);
       notify.custom.success("Saved.");
+      void admin.reEnrichJob(token, job.id).catch(() => {});
       await loadNext();
     } catch (e) {
       notify.error(e instanceof Error ? e.message : "Save failed");
