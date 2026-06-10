@@ -423,7 +423,7 @@ export default function PricingPage() {
             }}
             role="status"
           >
-            Pay annually and save 30% — locks in a full year at today's price.
+            Pay annually and save 30% — locks in a full year at today&apos;s price.
           </div>
         )}
         <div className="mt-8 flex justify-center">
