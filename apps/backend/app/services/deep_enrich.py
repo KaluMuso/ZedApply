@@ -15,6 +15,7 @@ import httpx
 from openai import APIStatusError, OpenAI
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
+from app.lib.llm_json import repair_llm_json
 from app.services.deep_link_parsers.base import sanitize_listing_source_url
 from app.services.job_activation import apply_review_state_to_row, compute_review_state
 from app.services.job_page_text_extractor import extract_page_text_for_description
@@ -197,6 +198,27 @@ def _strip_json_fences(raw: str) -> str:
     return text.strip()
 
 
+def _parse_llm_json_with_repair(text: str) -> Any:
+    """Parse LLM JSON output with a repair fallback for near-valid responses.
+
+    OpenRouter Gemini occasionally returns JSON with trailing commas,
+    unterminated strings near the truncation point, or stray markdown
+    fences — all surface as ``json.JSONDecodeError``. The shared
+    ``repair_llm_json`` helper handles exactly those cases for CV parsing
+    and is reused here. If the repair helper can't produce structured
+    output, re-raise the ORIGINAL exception so the outer handler in
+    ``enrich_job_deep`` still tags the row "failed" with the right
+    ``llm: ...`` detail.
+    """
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        repaired = repair_llm_json(text)
+        if repaired is None:
+            raise
+        return repaired
+
+
 async def fetch_source_page(url: str) -> tuple[int, str]:
     headers = {
         "User-Agent": "Mozilla/5.0 (compatible; ZedApplyBot/1.0; +https://zedapply.com)",
@@ -249,7 +271,7 @@ def _call_deep_enrich_llm_openrouter(page_text: str, llm_client: Any) -> list[De
     raw = get_completion_content(response, default='{"jobs": []}')
     if raw is None:
         raise ValueError("empty LLM response")
-    parsed = json.loads(_strip_json_fences(raw))
+    parsed = _parse_llm_json_with_repair(_strip_json_fences(raw))
     return _roles_from_enrich_payload(parsed)
 
 
