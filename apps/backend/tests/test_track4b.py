@@ -200,7 +200,13 @@ def test_ingest_sets_listing_eligibility(job, active):
         assert inserted["admin_review_reason"] is None
         assert supabase.rows("analytics_events") == []
     elif job.closing_date is None:
-        assert inserted["admin_review_reason"] == "missing_apply_link,missing_contact,missing_deadline"
+        # PR #314: the ingest now defaults closing_date to today+14 when
+        # the scraper + LLM both miss, so "missing_deadline" no longer
+        # appears in the review reasons — the inserted row has a
+        # synthesized deadline. The row is still inactive though, since
+        # it has neither an apply_url nor a recognised contact in
+        # application_instructions.
+        assert inserted["admin_review_reason"] == "missing_apply_link,missing_contact"
         assert supabase.rows("analytics_events")[0]["event"] == "job_eligibility_flagged"
     else:
         # Instructions-only contact no longer activates public listings.
