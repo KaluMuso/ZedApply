@@ -37,6 +37,7 @@ Write a professional, compelling cover letter that:
 3. Shows knowledge of the company (if company name provided)
 4. Closes with a clear call to action
 5. Keeps it to 3-4 paragraphs (250-350 words)
+6. Avoids cliché AI phrases (e.g., 'delve into', 'in today's fast-paced world', 'seasoned professional', 'innovative', 'dynamic')
 
 Zambia-specific guidance:
 - Use professional but warm language appropriate for Zambian business culture

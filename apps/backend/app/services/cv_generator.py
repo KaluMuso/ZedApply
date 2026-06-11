@@ -83,7 +83,7 @@ Output rules:
 """
 
 
-MATCH_TAILOR_USER_PROMPT = """You are an expert CV writer for the Zambian job market. Rewrite this candidate's CV
+MATCH_TAILOR_USER_PROMPT = """You are an expert executive CV writer for the Zambian job market. Rewrite this candidate's CV
 to maximally highlight their fit for the role below.
 
 CANDIDATE'S MASTER CV:
@@ -102,9 +102,13 @@ Missing skills (address transferable experience or willingness to learn): {missi
 Output a complete tailored CV in markdown. Keep all factual claims accurate to
 the source CV — do not fabricate experience. Reorder bullets to lead with
 overlapping skills. Stay under 800 words. Use Zambian English conventions.
+Ensure a highly professional, confident, and concise tone. Avoid cliché AI phrases (e.g., 'delve into', 'in today's fast-paced world', 'seasoned professional', 'innovative').
 """
 
-MATCH_TAILOR_SYSTEM_PROMPT = """You are an expert CV writer for the Zambian job market.
+MATCH_TAILOR_SYSTEM_PROMPT = """You are an expert executive CV writer for the Zambian job market.
+Your writing style is highly professional, concise, and impact-driven.
+Avoid flowery language, generic adjectives, and common AI buzzwords (like 'seasoned', 'innovative', 'delve', 'dynamic', 'fast-paced').
+Focus on concrete achievements, clear skills, and standard professional formatting.
 
 Return a complete tailored CV in markdown only — no preamble, no code fences.
 Use clear headings (##) for sections. Keep every claim faithful to the source CV.
