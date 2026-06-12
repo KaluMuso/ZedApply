@@ -26,102 +26,15 @@ interface Plan {
   highlight: boolean;
 }
 
-const plans: Plan[] = [
-  {
-    name: "Free",
-    price: "K0",
-    period: "forever",
-    blurb: `${freeTierMatchesBlurb()} + WhatsApp alerts`,
-    highlight: false,
-  },
-  {
-    name: "Starter",
-    price: "K125",
-    period: "/month",
-    blurb: "50 matches + score breakdowns",
-    highlight: true,
-  },
-  {
-    name: "Professional",
-    price: "K250",
-    period: "/month",
-    blurb: "125 matches + cover letters",
-    highlight: false,
-  },
-  {
-    name: "Super Standard",
-    price: "K500",
-    period: "/month",
-    blurb: "Unlimited matches + interview prep",
-    highlight: false,
-  },
-];
-
-const faqs: { q: string; a: React.ReactNode }[] = [
-  {
-    q: "What's the matching score?",
-    a: MATCH_SCORE_FAQ_ANSWER,
-  },
-  {
-    q: "Do you send my CV anywhere?",
-    a: (
-      <>
-        No. Your CV stays on our servers and is only used to score matches and
-        generate tailored CVs <em>for you</em>. We never share it with employers
-        or third parties without your explicit consent. See our{" "}
-        <Link
-          href="/legal/privacy"
-          style={{ color: "var(--green-700)", textDecoration: "underline" }}
-        >
-          Privacy Policy
-        </Link>{" "}
-        for the full notice.
-      </>
-    ),
-  },
-  {
-    q: "Can I cancel anytime?",
-    a: "Yes. Cancel from your account settings — your paid features stay active until the end of your current billing period, and no further charges are made. New paid subscriptions also include a 7-day money-back guarantee if you have not used AI document generation — see our Refund Policy.",
-  },
-  {
-    q: "Is it free?",
-    a: `Yes. ${freeTierFaqMatchExplanation()} WhatsApp alerts and full job browsing are included on the Free tier. Paid tiers (K125–K500/month) unlock more matches and AI features like tailored CVs and cover letters.`,
-  },
-  {
-    q: "Where do the jobs come from?",
-    a: "We aggregate roles from every active jobs board in Zambia plus direct postings from partner employers. Roles are deduplicated and quality-scored before they ever reach a match, so you don't see the same listing three times or pad your inbox with low-quality posts.",
-  },
-  {
-    q: "When are matches sent?",
-    a: "WhatsApp digests go out once per day (typically 07:30 CAT) with your top three new matches. Anything urgent — a high-score match on a fresh listing — pings the same day. You can also see every match the moment it's scored in your dashboard.",
-  },
-  {
-    q: "How is my data protected?",
-    a: (
-      <>
-        TLS in transit, encryption at rest, WhatsApp OTP sign-in (no password to
-        leak or phish), and strict access controls inside our team. We comply
-        with the Zambia Data Protection Act 2021. You can export or delete your
-        data at any time — see the{" "}
-        <Link
-          href="/legal/privacy"
-          style={{ color: "var(--green-700)", textDecoration: "underline" }}
-        >
-          Privacy Policy
-        </Link>
-        .
-      </>
-    ),
-  },
-  {
-    q: "Do I need to be in Lusaka?",
-    a: "No. We carry roles from across Zambia — Lusaka, Kitwe, Ndola, Solwezi, Livingstone, Chingola and more — plus remote roles open to Zambian residents. Your location is one signal in the score, not a hard filter.",
-  },
-];
-
 // ── Page ──
 
-export default function HomePageClient() {
+export default function HomePageClient({ 
+  initialFaqs = [], 
+  initialTiers = [] 
+}: { 
+  initialFaqs?: any[]; 
+  initialTiers?: any[] 
+}) {
   useScrollReveal();
   const { isAuthenticated } = useAuth();
   const [stats, setStats] = useState<PublicStats | null>(null);
@@ -137,6 +50,72 @@ export default function HomePageClient() {
 
   const primaryHref = isAuthenticated ? "/matches" : "/auth";
   const primaryLabel = isAuthenticated ? "Go to dashboard" : "Get matched";
+
+  // Map backend tiers to Plan shape
+  const plans: Plan[] = initialTiers.map((t) => ({
+    name: t.display_name,
+    price: `K${Math.floor(t.price_ngwee / 100)}`,
+    period: t.tier === "free" ? "forever" : "/month",
+    blurb: t.marketing_blurb || "",
+    highlight: !!t.is_highlighted,
+  }));
+
+  // Fallback plans if empty
+  if (plans.length === 0) {
+    plans.push(
+      {
+        name: "Free",
+        price: "K0",
+        period: "forever",
+        blurb: `${freeTierMatchesBlurb()} + WhatsApp alerts`,
+        highlight: false,
+      },
+      {
+        name: "Starter",
+        price: "K125",
+        period: "/month",
+        blurb: "50 matches + score breakdowns",
+        highlight: true,
+      },
+      {
+        name: "Professional",
+        price: "K250",
+        period: "/month",
+        blurb: "125 matches + cover letters",
+        highlight: false,
+      },
+      {
+        name: "Super Standard",
+        price: "K500",
+        period: "/month",
+        blurb: "Unlimited matches + interview prep",
+        highlight: false,
+      }
+    );
+  }
+
+  // Map backend FAQs to { q, a }
+  let mappedFaqs = initialFaqs.map((f) => ({
+    q: f.question,
+    a: f.answer,
+  }));
+
+  if (mappedFaqs.length === 0) {
+    mappedFaqs = [
+      {
+        q: "What's the matching score?",
+        a: MATCH_SCORE_FAQ_ANSWER,
+      },
+      {
+        q: "Is it free?",
+        a: `Yes. ${freeTierFaqMatchExplanation()} WhatsApp alerts and full job browsing are included on the Free tier. Paid tiers (K125–K500/month) unlock more matches and AI features like tailored CVs and cover letters.`,
+      },
+      {
+        q: "Where do the jobs come from?",
+        a: "We aggregate roles from every active jobs board in Zambia plus direct postings from partner employers. Roles are deduplicated and quality-scored before they ever reach a match, so you don't see the same listing three times or pad your inbox with low-quality posts.",
+      },
+    ];
+  }
 
   return (
     <div>
@@ -398,7 +377,7 @@ export default function HomePageClient() {
             Questions, answered.
           </h2>
 
-          <FaqList items={faqs} />
+          <FaqList items={mappedFaqs} />
         </div>
       </section>
 
