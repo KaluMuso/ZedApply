@@ -1109,7 +1109,7 @@ async def _ingest_one_job(
         # Fallback 2: If fingerprint and URL missed (e.g. description changed slightly, URL missing), 
         # check dedupe_key (title|company|location) to prevent inactive duplicates.
         # Merge if there is a recent job (within 60 days) with the same dedupe_key.
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timezone
         dedupe_key = f"{job.title}|{job.company or ''}|{job.location or ''}".lower()
         recent_threshold = (datetime.now(timezone.utc) - timedelta(days=60)).isoformat()
         
