@@ -28,7 +28,9 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function HomePage() {
+import { Suspense } from "react";
+
+async function DynamicHomeContent() {
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
   
   let faqsData = [];
@@ -53,10 +55,16 @@ export default async function HomePage() {
     console.error("Failed to fetch dynamic content for home page:", error);
   }
 
+  return <HomePageClient initialFaqs={faqsData} initialTiers={tiersData} />;
+}
+
+export default function HomePage() {
   return (
     <>
       <HomeStructuredData />
-      <HomePageClient initialFaqs={faqsData} initialTiers={tiersData} />
+      <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+        <DynamicHomeContent />
+      </Suspense>
     </>
   );
 }
