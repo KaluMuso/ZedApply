@@ -1066,13 +1066,14 @@ export const admin = {
     apiFetch<AdminSubscriptionMetrics>("/admin/subscriptions/metrics", { token }),
   jobs: (
     token: string,
-    params?: { page?: number; per_page?: number; expired?: boolean; is_active?: boolean }
+    params?: { page?: number; per_page?: number; expired?: boolean; is_active?: boolean; missing_apply_link?: boolean }
   ) => {
     const q = new URLSearchParams();
     if (params?.page) q.set("page", String(params.page));
     if (params?.per_page) q.set("per_page", String(params.per_page));
     if (params?.expired !== undefined) q.set("expired", String(params.expired));
     if (params?.is_active !== undefined) q.set("is_active", String(params.is_active));
+    if (params?.missing_apply_link !== undefined) q.set("missing_apply_link", String(params.missing_apply_link));
     return apiFetch<AdminJobList>(`/admin/jobs?${q}`, { token });
   },
   reviewQueue: (

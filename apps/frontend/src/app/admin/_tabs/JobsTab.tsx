@@ -42,7 +42,7 @@ export function JobsTab({ token }: { token: string }) {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(50);
   const [pages, setPages] = useState(1);
-  const [filter, setFilter] = useState<"all" | "active" | "expired">("all");
+  const [filter, setFilter] = useState<"all" | "active" | "expired" | "missing_apply">("all");
   const [bulkLoading, setBulkLoading] = useState(false);
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
   const [searchInput, setSearchInput] = useState("");
@@ -52,9 +52,10 @@ export function JobsTab({ token }: { token: string }) {
 
   const load = useCallback(() => {
     setLoading(true);
-    const params: { page: number; per_page: number; expired?: boolean; is_active?: boolean } = { page, per_page: perPage };
+    const params: { page: number; per_page: number; expired?: boolean; is_active?: boolean; missing_apply_link?: boolean } = { page, per_page: perPage };
     if (filter === "expired") params.expired = true;
     if (filter === "active") params.is_active = true;
+    if (filter === "missing_apply") params.missing_apply_link = true;
     admin
       .jobs(token, params)
       .then((r) => {
@@ -192,16 +193,17 @@ export function JobsTab({ token }: { token: string }) {
               aria-label="Search jobs"
             />
             <select
-              className="h-9 min-h-9 rounded-md border border-input bg-background px-2 text-sm"
               value={filter}
               onChange={(e) => {
-                setFilter(e.target.value as typeof filter);
+                setFilter(e.target.value as "all" | "active" | "expired" | "missing_apply");
                 setPage(1);
               }}
+              className="rounded-md border border-input bg-background px-3 py-1 text-sm h-9"
             >
-              <option value="all">All</option>
+              <option value="all">All jobs</option>
               <option value="active">Active only</option>
-              <option value="expired">Expired & still active</option>
+              <option value="expired">Expired only</option>
+              <option value="missing_apply">Missing Apply Link</option>
             </select>
             <Link
               href="/admin/jobs/new"

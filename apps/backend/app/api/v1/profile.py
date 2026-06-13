@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import ValidationError
 
 from app.core.deps import get_supabase, get_current_user_id
+import asyncio
 from app.schemas.cv_sections import CVSections
 from app.services.referral import count_referral_signups, count_referral_qualified
 from app.schemas.user import (
@@ -44,31 +45,45 @@ def _extract_cv_sections(parsed_data) -> CVSections | None:
         return None
 
 
-def _build_profile(user_id: str, supabase) -> UserProfile:
-    result = supabase.table("users").select("*").eq("id", user_id).single().execute()
+async def _build_profile(user_id: str, supabase) -> UserProfile:
+    # Kick off all independent Supabase queries concurrently
+    user_task = asyncio.to_thread(
+        lambda: supabase.table("users").select("*").eq("id", user_id).single().execute()
+    )
+    skills_task = asyncio.to_thread(
+        lambda: supabase.table("user_skills").select("skills(name)").eq("user_id", user_id).execute()
+    )
+    cv_task = asyncio.to_thread(
+        lambda: supabase.table("cvs").select("id, parsed_data").eq("user_id", user_id).eq("is_primary", True).limit(1).execute()
+    )
+    ref_signups_task = asyncio.to_thread(
+        lambda: count_referral_signups(user_id, supabase)
+    )
+    ref_qualified_task = asyncio.to_thread(
+        lambda: count_referral_qualified(user_id, supabase)
+    )
+
+    (
+        result,
+        skills_result,
+        cv_result,
+        referral_signups,
+        referral_qualified,
+    ) = await asyncio.gather(
+        user_task,
+        skills_task,
+        cv_task,
+        ref_signups_task,
+        ref_qualified_task,
+    )
+
     if not result.data:
         raise HTTPException(status_code=404, detail="User not found")
 
     user = result.data
 
-    skills_result = (
-        supabase.table("user_skills")
-        .select("skills(name)")
-        .eq("user_id", user_id)
-        .execute()
-    )
     skills = [s["skills"]["name"] for s in (skills_result.data or []) if s.get("skills")]
 
-    # Pull id AND parsed_data so we can also extract structured sections in
-    # a single query — avoids a second round-trip on the hot /profile path.
-    cv_result = (
-        supabase.table("cvs")
-        .select("id, parsed_data")
-        .eq("user_id", user_id)
-        .eq("is_primary", True)
-        .limit(1)
-        .execute()
-    )
     cv_uploaded = bool(cv_result.data)
     cv_sections = (
         _extract_cv_sections(cv_result.data[0].get("parsed_data"))
@@ -77,8 +92,6 @@ def _build_profile(user_id: str, supabase) -> UserProfile:
     )
 
     referral_code = user.get("referral_code") or ""
-    referral_signups = count_referral_signups(user_id, supabase) if referral_code else 0
-    referral_qualified = count_referral_qualified(user_id, supabase) if referral_code else 0
 
     return UserProfile(
         id=user["id"],
@@ -105,7 +118,7 @@ async def get_profile(
     user_id: str = Depends(get_current_user_id),
     supabase=Depends(get_supabase),
 ):
-    return _build_profile(user_id, supabase)
+    return await _build_profile(user_id, supabase)
 
 
 @router.patch("", response_model=UserProfile)
@@ -119,7 +132,7 @@ async def update_profile(
         raise HTTPException(status_code=422, detail="No fields to update")
 
     supabase.table("users").update(update_data).eq("id", user_id).execute()
-    return _build_profile(user_id, supabase)
+    return await _build_profile(user_id, supabase)
 
 
 @router.delete("", response_model=ProfileDeleted)
