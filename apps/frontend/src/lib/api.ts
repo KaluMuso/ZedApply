@@ -966,6 +966,39 @@ export interface AdminEmailHealth {
 }
 
 export const admin = {
+  scrapeTargets: {
+    list: (token: string) =>
+      apiFetch<any[]>("/admin/scrape-targets/list", { token }),
+    add: (data: { company_name: string; url: string; cron_interval_hours: number }, token: string) =>
+      apiFetch<any>("/admin/scrape-targets/add", {
+        method: "POST",
+        token,
+        body: data,
+      }),
+    toggle: (id: string, is_active: boolean, token: string) =>
+      apiFetch<any>("/admin/scrape-targets/toggle", {
+        method: "PATCH",
+        token,
+        body: { id, is_active },
+      }),
+    delete: (id: string, token: string) =>
+      apiFetch<{ success: boolean }>("/admin/scrape-targets/delete", {
+        method: "DELETE",
+        token,
+        body: { id },
+      }),
+    trigger: (token: string) =>
+      apiFetch<{ processed: number; results: any[] }>("/admin/scrape-targets/trigger", {
+        method: "POST",
+        token,
+      }),
+    force: (id: string, token: string) =>
+      apiFetch<{ company_name: string; jobs_found: number; new_inserted: number }>("/admin/scrape-targets/force", {
+        method: "POST",
+        token,
+        body: { id },
+      }),
+  },
   emailHealth: (token: string) =>
     apiFetch<AdminEmailHealth>("/admin/email/health", { token }),
   stats: (token: string) => apiFetch<AdminStats>("/admin/stats", { token }),

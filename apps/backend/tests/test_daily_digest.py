@@ -119,14 +119,13 @@ class TestSelectDigestMatches:
         ):
             selected = await _select_digest_matches(
                 user_id,
-                "whatsapp_daily_digest",
                 fake_supabase,
-                now=NOW,
                 min_score=50.0,
             )
 
-        assert len(selected) == 1
+        assert len(selected) == 2
         assert selected[0]["job_id"] == recent_job
+        assert selected[1]["job_id"] == old_job
 
 
 class TestTriggerDailyDigestEndpoint:

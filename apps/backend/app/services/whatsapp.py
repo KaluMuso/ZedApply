@@ -42,7 +42,8 @@ async def send_match_digest(phone: str, matches: list[dict]) -> dict:
         if skills:
             lines.append(f"   Skills: {', '.join(skills[:3])}")
         lines.append("")
-    lines.append("Reply with a number (1-5) to see details.\nReply *MORE* for more matches.")
+    count = len(matches[:5])
+    lines.append(f"Reply with a number (1-{count}) to see details.")
     return await send_whatsapp_message(phone, "\n".join(lines))
 
 

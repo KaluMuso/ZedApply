@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 EMAIL_DAILY_DIGEST_CHANNEL = "email_digest"
 WHATSAPP_DAILY_DIGEST_CHANNEL = "whatsapp_daily_digest"
-DIGEST_MATCH_LIMIT = 15
+DIGEST_MATCH_LIMIT = 100
 DIGEST_TOP_N = 3
 JOB_RECENCY_HOURS = 24
 UPCOMING_INTERVIEW_HOURS = 48
@@ -128,12 +128,11 @@ async def fetch_upcoming_interviews(
     return upcoming
 
 
-async def _fetch_sent_job_ids(user_id: str, channel: str, supabase: Client) -> set[str]:
+async def _fetch_sent_job_ids(user_id: str, supabase: Client) -> set[str]:
     result = (
         supabase.table("user_notifications")
         .select("job_id")
         .eq("user_id", user_id)
-        .eq("channel", channel)
         .execute()
     )
     return {
@@ -183,13 +182,11 @@ def _job_within_recency(
 
 async def _select_digest_matches(
     user_id: str,
-    channel: str,
     supabase: Client,
     *,
-    now: datetime,
     min_score: float,
 ) -> list[dict[str, Any]]:
-    """Top N RPC matches from the last 24h not yet sent on the given channel."""
+    """Top N RPC matches not yet sent on ANY channel."""
     try:
         rpc_rows = await run_matching_for_user(
             user_id,
@@ -206,14 +203,7 @@ async def _select_digest_matches(
     if not rpc_rows:
         return []
 
-    sent_ids = await _fetch_sent_job_ids(user_id, channel, supabase)
-    candidate_ids = [
-        str(row["job_id"])
-        for row in rpc_rows
-        if isinstance(row, dict) and row.get("job_id") and str(row["job_id"]) not in sent_ids
-    ]
-    cutoff = now - timedelta(hours=JOB_RECENCY_HOURS)
-    posted_by_job = await _fetch_job_posted_at(candidate_ids, supabase)
+    sent_ids = await _fetch_sent_job_ids(user_id, supabase)
 
     selected: list[dict[str, Any]] = []
     for row in rpc_rows:
@@ -221,8 +211,6 @@ async def _select_digest_matches(
             continue
         job_id = row.get("job_id")
         if not job_id or str(job_id) in sent_ids:
-            continue
-        if not _job_within_recency(str(job_id), posted_by_job, cutoff=cutoff):
             continue
         selected.append(row)
         if len(selected) >= DIGEST_TOP_N:
@@ -280,9 +268,7 @@ async def run_email_daily_digest(supabase: Client) -> dict[str, int]:
 
         matches = await _select_digest_matches(
             str(user_id),
-            EMAIL_DAILY_DIGEST_CHANNEL,
             supabase,
-            now=now,
             min_score=settings.min_match_score,
         )
         upcoming = await fetch_upcoming_interviews(str(user_id), supabase, now=now)
@@ -333,9 +319,7 @@ async def run_whatsapp_daily_digest(supabase: Client) -> dict[str, int]:
 
         matches = await _select_digest_matches(
             str(user_id),
-            WHATSAPP_DAILY_DIGEST_CHANNEL,
             supabase,
-            now=now,
             min_score=settings.min_match_score,
         )
         upcoming = await fetch_upcoming_interviews(str(user_id), supabase, now=now)
@@ -392,9 +376,7 @@ async def build_daily_digest_batch(supabase: Client) -> list[dict[str, str]]:
 
         matches = await _select_digest_matches(
             str(user_id),
-            WHATSAPP_DAILY_DIGEST_CHANNEL,
             supabase,
-            now=now,
             min_score=settings.min_match_score,
         )
         upcoming = await fetch_upcoming_interviews(str(user_id), supabase, now=now)

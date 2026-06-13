@@ -219,17 +219,48 @@ def _parse_llm_json_with_repair(text: str) -> Any:
         return repaired
 
 
+async def _jina_fallback(url: str) -> tuple[int, str]:
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; ZedApplyBot/1.0; +https://zedapply.com)",
+        "X-Return-Format": "markdown",
+    }
+    jina_url = f"https://r.jina.ai/{url}"
+    try:
+        async with httpx.AsyncClient(
+            timeout=45.0,
+            follow_redirects=True,
+        ) as client:
+            resp = await client.get(jina_url, headers=headers)
+            return resp.status_code, resp.text
+    except Exception as exc:
+        logger.error("Jina fallback failed for %s: %s", url, exc)
+        return 500, ""
+
+
 async def fetch_source_page(url: str) -> tuple[int, str]:
     headers = {
         "User-Agent": "Mozilla/5.0 (compatible; ZedApplyBot/1.0; +https://zedapply.com)",
         "Accept": "text/html,application/xhtml+xml",
     }
-    async with httpx.AsyncClient(
-        timeout=_FETCH_TIMEOUT,
-        follow_redirects=True,
-    ) as client:
-        resp = await client.get(url, headers=headers)
-        return resp.status_code, resp.text
+    cookies = {
+        "cookie-agreed": "2",
+        "cookie-agreed-categories": "%5B%22performance_cookies%22%2C%22functional_cookies%22%2C%22targeting_cookies%22%5D",
+    }
+    try:
+        async with httpx.AsyncClient(
+            timeout=_FETCH_TIMEOUT,
+            follow_redirects=True,
+            cookies=cookies,
+        ) as client:
+            resp = await client.get(url, headers=headers)
+            
+            # If successful and it looks like a real page (not just a tiny cookie banner)
+            if resp.status_code == 200 and len(resp.text) > 1000:
+                return resp.status_code, resp.text
+    except httpx.RequestError as exc:
+        logger.warning("Standard fetch failed for %s: %s", url, exc)
+
+    return await _jina_fallback(url)
 
 
 def _deep_enrich_prompt(page_text: str) -> str:

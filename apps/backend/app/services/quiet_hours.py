@@ -1,7 +1,7 @@
 """User quiet-hours window checks for outbound WhatsApp notifications."""
 from __future__ import annotations
 
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -39,19 +39,23 @@ def is_in_quiet_hours(
     quiet_start: time,
     quiet_end: time,
     tz_name: str | None = None,
+    grace_minutes: int = 5,
 ) -> bool:
     """
     Return True when local time falls inside the quiet window.
 
     Supports overnight windows (e.g. 20:00–07:00) when start > end.
+    A grace period is added so crons firing slightly early (e.g., 06:59)
+    are not blocked if they were intended for 07:00.
     """
-    local = now.astimezone(_resolve_zone(tz_name))
+    adjusted_now = now + timedelta(minutes=grace_minutes)
+    local = adjusted_now.astimezone(_resolve_zone(tz_name))
     current = local.time().replace(second=0, microsecond=0)
     if quiet_start == quiet_end:
         return False
-    if quiet_start < quiet_end:
-        return quiet_start <= current < quiet_end
-    return current >= quiet_start or current < quiet_end
+    if quiet_start > quiet_end:
+        return current >= quiet_start or current < quiet_end
+    return quiet_start <= current < quiet_end
 
 
 def user_in_quiet_hours(user: dict[str, Any], now: datetime) -> bool:

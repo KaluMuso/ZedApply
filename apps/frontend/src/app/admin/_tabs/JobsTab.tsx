@@ -40,6 +40,7 @@ export function JobsTab({ token }: { token: string }) {
   const [data, setData] = useState<AdminJobRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(50);
   const [pages, setPages] = useState(1);
   const [filter, setFilter] = useState<"all" | "active" | "expired">("all");
   const [bulkLoading, setBulkLoading] = useState(false);
@@ -51,7 +52,7 @@ export function JobsTab({ token }: { token: string }) {
 
   const load = useCallback(() => {
     setLoading(true);
-    const params: { page: number; expired?: boolean; is_active?: boolean } = { page };
+    const params: { page: number; per_page: number; expired?: boolean; is_active?: boolean } = { page, per_page: perPage };
     if (filter === "expired") params.expired = true;
     if (filter === "active") params.is_active = true;
     admin
@@ -68,7 +69,7 @@ export function JobsTab({ token }: { token: string }) {
       })
       .catch((e) => notify.error(e instanceof Error ? e.message : "Failed to load jobs"))
       .finally(() => setLoading(false));
-  }, [token, page, filter]);
+  }, [token, page, perPage, filter]);
 
   useEffect(() => {
     load();
@@ -385,7 +386,16 @@ export function JobsTab({ token }: { token: string }) {
               </TableBody>
             </Table>
           </div>
-          <AdminTablePagination page={page} pages={pages} onPageChange={setPage} />
+          <AdminTablePagination 
+            page={page} 
+            pages={pages} 
+            onPageChange={setPage} 
+            perPage={perPage} 
+            onPerPageChange={(limit) => {
+              setPerPage(limit);
+              setPage(1); // Reset to page 1 on limit change
+            }}
+          />
         </CardContent>
       </Card>
 

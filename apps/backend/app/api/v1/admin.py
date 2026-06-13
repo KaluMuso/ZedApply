@@ -956,7 +956,7 @@ async def repair_user_delivery_quota(
 @router.get("/jobs", response_model=AdminJobList)
 async def list_jobs(
     page: int = Query(1, ge=1),
-    per_page: int = Query(25, ge=1, le=100),
+    per_page: int = Query(50, ge=1, le=10000),
     expired: bool | None = Query(None, description="true = past closing_date and still active"),
     is_active: bool | None = Query(None),
     supabase=Depends(get_supabase),

@@ -210,7 +210,11 @@ def dedupe_match_rows_by_listing(rows: list[dict[str, Any]]) -> list[dict[str, A
     best_by_key: dict[str, dict[str, Any]] = {}
     for row in rows:
         job = row.get("jobs") if isinstance(row.get("jobs"), dict) else {}
-        key = listing_dedupe_key(job)
+        
+        company = str(job.get("company") or row.get("job_company") or "").strip().lower()
+        title = str(job.get("title") or row.get("job_title") or "").strip().lower()
+        key = f"{company}::{title}"
+        
         score = float(row.get("score") or 0)
         prev = best_by_key.get(key)
         if prev is None or score > float(prev.get("score") or 0):
@@ -281,7 +285,9 @@ async def run_matching_for_user(
         if "no primary CV with embedding" in message.lower():
             raise ValueError("Upload a CV with a completed embedding before matching") from exc
         raise
-    return [normalize_rpc_match_row(row) for row in (result.data or [])]
+    
+    rows = [normalize_rpc_match_row(row) for row in (result.data or [])]
+    return dedupe_match_rows_by_listing(rows)
 
 
 async def fetch_jobs_by_ids(job_ids: list[str], supabase: Client) -> dict[str, dict[str, Any]]:
