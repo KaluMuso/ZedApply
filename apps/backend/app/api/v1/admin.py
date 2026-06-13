@@ -959,6 +959,7 @@ async def list_jobs(
     per_page: int = Query(50, ge=1, le=10000),
     expired: bool | None = Query(None, description="true = past closing_date and still active"),
     is_active: bool | None = Query(None),
+    missing_apply_link: bool | None = Query(None),
     supabase=Depends(get_supabase),
 ):
     query = supabase.table("jobs").select(
@@ -974,6 +975,9 @@ async def list_jobs(
     elif expired is False:
         from datetime import date
         query = query.gte("closing_date", date.today().isoformat())
+        
+    if missing_apply_link:
+        query = query.eq("deactivation_reason", "no_valid_apply_path_pending_enrich")
 
     offset = (page - 1) * per_page
     result = query.range(offset, offset + per_page - 1).execute()

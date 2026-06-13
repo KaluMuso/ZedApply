@@ -72,17 +72,13 @@ export function TierConfigEditor({ token }: { token: string }) {
     adminTiers
       .list(token)
       .then((r) => {
-        const byTier = Object.fromEntries(r.tiers.map((t) => [t.tier, t]));
-        const ordered = CANONICAL_TIER_ORDER.map(
-          (tier) => byTier[tier] ?? {
-            tier,
-            display_name: TIER_LABELS[tier] ?? tier,
-            price_ngwee: 0,
-            matches_limit: 0,
-            sort_order: 0,
-          },
-        );
-        setRows(ordered.map(toEditable));
+        const sorted = [...r.tiers].sort((a, b) => {
+          if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order;
+          const aDays = a.billing_period_days || 30;
+          const bDays = b.billing_period_days || 30;
+          return aDays - bDays;
+        });
+        setRows(sorted.map(toEditable));
       })
       .catch((e) =>
         notify.error(e instanceof Error ? e.message : "Failed to load tier config"),
@@ -98,18 +94,19 @@ export function TierConfigEditor({ token }: { token: string }) {
     );
   }
 
-  const updateRow = (tier: string, patch: Partial<EditableTier>) => {
+  const updateRow = (rowId: string, patch: Partial<EditableTier>) => {
     setRows((prev) =>
-      prev.map((r) => (r.tier === tier ? { ...r, ...patch } : r)),
+      prev.map((r) => (`${r.tier}-${r.billing_period_days || 30}` === rowId ? { ...r, ...patch } : r)),
     );
   };
 
   const handleSaveRow = async (row: EditableTier) => {
-    setSavingTier(row.tier);
+    const rowId = `${row.tier}-${row.billing_period_days || 30}`;
+    setSavingTier(rowId);
     try {
-      const updated = await adminTiers.patch(token, row.tier, toPatchBody(row));
+      const updated = await adminTiers.patch(token, row.tier, toPatchBody(row), row.billing_period_days || 30);
       setRows((prev) =>
-        prev.map((r) => (r.tier === row.tier ? toEditable(updated) : r)),
+        prev.map((r) => (`${r.tier}-${r.billing_period_days || 30}` === rowId ? toEditable(updated) : r)),
       );
       notify.custom.success("Tier updated successfully");
     } catch (e) {
@@ -147,10 +144,12 @@ export function TierConfigEditor({ token }: { token: string }) {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
-                  <tr key={row.tier} className="border-b border-border/60">
-                    <td className="py-3 pr-3 text-muted-foreground">
-                      {TIER_LABELS[row.tier] ?? row.tier}
+                {rows.map((row) => {
+                  const rowId = `${row.tier}-${row.billing_period_days || 30}`;
+                  return (
+                  <tr key={rowId} className="border-b border-border/60">
+                    <td className="py-3 pr-3 text-muted-foreground font-medium">
+                      {row.display_name}
                     </td>
                     <td className="py-3 pr-3">
                       <Input
@@ -158,7 +157,7 @@ export function TierConfigEditor({ token }: { token: string }) {
                         min={0}
                         value={row.matches_input}
                         onChange={(e) =>
-                          updateRow(row.tier, { matches_input: e.target.value })
+                          updateRow(rowId, { matches_input: e.target.value })
                         }
                         className="min-h-9 w-32"
                         aria-label={`Matches limit for ${row.tier}`}
@@ -171,7 +170,7 @@ export function TierConfigEditor({ token }: { token: string }) {
                         disabled={row.tier === "free"}
                         value={row.tier === "free" ? "0" : row.price_kwacha}
                         onChange={(e) =>
-                          updateRow(row.tier, { price_kwacha: e.target.value })
+                          updateRow(rowId, { price_kwacha: e.target.value })
                         }
                         className="min-h-9 w-32"
                         aria-label={`Price for ${row.tier}`}
@@ -182,7 +181,9 @@ export function TierConfigEditor({ token }: { token: string }) {
                         type="text"
                         value={row.marketing_blurb_input}
                         onChange={(e) =>
-                          updateRow(row.tier, { marketing_blurb_input: e.target.value })
+                          updateRow(rowId, {
+                            marketing_blurb_input: e.target.value,
+                          })
                         }
                         className="min-h-9 w-48"
                         aria-label={`Marketing blurb for ${row.tier}`}
@@ -194,24 +195,25 @@ export function TierConfigEditor({ token }: { token: string }) {
                         type="checkbox"
                         checked={row.is_highlighted_input}
                         onChange={(e) =>
-                          updateRow(row.tier, { is_highlighted_input: e.target.checked })
+                          updateRow(rowId, { is_highlighted_input: e.target.checked })
                         }
-                        className="h-4 w-4"
                         aria-label={`Highlight ${row.tier}`}
+                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
                       />
                     </td>
                     <td className="py-3 text-right">
                       <Button
-                        className="min-h-9"
                         size="sm"
-                        disabled={savingTier === row.tier}
-                        onClick={() => void handleSaveRow(row)}
+                        onClick={() => handleSaveRow(row)}
+                        disabled={savingTier === rowId}
+                        className="bg-[#2f885e] hover:bg-[#256f4c]"
                       >
-                        {savingTier === row.tier ? "Saving…" : "Save"}
+                        {savingTier === rowId ? "Saving…" : "Save"}
                       </Button>
                     </td>
                   </tr>
-                ))}
+                );
+              })}
               </tbody>
             </table>
           </div>

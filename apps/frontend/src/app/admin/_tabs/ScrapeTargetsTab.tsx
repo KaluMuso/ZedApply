@@ -12,6 +12,7 @@ export function ScrapeTargetsTab({ token }: { token: string }) {
   const [interval, setIntervalHours] = useState(72);
   const [adding, setAdding] = useState(false);
   const [triggering, setTriggering] = useState(false);
+  const [forcingId, setForcingId] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -85,12 +86,15 @@ export function ScrapeTargetsTab({ token }: { token: string }) {
   };
 
   const onForceTarget = async (id: string) => {
+    setForcingId(id);
     try {
       const res = await admin.scrapeTargets.force(id, token);
       notify.success(`Found ${res.jobs_found} jobs, inserted ${res.new_inserted}`);
       load();
     } catch (e: any) {
       notify.error(e.message || "Failed to force scrape");
+    } finally {
+      setForcingId(null);
     }
   };
 
@@ -189,9 +193,18 @@ export function ScrapeTargetsTab({ token }: { token: string }) {
                   <td className="p-3 text-right space-x-2">
                     <button
                       onClick={() => onForceTarget(t.id)}
-                      className="text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                      disabled={forcingId === t.id}
+                      className="text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Force Scrape
+                      {forcingId === t.id ? (
+                        <span className="flex items-center gap-1">
+                          <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Scraping...
+                        </span>
+                      ) : "Force Scrape"}
                     </button>
                     <button
                       onClick={() => onToggle(t.id, t.is_active)}

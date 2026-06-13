@@ -33,6 +33,7 @@ type NavLink = {
 
 const SIGNED_IN_LINKS: NavLink[] = [
   { href: "/jobs", label: "Jobs" },
+  { href: "/tenders", label: "Tenders" },
   { href: "/matches", label: "Matches" },
   { href: "/applications", label: "Applications", authOnly: true },
   { href: "/pricing", label: "Pricing" },
@@ -40,6 +41,7 @@ const SIGNED_IN_LINKS: NavLink[] = [
 
 const SIGNED_OUT_LINKS: NavLink[] = [
   { href: "/jobs", label: "Jobs" },
+  { href: "/tenders", label: "Tenders" },
   { href: "/matches", label: "Matches" },
   { href: "/pricing", label: "Pricing" },
   { href: AUTH_GET_STARTED, label: "Get started", guestOnly: true },
@@ -56,6 +58,16 @@ export function Navbar() {
   const { dark, toggle } = useTheme();
   const pathname = usePathname();
   const isAdminRoute = pathname?.startsWith("/admin");
+  
+  // Load cached profile on mount to avoid hydration mismatch
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem("zed_cv_nav_profile");
+      if (cached) {
+        setNavProfile(JSON.parse(cached));
+      }
+    } catch (e) {}
+  }, []);
   
   // Only show mobile app shell on actual mobile devices, not desktop
   const mobileAppShell = isMobile && showMobileAppShell(pathname, isAuthenticated);
@@ -90,6 +102,7 @@ export function Navbar() {
     if (!token) {
       setNavProfile(null);
       setSubscriptionTier(null);
+      localStorage.removeItem("zed_cv_nav_profile");
       return;
     }
     Promise.all([
@@ -107,16 +120,17 @@ export function Navbar() {
           sub?.matches_limit,
         );
         setSubscriptionTier(profile.subscription_tier);
-        setNavProfile({
+        const profileData = {
           fullName,
           tierSubtitle,
           subscriptionTier: profile.subscription_tier,
           showAdmin: profile.role === "admin" || profile.role === "superadmin",
-        });
+        };
+        setNavProfile(profileData);
+        localStorage.setItem("zed_cv_nav_profile", JSON.stringify(profileData));
       })
       .catch(() => {
-        setNavProfile(null);
-        setSubscriptionTier(null);
+        // Keep cached profile if network fails temporarily
       });
   }, [token]);
 

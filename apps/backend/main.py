@@ -30,6 +30,7 @@ from app.api.v1 import (
     legal,
     preferences,
     users,
+    tenders,
     tier_config_routes,
     faqs_routes,
     whatsapp_scraper_webhook,
@@ -98,6 +99,7 @@ def create_app() -> FastAPI:
 
     application.include_router(auth.router, prefix="/api/v1")
     application.include_router(jobs.router, prefix="/api/v1")
+    application.include_router(tenders.router, prefix="/api/v1")
     from app.api.v1 import job_cover_letter
 
     application.include_router(job_cover_letter.router, prefix="/api/v1")
@@ -119,6 +121,7 @@ def create_app() -> FastAPI:
         admin_companies_export,
         admin_ingest,
         admin_notifications,
+        admin_referrals,
         admin_review_jobs,
         admin_review_jobs_bulk,
         admin_scrape,
@@ -130,6 +133,7 @@ def create_app() -> FastAPI:
     application.include_router(admin_companies_export.router, prefix="/api/v1")
     application.include_router(admin_ingest.router, prefix="/api/v1")
     application.include_router(admin_notifications.router, prefix="/api/v1")
+    application.include_router(admin_referrals.router, prefix="/api/v1")
     application.include_router(admin_review_jobs.router, prefix="/api/v1")
     application.include_router(admin_review_jobs_bulk.router, prefix="/api/v1")
     application.include_router(admin_scrape.router, prefix="/api/v1/admin/scrape-targets", tags=["Admin Scrape Targets"])

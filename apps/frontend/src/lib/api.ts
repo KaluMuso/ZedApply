@@ -1066,13 +1066,14 @@ export const admin = {
     apiFetch<AdminSubscriptionMetrics>("/admin/subscriptions/metrics", { token }),
   jobs: (
     token: string,
-    params?: { page?: number; per_page?: number; expired?: boolean; is_active?: boolean }
+    params?: { page?: number; per_page?: number; expired?: boolean; is_active?: boolean; missing_apply_link?: boolean }
   ) => {
     const q = new URLSearchParams();
     if (params?.page) q.set("page", String(params.page));
     if (params?.per_page) q.set("per_page", String(params.per_page));
     if (params?.expired !== undefined) q.set("expired", String(params.expired));
     if (params?.is_active !== undefined) q.set("is_active", String(params.is_active));
+    if (params?.missing_apply_link !== undefined) q.set("missing_apply_link", String(params.missing_apply_link));
     return apiFetch<AdminJobList>(`/admin/jobs?${q}`, { token });
   },
   reviewQueue: (
@@ -1357,15 +1358,29 @@ export const adminTierConfig = {
 /** Admin tier config — GET list + PATCH per tier (superadmin JWT). */
 export const adminTiers = {
   list: (token: string) => apiFetch<TierConfigList>("/admin/tiers", { token }),
-  patch: (
-    token: string,
-    tierName: string,
-    body: TierConfigPatch,
-  ) =>
-    apiFetch<TierConfigRow>(`/admin/tiers/${encodeURIComponent(tierName)}`, {
+  patch: (token: string, tierName: string, data: TierConfigPatch, billingPeriodDays: number = 30) =>
+    apiFetch<TierConfigRow>(`/admin/tiers/${encodeURIComponent(tierName)}?billing_period_days=${billingPeriodDays}`, {
       method: "PATCH",
       token,
-      body: JSON.stringify(body),
+      body: JSON.stringify(data),
+    }),
+};
+
+export const adminReferrals = {
+  getConfig: (token: string) =>
+    apiFetch<{ configs: any[] }>("/admin/referrals/config", { token }),
+  updateConfig: (token: string, configId: number, data: any) =>
+    apiFetch<{ config: any }>(`/admin/referrals/config/${configId}`, {
+      method: "PATCH",
+      token,
+      body: JSON.stringify(data),
+    }),
+  getPayouts: (token: string) =>
+    apiFetch<{ payouts: any[] }>("/admin/referrals/payouts", { token }),
+  markPaid: (token: string, rewardId: number) =>
+    apiFetch<{ message: string }>(`/admin/referrals/payouts/${rewardId}/mark-paid`, {
+      method: "POST",
+      token,
     }),
 };
 

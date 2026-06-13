@@ -165,6 +165,7 @@ async def list_admin_tiers(supabase=Depends(get_supabase)):
 async def patch_admin_tier(
     tier_name: str,
     body: TierConfigPatch,
+    billing_period_days: int = _MONTHLY_PERIOD_DAYS,
     auth: dict = Depends(require_admin_api_key_or_superadmin),
     supabase=Depends(get_supabase),
 ):
@@ -181,12 +182,12 @@ async def patch_admin_tier(
         supabase.table("tier_config")
         .select("tier, display_name")
         .eq("tier", tier_name)
-        .eq("billing_period_days", _MONTHLY_PERIOD_DAYS)
+        .eq("billing_period_days", billing_period_days)
         .limit(1)
         .execute()
     )
     if not existing.data:
-        raise HTTPException(status_code=404, detail=f"Tier not configured: {tier_name}")
+        raise HTTPException(status_code=404, detail=f"Tier not configured: {tier_name} ({billing_period_days} days)")
 
     now = datetime.now(timezone.utc).isoformat()
     user_id = auth.get("id")
@@ -195,8 +196,8 @@ async def patch_admin_tier(
         "display_name": existing.data[0]["display_name"],
         "price_ngwee": body.price_ngwee,
         "matches_limit": body.matches_limit,
-        "sort_order": _TIER_SORT_ORDER[tier_name],
-        "billing_period_days": _MONTHLY_PERIOD_DAYS,
+        "sort_order": _TIER_SORT_ORDER.get(tier_name, 0),
+        "billing_period_days": billing_period_days,
         "updated_at": now,
         "updated_by": user_id,
     }
@@ -216,7 +217,7 @@ async def patch_admin_tier(
             for r in rows
             if r["tier"] == tier_name
             and int(r.get("billing_period_days") or _MONTHLY_PERIOD_DAYS)
-            == _MONTHLY_PERIOD_DAYS
+            == billing_period_days
         ),
         None,
     )
