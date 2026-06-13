@@ -1803,6 +1803,7 @@ async def admin_re_enrich_job(
     result = await run_deep_enrich_for_job(supabase, job_id)
     return {
         "enriched": result.get("enriched", False),
+        "outcome": result.get("outcome", "failed"),
         "deep_enriched_at": result.get("deep_enriched_at"),
         "admin_published": result.get("admin_published"),
         "description_length": result.get("description_length"),

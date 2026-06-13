@@ -1077,7 +1077,7 @@ export const admin = {
       { method: "POST", token, body: "{}" }
     ),
   forceDeepEnrich: (token: string, jobId: string) =>
-    apiFetch<{ enriched: boolean; deep_enriched_at: string | null }>(
+    apiFetch<{ enriched: boolean; outcome: string; deep_enriched_at: string | null }>(
       `/admin/jobs/${encodeURIComponent(jobId)}/re-enrich`,
       { method: "POST", token, body: "{}" }
     ),

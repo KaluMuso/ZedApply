@@ -138,7 +138,11 @@ export function ReviewJobsTab({ token }: { token: string }) {
     try {
       const res = await admin.forceDeepEnrich(token, jobId);
       if (res.enriched) {
-        notify.custom.success("Job successfully deep-enriched.");
+        if (res.outcome === "split") {
+          notify.custom.success("Job was split into multiple individual roles.");
+        } else {
+          notify.custom.success("Job successfully deep-enriched.");
+        }
         await loadQueue();
       } else {
         notify.custom.info("Deep enrich ran, but returned no new data.");
@@ -461,7 +465,7 @@ export function ReviewJobsTab({ token }: { token: string }) {
                       disabled={savingId === job.id}
                       onClick={() => deepEnrichJob(job.id)}
                     >
-                      Deep Enrich
+                      Deep Enrich / Split
                     </Button>
                   </div>
                 </CardContent>
