@@ -869,7 +869,8 @@ async def run_deep_enrich_for_job(supabase: Any, job_id: str) -> dict[str, Any]:
             ref_row = refreshed.data[0]
             desc = ref_row.get("description") or ""
             return {
-                "enriched": job_result.outcome == "enriched",
+                "enriched": True,
+                "outcome": job_result.outcome,
                 "deep_enriched_at": ref_row.get("deep_enriched_at"),
                 "admin_published": ref_row.get("admin_published"),
                 "description_length": len(desc),
