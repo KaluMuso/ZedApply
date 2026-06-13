@@ -37,7 +37,7 @@ export function ReviewJobsTab({ token }: { token: string }) {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
-  const [savingId, setSavingId] = useState<string | null>(null);
+  const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
   const [bulkClearing, setBulkClearing] = useState(false);
   const [bulkActioning, setBulkActioning] = useState(false);
   const [scrapeUrl, setScrapeUrl] = useState("");
@@ -98,7 +98,7 @@ export function ReviewJobsTab({ token }: { token: string }) {
     const payload = Object.fromEntries(
       Object.entries(draft).filter(([, v]) => typeof v === "string" && v.trim() !== "")
     );
-    setSavingId(jobId);
+    setSavingIds((prev) => new Set(prev).add(jobId));
     try {
       await admin.updateTrack4eReviewJob(token, jobId, payload);
       notify.custom.success("Job updated.");
@@ -111,12 +111,16 @@ export function ReviewJobsTab({ token }: { token: string }) {
     } catch (e) {
       notify.error(e instanceof Error ? e.message : "Could not save job");
     } finally {
-      setSavingId(null);
+      setSavingIds((prev) => {
+        const n = new Set(prev);
+        n.delete(jobId);
+        return n;
+      });
     }
   };
 
   const dismissJob = async (jobId: string) => {
-    setSavingId(jobId);
+    setSavingIds((prev) => new Set(prev).add(jobId));
     try {
       await admin.dismissTrack4eReviewJob(token, jobId);
       notify.custom.success("Job dismissed.");
@@ -127,14 +131,18 @@ export function ReviewJobsTab({ token }: { token: string }) {
       });
       await loadQueue();
     } catch (e) {
-      notify.error(e instanceof Error ? e.message : "Could not dismiss job");
+      notify.error(e instanceof Error ? e.message : "Failed to dismiss job");
     } finally {
-      setSavingId(null);
+      setSavingIds((prev) => {
+        const n = new Set(prev);
+        n.delete(jobId);
+        return n;
+      });
     }
   };
 
   const deepEnrichJob = async (jobId: string) => {
-    setSavingId(jobId);
+    setSavingIds((prev) => new Set(prev).add(jobId));
     try {
       const res = await admin.forceDeepEnrich(token, jobId);
       if (res.enriched) {
@@ -150,7 +158,11 @@ export function ReviewJobsTab({ token }: { token: string }) {
     } catch (e) {
       notify.error(e instanceof Error ? e.message : "Deep enrich failed");
     } finally {
-      setSavingId(null);
+      setSavingIds((prev) => {
+        const n = new Set(prev);
+        n.delete(jobId);
+        return n;
+      });
     }
   };
 
@@ -437,35 +449,35 @@ export function ReviewJobsTab({ token }: { token: string }) {
                       onChange={(e) => updateDraft(job.id, "closing_date", e.target.value)}
                     />
                   </div>
-                  <div className="sm:col-span-3 flex gap-2">
+                  <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3 bg-muted/30 border-t border-border mt-2">
                     <Button
                       type="button"
                       size="sm"
                       className="w-fit"
-                      disabled={savingId === job.id}
-                      onClick={() => saveJob(job.id)}
+                      disabled={savingIds.has(job.id)}
+                      onClick={() => saveJob(job.id, draft)}
                     >
-                      {savingId === job.id ? "Saving…" : "Save & publish"}
+                      {savingIds.has(job.id) ? "Saving…" : "Save & publish"}
                     </Button>
                     <Button
                       type="button"
                       size="sm"
                       variant="destructive"
                       className="w-fit"
-                      disabled={savingId === job.id}
+                      disabled={savingIds.has(job.id)}
                       onClick={() => dismissJob(job.id)}
                     >
-                      Dismiss
+                      Dismiss / Drop
                     </Button>
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
                       className="w-fit"
-                      disabled={savingId === job.id}
+                      disabled={savingIds.has(job.id)}
                       onClick={() => deepEnrichJob(job.id)}
                     >
-                      Deep Enrich / Split
+                      {savingIds.has(job.id) ? "Enriching…" : "Deep Enrich / Split"}
                     </Button>
                   </div>
                 </CardContent>
