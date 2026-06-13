@@ -5,7 +5,6 @@ import { adminTiers, profile, type TierConfigRow } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { notify } from "@/lib/toast";
 import { UNLIMITED_MATCHES } from "@/lib/tier-config";
 
@@ -192,12 +191,14 @@ export function TierConfigEditor({ token }: { token: string }) {
                       />
                     </td>
                     <td className="py-3 pr-3 text-center">
-                      <Checkbox
+                      <input
+                        type="checkbox"
                         checked={row.is_highlighted_input}
-                        onCheckedChange={(checked) =>
-                          updateRow(rowId, { is_highlighted_input: !!checked })
+                        onChange={(e) =>
+                          updateRow(rowId, { is_highlighted_input: e.target.checked })
                         }
                         aria-label={`Highlight ${row.tier}`}
+                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
                       />
                     </td>
                     <td className="py-3 text-right">
@@ -211,7 +212,8 @@ export function TierConfigEditor({ token }: { token: string }) {
                       </Button>
                     </td>
                   </tr>
-                ))}
+                );
+              })}
               </tbody>
             </table>
           </div>

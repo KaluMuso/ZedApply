@@ -5,7 +5,6 @@ import { adminReferrals } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { notify } from "@/lib/toast";
 
 export function ReferralsTab({ token }: { token: string }) {
@@ -161,9 +160,11 @@ export function ReferralsTab({ token }: { token: string }) {
                       />
                     </td>
                     <td className="py-3 text-center">
-                      <Checkbox
+                      <input
+                        type="checkbox"
                         checked={c.is_active}
-                        onCheckedChange={(checked) => handleUpdateConfig(c.id, { is_active: !!checked })}
+                        onChange={(e) => handleUpdateConfig(c.id, { is_active: e.target.checked })}
+                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
                       />
                     </td>
                   </tr>
