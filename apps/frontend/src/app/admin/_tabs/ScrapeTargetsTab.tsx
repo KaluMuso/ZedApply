@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
 import { admin } from "@/lib/api";
-import { notify } from "@/lib/notify";
+import { notify } from "@/lib/toast";
 
 export function ScrapeTargetsTab({ token }: { token: string }) {
   const [targets, setTargets] = useState<any[]>([]);
@@ -16,17 +15,14 @@ export function ScrapeTargetsTab({ token }: { token: string }) {
 
   const load = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("scrape_targets")
-      .select("*")
-      .order("created_at", { ascending: false });
-    
-    if (error) {
-      notify.error(error.message);
-    } else {
+    try {
+      const data = await admin.scrapeTargets.list(token);
       setTargets(data || []);
+    } catch (error: any) {
+      notify.error(error.message || "Failed to load targets");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -37,39 +33,41 @@ export function ScrapeTargetsTab({ token }: { token: string }) {
     e.preventDefault();
     if (!companyName.trim() || !url.trim()) return;
     setAdding(true);
-    const { error } = await supabase.from("scrape_targets").insert({
-      company_name: companyName.trim(),
-      url: url.trim(),
-      cron_interval_hours: interval,
-    });
-    if (error) {
-      notify.error(error.message);
-    } else {
+    try {
+      await admin.scrapeTargets.add({
+        company_name: companyName.trim(),
+        url: url.trim(),
+        cron_interval_hours: interval,
+      }, token);
       notify.success("Target added");
       setCompanyName("");
       setUrl("");
       setIntervalHours(72);
       load();
+    } catch (error: any) {
+      notify.error(error.message || "Failed to add target");
+    } finally {
+      setAdding(false);
     }
-    setAdding(false);
   };
 
   const onToggle = async (id: string, currentStatus: boolean) => {
-    const { error } = await supabase
-      .from("scrape_targets")
-      .update({ is_active: !currentStatus })
-      .eq("id", id);
-    if (error) notify.error(error.message);
-    else load();
+    try {
+      await admin.scrapeTargets.toggle(id, !currentStatus, token);
+      load();
+    } catch (error: any) {
+      notify.error(error.message || "Failed to toggle status");
+    }
   };
 
   const onDelete = async (id: string) => {
     if (!window.confirm("Delete this target?")) return;
-    const { error } = await supabase.from("scrape_targets").delete().eq("id", id);
-    if (error) notify.error(error.message);
-    else {
+    try {
+      await admin.scrapeTargets.delete(id, token);
       notify.success("Target deleted");
       load();
+    } catch (error: any) {
+      notify.error(error.message || "Failed to delete target");
     }
   };
 

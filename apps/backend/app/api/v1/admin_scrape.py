@@ -8,6 +8,57 @@ from app.services.target_scraper import trigger_scrape_targets, fetch_and_extrac
 
 router = APIRouter()
 
+@router.get("/list", response_model=list[dict[str, Any]])
+async def list_targets(
+    supabase: Client = Depends(get_supabase),
+    _=Depends(require_admin),
+):
+    res = supabase.table("scrape_targets").select("*").order("created_at", desc=True).execute()
+    return res.data
+
+class AddTargetRequest(BaseModel):
+    company_name: str
+    url: str
+    cron_interval_hours: int
+
+@router.post("/add", response_model=dict[str, Any])
+async def add_target(
+    req: AddTargetRequest,
+    supabase: Client = Depends(get_supabase),
+    _=Depends(require_admin),
+):
+    res = supabase.table("scrape_targets").insert({
+        "company_name": req.company_name,
+        "url": req.url,
+        "cron_interval_hours": req.cron_interval_hours,
+    }).execute()
+    return res.data[0] if res.data else {}
+
+class ToggleTargetRequest(BaseModel):
+    id: str
+    is_active: bool
+
+@router.patch("/toggle", response_model=dict[str, Any])
+async def toggle_target(
+    req: ToggleTargetRequest,
+    supabase: Client = Depends(get_supabase),
+    _=Depends(require_admin),
+):
+    res = supabase.table("scrape_targets").update({"is_active": req.is_active}).eq("id", req.id).execute()
+    return res.data[0] if res.data else {}
+
+class DeleteTargetRequest(BaseModel):
+    id: str
+
+@router.delete("/delete", response_model=dict[str, Any])
+async def delete_target(
+    req: DeleteTargetRequest,
+    supabase: Client = Depends(get_supabase),
+    _=Depends(require_admin),
+):
+    supabase.table("scrape_targets").delete().eq("id", req.id).execute()
+    return {"success": True}
+
 @router.post("/trigger", response_model=dict[str, Any])
 async def trigger_scrape(
     supabase: Client = Depends(get_supabase),
