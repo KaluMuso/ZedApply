@@ -43,7 +43,7 @@ export function JobsTab({ token }: { token: string }) {
   const [pages, setPages] = useState(1);
   const [filter, setFilter] = useState<"all" | "active" | "expired">("all");
   const [bulkLoading, setBulkLoading] = useState(false);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [dialogMode, setDialogMode] = useState<"create" | "edit" | null>(null);
@@ -114,7 +114,7 @@ export function JobsTab({ token }: { token: string }) {
   };
 
   const onToggle = async (job: AdminJobRow) => {
-    setBusyId(job.id);
+    setBusyIds(prev => new Set(prev).add(job.id));
     try {
       await admin.updateJob(token, job.id, { is_active: !job.is_active });
       notify.custom.success(job.is_active ? "Deactivated" : "Activated");
@@ -122,7 +122,7 @@ export function JobsTab({ token }: { token: string }) {
     } catch (e) {
       notify.error(e instanceof Error ? e.message : "Toggle failed");
     } finally {
-      setBusyId(null);
+      setBusyIds(prev => { const n = new Set(prev); n.delete(job.id); return n; });
     }
   };
 
@@ -131,7 +131,7 @@ export function JobsTab({ token }: { token: string }) {
       `Delete "${job.title}"? This permanently deletes the job from the database.`,
     );
     if (!confirmed) return;
-    setBusyId(job.id);
+    setBusyIds(prev => new Set(prev).add(job.id));
     try {
       await admin.deleteJob(token, job.id);
       notify.custom.success("Job deleted.");
@@ -143,7 +143,28 @@ export function JobsTab({ token }: { token: string }) {
     } catch (e) {
       notify.error(e instanceof Error ? e.message : "Delete failed");
     } finally {
-      setBusyId(null);
+      setBusyIds(prev => { const n = new Set(prev); n.delete(job.id); return n; });
+    }
+  };
+
+  const onDeepEnrich = async (jobId: string) => {
+    setBusyIds(prev => new Set(prev).add(jobId));
+    try {
+      const res = await admin.forceDeepEnrich(token, jobId);
+      if (res.enriched) {
+        if (res.outcome === "split") {
+          notify.custom.success("Job was split into multiple individual roles.");
+        } else {
+          notify.custom.success("Job successfully deep-enriched.");
+        }
+        load();
+      } else {
+        notify.custom.info("Deep enrich ran, but returned no new data.");
+      }
+    } catch (e) {
+      notify.error(e instanceof Error ? e.message : "Deep enrich failed");
+    } finally {
+      setBusyIds(prev => { const n = new Set(prev); n.delete(jobId); return n; });
     }
   };
 
@@ -334,16 +355,25 @@ export function JobsTab({ token }: { token: string }) {
                             size="sm"
                             variant="outline"
                             className="min-h-8 h-8 px-2 text-xs"
-                            disabled={busyId === j.id}
+                            disabled={busyIds.has(j.id)}
+                            onClick={() => onDeepEnrich(j.id)}
+                          >
+                            {busyIds.has(j.id) ? "…" : "Re-enrich"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="min-h-8 h-8 px-2 text-xs"
+                            disabled={busyIds.has(j.id)}
                             onClick={() => onToggle(j)}
                           >
-                            {busyId === j.id ? "…" : j.is_active ? "Deactivate" : "Activate"}
+                            {busyIds.has(j.id) ? "…" : j.is_active ? "Deactivate" : "Activate"}
                           </Button>
                           <Button
                             size="sm"
                             variant="destructive"
                             className="min-h-8 h-8 px-2 text-xs"
-                            disabled={busyId === j.id}
+                            disabled={busyIds.has(j.id)}
                             onClick={() => void onDelete(j)}
                           >
                             Delete
