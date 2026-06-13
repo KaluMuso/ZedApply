@@ -260,8 +260,7 @@ async def _send_due_digest(user: dict, supabase, now: datetime) -> bool:
     sent = False
     phone = (user.get("whatsapp_number") or user.get("phone") or "").strip()
 
-    whatsapp_sent_ids = await _fetch_sent_job_ids(user["id"], "whatsapp_auto_match", supabase)
-    email_sent_ids = await _fetch_sent_job_ids(user["id"], "email_auto_match", supabase)
+    sent_ids = await _fetch_sent_job_ids(user["id"], supabase)
 
     if (
         wants_whatsapp_digest(user)
@@ -269,7 +268,7 @@ async def _send_due_digest(user: dict, supabase, now: datetime) -> bool:
         and legacy.get("whatsapp", True)
         and not user_in_quiet_hours(user, now)
     ):
-        whatsapp_matches = [m for m in matches if str(m.get("job_id")) not in whatsapp_sent_ids]
+        whatsapp_matches = [m for m in matches if str(m.get("job_id")) not in sent_ids]
         if whatsapp_matches:
             try:
                 await send_match_digest(
@@ -296,7 +295,7 @@ async def _send_due_digest(user: dict, supabase, now: datetime) -> bool:
                 logger.warning("auto-match WhatsApp digest failed for user=%s", user["id"], exc_info=True)
 
     if wants_email_digest(user) and legacy.get("email", True):
-        email_matches = [m for m in matches if str(m.get("job_id")) not in email_sent_ids]
+        email_matches = [m for m in matches if str(m.get("job_id")) not in sent_ids]
         if email_matches:
             try:
                 if await send_match_digest_email(user["id"], email_matches[:5], supabase):
@@ -795,8 +794,8 @@ async def _run_matching_task(user_id: str, cv_id: str, supabase):
                 .limit(5)
                 .execute()
             )
-            email_sent_ids = await _fetch_sent_job_ids(user_id, "email_auto_match", supabase)
-            matches_to_send = [m for m in (digest_rows.data or []) if str(m.get("job_id")) not in email_sent_ids]
+            sent_ids = await _fetch_sent_job_ids(user_id, supabase)
+            matches_to_send = [m for m in (digest_rows.data or []) if str(m.get("job_id")) not in sent_ids]
             
             if matches_to_send:
                 try:

@@ -8,7 +8,8 @@ export type AdminSection =
   | "tier-config"
   | "bwana"
   | "faqs"
-  | "legal";
+  | "legal"
+  | "scrape-targets";
 
 export const ADMIN_NAV: {
   slug: AdminSection;
@@ -75,6 +76,12 @@ export const ADMIN_NAV: {
     label: "Legal",
     description: "Edit privacy, terms, cookies, and refund pages",
     href: "/admin/legal",
+  },
+  {
+    slug: "scrape-targets",
+    label: "Scrape Targets",
+    description: "Manage dynamic scraping targets",
+    href: "/admin/scrape-targets",
   },
 ];
 

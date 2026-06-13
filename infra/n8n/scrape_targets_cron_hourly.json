@@ -1,0 +1,55 @@
+{
+  "name": "ZedApply - Trigger Scrape Targets (Hourly)",
+  "meta": {
+    "description": "Hits the FastAPI backend every hour to trigger dynamic scraping for targets that are due based on their cron_interval_hours.",
+    "n8nWorkflowId": "scrapeTargetsTriggerHourly001",
+    "requiredEnv": [
+      "FASTAPI_URL",
+      "ADMIN_API_KEY"
+    ]
+  },
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [{ "field": "hours", "hoursInterval": 1 }] } },
+      "name": "Every 1 Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FASTAPI_URL }}/admin/scrape-targets/trigger",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-admin-api-key",
+              "value": "={{ $env.ADMIN_API_KEY }}"
+            },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Trigger FastAPI Scrape",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 300]
+    }
+  ],
+  "connections": {
+    "Every 1 Hour": {
+      "main": [
+        [
+          {
+            "node": "Trigger FastAPI Scrape",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true
+}

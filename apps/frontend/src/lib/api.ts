@@ -966,6 +966,19 @@ export interface AdminEmailHealth {
 }
 
 export const admin = {
+  scrapeTargets: {
+    trigger: (token: string) =>
+      apiFetch<{ processed: number; results: any[] }>("/admin/scrape-targets/trigger", {
+        method: "POST",
+        token,
+      }),
+    force: (id: string, token: string) =>
+      apiFetch<{ company_name: string; jobs_found: number; new_inserted: number }>("/admin/scrape-targets/force", {
+        method: "POST",
+        token,
+        body: { id },
+      }),
+  },
   emailHealth: (token: string) =>
     apiFetch<AdminEmailHealth>("/admin/email/health", { token }),
   stats: (token: string) => apiFetch<AdminStats>("/admin/stats", { token }),
