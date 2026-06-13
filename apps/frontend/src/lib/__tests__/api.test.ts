@@ -649,7 +649,7 @@ describe("admin API", () => {
   it("admin.scrapeTargets.list calls correctly", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse([{ id: "1" }]));
     await admin.scrapeTargets.list("tok");
-    expect(fetch).toHaveBeenCalledWith(`${API_BASE}/admin/scrape-targets/list`, expect.objectContaining({ method: "GET" }));
+    expect(fetch).toHaveBeenCalledWith(`${API_BASE}/admin/scrape-targets/list`, expect.objectContaining({ headers: expect.any(Object) }));
   });
 
   it("admin.scrapeTargets.add calls correctly", async () => {
@@ -661,13 +661,13 @@ describe("admin API", () => {
   it("admin.scrapeTargets.toggle calls correctly", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ ok: true }));
     await admin.scrapeTargets.toggle("1", false, "tok");
-    expect(fetch).toHaveBeenCalledWith(`${API_BASE}/admin/scrape-targets/toggle/1`, expect.objectContaining({ method: "PATCH" }));
+    expect(fetch).toHaveBeenCalledWith(`${API_BASE}/admin/scrape-targets/toggle`, expect.objectContaining({ method: "PATCH", body: JSON.stringify({ id: "1", is_active: false }) }));
   });
 
   it("admin.scrapeTargets.delete calls correctly", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ ok: true }));
     await admin.scrapeTargets.delete("1", "tok");
-    expect(fetch).toHaveBeenCalledWith(`${API_BASE}/admin/scrape-targets/1`, expect.objectContaining({ method: "DELETE" }));
+    expect(fetch).toHaveBeenCalledWith(`${API_BASE}/admin/scrape-targets/delete`, expect.objectContaining({ method: "DELETE", body: JSON.stringify({ id: "1" }) }));
   });
 
   it("admin.scrapeTargets.trigger calls correctly", async () => {

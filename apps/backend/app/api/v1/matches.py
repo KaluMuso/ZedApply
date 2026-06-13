@@ -252,7 +252,7 @@ async def _send_due_digest(user: dict, supabase, now: datetime) -> bool:
         .limit(5)
         .execute()
     )
-    matches = rows.data or []
+    matches = dedupe_match_rows_by_listing(rows.data or [])
     if not matches:
         return False
 
@@ -794,8 +794,9 @@ async def _run_matching_task(user_id: str, cv_id: str, supabase):
                 .limit(5)
                 .execute()
             )
+            digest_rows_data = dedupe_match_rows_by_listing(digest_rows.data or [])
             sent_ids = await _fetch_sent_job_ids(user_id, supabase)
-            matches_to_send = [m for m in (digest_rows.data or []) if str(m.get("job_id")) not in sent_ids]
+            matches_to_send = [m for m in digest_rows_data if str(m.get("job_id")) not in sent_ids]
             
             if matches_to_send:
                 try:
