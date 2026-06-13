@@ -455,7 +455,7 @@ export function ReviewJobsTab({ token }: { token: string }) {
                       size="sm"
                       className="w-fit"
                       disabled={savingIds.has(job.id)}
-                      onClick={() => saveJob(job.id, draft)}
+                      onClick={() => saveJob(job.id)}
                     >
                       {savingIds.has(job.id) ? "Saving…" : "Save & publish"}
                     </Button>
