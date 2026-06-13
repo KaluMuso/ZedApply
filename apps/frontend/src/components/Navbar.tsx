@@ -33,6 +33,7 @@ type NavLink = {
 
 const SIGNED_IN_LINKS: NavLink[] = [
   { href: "/jobs", label: "Jobs" },
+  { href: "/tenders", label: "Tenders" },
   { href: "/matches", label: "Matches" },
   { href: "/applications", label: "Applications", authOnly: true },
   { href: "/pricing", label: "Pricing" },
@@ -40,6 +41,7 @@ const SIGNED_IN_LINKS: NavLink[] = [
 
 const SIGNED_OUT_LINKS: NavLink[] = [
   { href: "/jobs", label: "Jobs" },
+  { href: "/tenders", label: "Tenders" },
   { href: "/matches", label: "Matches" },
   { href: "/pricing", label: "Pricing" },
   { href: AUTH_GET_STARTED, label: "Get started", guestOnly: true },

@@ -89,6 +89,7 @@ describe("Navbar primary navigation", () => {
     const labels = links.map((l) => l.textContent?.trim());
     expect(labels).toEqual([
       "Jobs",
+      "Tenders",
       "Matches",
       "Applications",
       "Pricing",
@@ -140,6 +141,7 @@ describe("Navbar primary navigation", () => {
       .map((l) => l.textContent?.trim());
     expect(labels).toEqual([
       "Jobs",
+      "Tenders",
       "Matches",
       "Pricing",
     ]);

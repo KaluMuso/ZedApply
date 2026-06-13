@@ -41,6 +41,7 @@ type MoreLink = {
 };
 
 const MORE_LINKS: MoreLink[] = [
+  { href: "/tenders", label: "Tenders", icon: "briefcase" },
   { href: "/dashboard", label: "Dashboard", icon: "home" },
   { href: "/profile", label: "Profile & CV", icon: "user" },
   { href: settingsPath("notifications"), label: "Notifications", icon: "bell" },

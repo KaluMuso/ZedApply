@@ -1357,15 +1357,29 @@ export const adminTierConfig = {
 /** Admin tier config — GET list + PATCH per tier (superadmin JWT). */
 export const adminTiers = {
   list: (token: string) => apiFetch<TierConfigList>("/admin/tiers", { token }),
-  patch: (
-    token: string,
-    tierName: string,
-    body: TierConfigPatch,
-  ) =>
-    apiFetch<TierConfigRow>(`/admin/tiers/${encodeURIComponent(tierName)}`, {
+  patch: (token: string, tierName: string, data: TierConfigPatch, billingPeriodDays: number = 30) =>
+    apiFetch<TierConfigRow>(`/admin/tiers/${encodeURIComponent(tierName)}?billing_period_days=${billingPeriodDays}`, {
       method: "PATCH",
       token,
-      body: JSON.stringify(body),
+      body: JSON.stringify(data),
+    }),
+};
+
+export const adminReferrals = {
+  getConfig: (token: string) =>
+    apiFetch<{ configs: any[] }>("/admin/referrals/config", { token }),
+  updateConfig: (token: string, configId: number, data: any) =>
+    apiFetch<{ config: any }>(`/admin/referrals/config/${configId}`, {
+      method: "PATCH",
+      token,
+      body: JSON.stringify(data),
+    }),
+  getPayouts: (token: string) =>
+    apiFetch<{ payouts: any[] }>("/admin/referrals/payouts", { token }),
+  markPaid: (token: string, rewardId: number) =>
+    apiFetch<{ message: string }>(`/admin/referrals/payouts/${rewardId}/mark-paid`, {
+      method: "POST",
+      token,
     }),
 };
 
