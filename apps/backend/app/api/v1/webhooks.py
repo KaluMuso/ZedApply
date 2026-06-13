@@ -693,10 +693,11 @@ async def lenco_webhook(request: Request, supabase=Depends(get_supabase)):
         # Notify on WhatsApp + email — best-effort, never fail the webhook.
         user = supabase.table("users").select("phone, first_payment_at, referred_by_user_id").eq("id", user_id).single().execute()
         
-        if user.data:
-            if not user.data.get("first_payment_at"):
+        user_row = user.data[0] if isinstance(user.data, list) and user.data else user.data
+        if user_row:
+            if not user_row.get("first_payment_at"):
                 supabase.table("users").update({"first_payment_at": now.isoformat()}).eq("id", user_id).execute()
-                referrer_id = user.data.get("referred_by_user_id")
+                referrer_id = user_row.get("referred_by_user_id")
                 if referrer_id:
                     from app.services.referral import evaluate_referral_milestones
                     evaluate_referral_milestones(referrer_id, supabase)
