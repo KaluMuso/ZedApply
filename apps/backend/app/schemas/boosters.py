@@ -5,7 +5,6 @@ from typing import Optional
 
 class BoosterPurchaseRequest(BaseModel):
     sku: str
-    phone: str
 
 
 class BoosterPurchaseResponse(BaseModel):
